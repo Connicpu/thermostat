@@ -1,0 +1,4 @@
+(fp_lib_table
+  (lib (name "EASV3015AGBA0")(type "KiCad")(uri "D:/Tools/KiCadLibs/EASV3015AGBA0")(options "")(descr ""))
+  (lib (name "Thermostat-V2")(type "KiCad")(uri "C:/Users/conni/OneDrive/Documents/Home IoT/PCBs/Thermostat-V2")(options "")(descr ""))
+)
