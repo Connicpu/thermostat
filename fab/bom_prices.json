@@ -1,382 +1,372 @@
 [
-{
-"lcsc": "C19702",
-"val": "10uF",
-"type": "base",
-"pref": false,
-"stock": 9465345,
-"qty": 20,
-"unit": 0.0305,
-"cost": 0.61
-},
-{
-"lcsc": "C8598",
-"val": "B5819W",
-"type": "base",
-"pref": false,
-"stock": 386691,
-"qty": 20,
-"unit": 0.0282,
-"cost": 0.56
-},
-{
-"lcsc": "C18186224",
-"val": "BT136S-600D",
-"type": "expand",
-"pref": false,
-"stock": 25450,
-"qty": 15,
-"unit": 0.0965,
-"cost": 1.45
-},
-{
-"lcsc": "C25091",
-"val": "220R",
-"type": "base",
-"pref": false,
-"stock": 1320070,
-"qty": 15,
-"unit": 0.0035,
-"cost": 0.05
-},
-{
-"lcsc": "C51940130",
-"val": "Stemma QT",
-"type": "expand",
-"pref": false,
-"stock": 17480,
-"qty": 5,
-"unit": 0.0391,
-"cost": 0.2
-},
-{
-"lcsc": "C25905",
-"val": "5.1k",
-"type": "base",
-"pref": false,
-"stock": 5460892,
-"qty": 10,
-"unit": 0.0024,
-"cost": 0.02
-},
-{
-"lcsc": "C52923",
-"val": "1uF",
-"type": "base",
-"pref": false,
-"stock": 7196277,
-"qty": 25,
-"unit": 0.0087,
-"cost": 0.22
-},
-{
-"lcsc": "C83472",
-"val": "22uH",
-"type": "expand",
-"pref": false,
-"stock": 40683,
-"qty": 5,
-"unit": 0.0614,
-"cost": 0.31
-},
-{
-"lcsc": "C17408",
-"val": "100R",
-"type": "base",
-"pref": false,
-"stock": 8899721,
-"qty": 15,
-"unit": 0.0042,
-"cost": 0.06
-},
-{
-"lcsc": "C1525",
-"val": "100nF",
-"type": "base",
-"pref": false,
-"stock": 23579751,
-"qty": 20,
-"unit": 0.0051,
-"cost": 0.1
-},
-{
-"lcsc": "C25744",
-"val": "10k",
-"type": "base",
-"pref": false,
-"stock": 18908011,
-"qty": 60,
-"unit": 0.0033,
-"cost": 0.2
-},
-{
-"lcsc": "C46043",
-"val": "STWD100NYWY3F",
-"type": "expand",
-"pref": false,
-"stock": 21379,
-"qty": 5,
-"unit": 0.3892,
-"cost": 1.95
-},
-{
-"lcsc": "C262567",
-"val": "2.9in EPD FPC",
-"type": "expand",
-"pref": false,
-"stock": 49144,
-"qty": 5,
-"unit": 0.1305,
-"cost": 0.65
-},
-{
-"lcsc": "C5366877",
-"val": "ESP32-C6-WROOM-1-N8",
-"type": "expand",
-"pref": false,
-"stock": 3805,
-"qty": 5,
-"unit": 4.2225,
-"cost": 21.11
-},
-{
-"lcsc": "C318884",
-"val": "DOWN",
-"type": "base",
-"pref": false,
-"stock": 362453,
-"qty": 5,
-"unit": 0.0206,
-"cost": 0.1
-},
-{
-"lcsc": "C7519",
-"val": "USBLC6-2SC6",
-"type": "expand",
-"pref": false,
-"stock": 44899,
-"qty": 5,
-"unit": 0.177,
-"cost": 0.89
-},
-{
-"lcsc": "C25779",
-"val": "33k",
-"type": "base",
-"pref": false,
-"stock": 1137994,
-"qty": 5,
-"unit": 0.0058,
-"cost": 0.03
-},
-{
-"lcsc": "C11702",
-"val": "1k",
-"type": "base",
-"pref": false,
-"stock": 7964486,
-"qty": 20,
-"unit": 0.003,
-"cost": 0.06
-},
-{
-"lcsc": "C87080",
-"val": "LMR16006XDDCR",
-"type": "expand",
-"pref": false,
-"stock": 33642,
-"qty": 5,
-"unit": 0.5667,
-"cost": 2.83
-},
-{
-"lcsc": "C318884",
-"val": "RESET",
-"type": "base",
-"pref": false,
-"stock": 362453,
-"qty": 5,
-"unit": 0.0206,
-"cost": 0.1
-},
-{
-"lcsc": "C469327",
-"val": "SI1308EDL",
-"type": "expand",
-"pref": false,
-"stock": 40484,
-"qty": 5,
-"unit": 0.2871,
-"cost": 1.44
-},
-{
-"lcsc": "C77950",
-"val": "MOC3063S",
-"type": "expand",
-"pref": false,
-"stock": 74255,
-"qty": 15,
-"unit": 0.2161,
-"cost": 3.24
-},
-{
-"lcsc": "C2286",
-"val": "RED",
-"type": "base",
-"pref": false,
-"stock": 7073352,
-"qty": 5,
-"unit": 0.0076,
-"cost": 0.04
-},
-{
-"lcsc": "C423196",
-"val": "3R",
-"type": "expand",
-"pref": false,
-"stock": 36784,
-"qty": 5,
-"unit": 0.0018,
-"cost": 0.01
-},
-{
-"lcsc": "C15849",
-"val": "1uF 50V",
-"type": "base",
-"pref": false,
-"stock": 10517346,
-"qty": 35,
-"unit": 0.0157,
-"cost": 0.55
-},
-{
-"lcsc": "C318884",
-"val": "MODE",
-"type": "base",
-"pref": false,
-"stock": 362453,
-"qty": 5,
-"unit": 0.0206,
-"cost": 0.1
-},
-{
-"lcsc": "C165948",
-"val": "USB-C",
-"type": "expand",
-"pref": false,
-"stock": 402289,
-"qty": 5,
-"unit": 0.186,
-"cost": 0.93
-},
-{
-"lcsc": "C318884",
-"val": "UP",
-"type": "base",
-"pref": false,
-"stock": 362453,
-"qty": 5,
-"unit": 0.0206,
-"cost": 0.1
-},
-{
-"lcsc": "C318884",
-"val": "BOOT",
-"type": "base",
-"pref": false,
-"stock": 362453,
-"qty": 5,
-"unit": 0.0206,
-"cost": 0.1
-},
-{
-"lcsc": "C2909890",
-"val": "SHT40-AD1B",
-"type": "expand",
-"pref": false,
-"stock": 20392,
-"qty": 5,
-"unit": 1.9069,
-"cost": 9.53
-},
-{
-"lcsc": "C2488",
-"val": "MB10S",
-"type": "base",
-"pref": false,
-"stock": 629997,
-"qty": 5,
-"unit": 0.0271,
-"cost": 0.14
-},
-{
-"lcsc": "C114003",
-"val": "SMBJ40A",
-"type": "expand",
-"pref": false,
-"stock": 3355,
-"qty": 5,
-"unit": 0.0517,
-"cost": 0.26
-},
-{
-"lcsc": "C25900",
-"val": "4.7k",
-"type": "base",
-"pref": false,
-"stock": 14252578,
-"qty": 10,
-"unit": 0.0027,
-"cost": 0.03
-},
-{
-"lcsc": "C170101",
-"val": "2.2uF 100V",
-"type": "expand",
-"pref": false,
-"stock": 166291,
-"qty": 5,
-"unit": 0.1324,
-"cost": 0.66
-},
-{
-"lcsc": "C51953411",
-"val": "100uF 63V",
-"type": "expand",
-"pref": false,
-"stock": 26682,
-"qty": 5,
-"unit": 0.1816,
-"cost": 0.91
-},
-{
-"lcsc": "C7427091",
-"val": "68uH",
-"type": "expand",
-"pref": false,
-"stock": 4085,
-"qty": 5,
-"unit": 0.0408,
-"cost": 0.2
-},
-{
-"lcsc": "C14996",
-"val": "SS210",
-"type": "base",
-"pref": false,
-"stock": 708928,
-"qty": 5,
-"unit": 0.0323,
-"cost": 0.16
-},
-{
-"lcsc": "C12559",
-"val": "0.5A PTC",
-"type": "expand",
-"pref": false,
-"stock": 21463,
-"qty": 5,
-"unit": 0.1126,
-"cost": 0.56
-}
+ {
+  "lcsc": "C25091",
+  "val": "220R",
+  "type": "base",
+  "pref": false,
+  "stock": 1313266,
+  "qty": 8,
+  "unit": 0.0035,
+  "cost": 0.03
+ },
+ {
+  "lcsc": "C1779",
+  "val": "4.7uF 25V",
+  "type": "base",
+  "pref": false,
+  "stock": 2493074,
+  "qty": 4,
+  "unit": 0.0346,
+  "cost": 0.14
+ },
+ {
+  "lcsc": "C7427088",
+  "val": "47uH",
+  "type": "expand",
+  "pref": false,
+  "stock": 14699,
+  "qty": 4,
+  "unit": 0.041,
+  "cost": 0.16
+ },
+ {
+  "lcsc": "C15849",
+  "val": "1uF 50V",
+  "type": "base",
+  "pref": false,
+  "stock": 10303774,
+  "qty": 17,
+  "unit": 0.0158,
+  "cost": 0.27
+ },
+ {
+  "lcsc": "C20917",
+  "val": "AO3400A",
+  "type": "base",
+  "pref": false,
+  "stock": 795453,
+  "qty": 4,
+  "unit": 0.0891,
+  "cost": 0.36
+ },
+ {
+  "lcsc": "C283473",
+  "val": "T405-600B",
+  "type": "expand",
+  "pref": false,
+  "stock": 5771,
+  "qty": 8,
+  "unit": 0.5383,
+  "cost": 4.31
+ },
+ {
+  "lcsc": "C25744",
+  "val": "10k",
+  "type": "base",
+  "pref": false,
+  "stock": 22431941,
+  "qty": 27,
+  "unit": 0.0033,
+  "cost": 0.09
+ },
+ {
+  "lcsc": "C19702",
+  "val": "10uF",
+  "type": "base",
+  "pref": false,
+  "stock": 9367729,
+  "qty": 10,
+  "unit": 0.0309,
+  "cost": 0.31
+ },
+ {
+  "lcsc": "C1525",
+  "val": "100nF",
+  "type": "base",
+  "pref": false,
+  "stock": 23495868,
+  "qty": 10,
+  "unit": 0.0046,
+  "cost": 0.05
+ },
+ {
+  "lcsc": "C14996",
+  "val": "SS210",
+  "type": "base",
+  "pref": false,
+  "stock": 689859,
+  "qty": 6,
+  "unit": 0.0323,
+  "cost": 0.19
+ },
+ {
+  "lcsc": "C52923",
+  "val": "1uF",
+  "type": "base",
+  "pref": false,
+  "stock": 7768044,
+  "qty": 10,
+  "unit": 0.0079,
+  "cost": 0.08
+ },
+ {
+  "lcsc": "C318884",
+  "val": "TS-1187A-B-A-B",
+  "type": "base",
+  "pref": false,
+  "stock": 336987,
+  "qty": 15,
+  "unit": 0.0206,
+  "cost": 0.31
+ },
+ {
+  "lcsc": "C25779",
+  "val": "33k",
+  "type": "base",
+  "pref": false,
+  "stock": 1121338,
+  "qty": 4,
+  "unit": 0.0058,
+  "cost": 0.02
+ },
+ {
+  "lcsc": "C87080",
+  "val": "LMR16006XDDCR",
+  "type": "expand",
+  "pref": false,
+  "stock": 32476,
+  "qty": 4,
+  "unit": 0.5676,
+  "cost": 2.27
+ },
+ {
+  "lcsc": "C17513",
+  "val": "1k",
+  "type": "base",
+  "pref": false,
+  "stock": 44918027,
+  "qty": 8,
+  "unit": 0.0035,
+  "cost": 0.03
+ },
+ {
+  "lcsc": "C165948",
+  "val": "USB-C",
+  "type": "expand",
+  "pref": false,
+  "stock": 397755,
+  "qty": 4,
+  "unit": 0.1863,
+  "cost": 0.75
+ },
+ {
+  "lcsc": "C17408",
+  "val": "100R",
+  "type": "base",
+  "pref": false,
+  "stock": 8869092,
+  "qty": 8,
+  "unit": 0.0042,
+  "cost": 0.03
+ },
+ {
+  "lcsc": "C5366877",
+  "val": "ESP32-C6-WROOM-1-N8",
+  "type": "expand",
+  "pref": false,
+  "stock": 3776,
+  "qty": 4,
+  "unit": 4.2292,
+  "cost": 16.92
+ },
+ {
+  "lcsc": "C25905",
+  "val": "5.1k",
+  "type": "base",
+  "pref": false,
+  "stock": 5480967,
+  "qty": 6,
+  "unit": 0.0024,
+  "cost": 0.01
+ },
+ {
+  "lcsc": "C2286",
+  "val": "RED",
+  "type": "base",
+  "pref": false,
+  "stock": 7010290,
+  "qty": 4,
+  "unit": 0.0076,
+  "cost": 0.03
+ },
+ {
+  "lcsc": "C25900",
+  "val": "4.7k",
+  "type": "base",
+  "pref": false,
+  "stock": 16611794,
+  "qty": 6,
+  "unit": 0.0023,
+  "cost": 0.01
+ },
+ {
+  "lcsc": "C25741",
+  "val": "100k",
+  "type": "base",
+  "pref": false,
+  "stock": 10191250,
+  "qty": 4,
+  "unit": 0.0015,
+  "cost": 0.01
+ },
+ {
+  "lcsc": "C46043",
+  "val": "STWD100NYWY3F",
+  "type": "expand",
+  "pref": false,
+  "stock": 20709,
+  "qty": 4,
+  "unit": 0.3899,
+  "cost": 1.56
+ },
+ {
+  "lcsc": "C2909890",
+  "val": "SHT40-AD1B",
+  "type": "expand",
+  "pref": false,
+  "stock": 20364,
+  "qty": 4,
+  "unit": 1.9099,
+  "cost": 7.64
+ },
+ {
+  "lcsc": "C381466",
+  "val": "4.7uF 100V X7R",
+  "type": "expand",
+  "pref": false,
+  "stock": 153304,
+  "qty": 10,
+  "unit": 0.2336,
+  "cost": 2.34
+ },
+ {
+  "lcsc": "C262567",
+  "val": "2.9in EPD FPC",
+  "type": "expand",
+  "pref": false,
+  "stock": 49099,
+  "qty": 4,
+  "unit": 0.1307,
+  "cost": 0.52
+ },
+ {
+  "lcsc": "C77950",
+  "val": "MOC3063S",
+  "type": "expand",
+  "pref": false,
+  "stock": 71416,
+  "qty": 8,
+  "unit": 0.2165,
+  "cost": 1.73
+ },
+ {
+  "lcsc": "C22939",
+  "val": "2.2R",
+  "type": "base",
+  "pref": false,
+  "stock": 174012,
+  "qty": 4,
+  "unit": 0.0033,
+  "cost": 0.01
+ },
+ {
+  "lcsc": "C26083",
+  "val": "1M",
+  "type": "base",
+  "pref": false,
+  "stock": 2207858,
+  "qty": 4,
+  "unit": 0.0024,
+  "cost": 0.01
+ },
+ {
+  "lcsc": "C8598",
+  "val": "B5819W",
+  "type": "base",
+  "pref": false,
+  "stock": 391681,
+  "qty": 8,
+  "unit": 0.0283,
+  "cost": 0.23
+ },
+ {
+  "lcsc": "C2488",
+  "val": "MB10S",
+  "type": "base",
+  "pref": false,
+  "stock": 624929,
+  "qty": 4,
+  "unit": 0.0271,
+  "cost": 0.11
+ },
+ {
+  "lcsc": "C114003",
+  "val": "SMBJ40A",
+  "type": "expand",
+  "pref": false,
+  "stock": 3355,
+  "qty": 4,
+  "unit": 0.0518,
+  "cost": 0.21
+ },
+ {
+  "lcsc": "C70113",
+  "val": "0.5A 60V PTC",
+  "type": "expand",
+  "pref": false,
+  "stock": 120232,
+  "qty": 4,
+  "unit": 0.0875,
+  "cost": 0.35
+ },
+ {
+  "lcsc": "C11702",
+  "val": "1k",
+  "type": "base",
+  "pref": false,
+  "stock": 7839725,
+  "qty": 4,
+  "unit": 0.0035,
+  "cost": 0.01
+ },
+ {
+  "lcsc": "C844038",
+  "val": "3.3R 0.75W pulse",
+  "type": "expand",
+  "pref": false,
+  "stock": 27862,
+  "qty": 4,
+  "unit": 0.1273,
+  "cost": 0.51
+ },
+ {
+  "lcsc": "C83454",
+  "val": "22uH",
+  "type": "expand",
+  "pref": false,
+  "stock": 40741,
+  "qty": 4,
+  "unit": 0.0854,
+  "cost": 0.34
+ },
+ {
+  "lcsc": "C7519",
+  "val": "USBLC6-2SC6",
+  "type": "expand",
+  "pref": false,
+  "stock": 41144,
+  "qty": 4,
+  "unit": 0.1772,
+  "cost": 0.71
+ }
 ]

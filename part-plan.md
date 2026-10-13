@@ -156,3 +156,15 @@ See `review/rev9-notes.md` for calculations and the final review.
 - **L1 -> SWPA6045S220MT (C83454)**, 22 µH, Isat 2.2 A (Irms 1.8 A), 89 mΩ, footprint Inductor_SMD:L_Sunlord_SWPA6045S. Above the LMR16006X 1.2 A typ peak current limit, so a shorted output no longer saturates it. C4/C5 moved 1.3 mm right to make room.
 - R50 rotated 180° (EN pad toward U1) so the EN net routes cleanly.
 - No basic-part 1206 low-ohm resistor exists at JLC; +1 extended fee (~$3).
+
+
+## Rev 11 (2026-10-13)
+- **Triacs Q2-Q4:** T435-600B (IH 35 mA max) -> **ST T405-600B-TR** (C283473, extended, 5,771 in stock at JLC). It is a 4 A 600 V DPAK part in the same T4 family, with the same pinout (1 = A1/MT1, tab/2 = A2/MT2, 3 = G).
+  - IGT is 5 mA max (Q1-Q3), IH 10 mA max, IL 10/15 mA max. The old T435 was 35/35/50.
+  - Low-current furnace and air-handler inputs now latch and hold, which V1's BT136 (IH about 15 mA) also managed.
+  - Gate drive: the 100R opto feed reaches 5 mA plus the 1.3 mA bled by the 1k gate-MT1 resistor at about 3 V instantaneous, so it has a big margin.
+  - Commutation: (dI/dt)c is at least 0.9 A/ms at (dV/dt)c 10 V/us. A 1 A rms 60 Hz load needs 0.53 A/ms, so it can run without a snubber at 24 VAC.
+  - Static dV/dt is at least 20 V/us, lower than the T435's 400. The 1k gate-MT1 resistor improves it, and the 24 VAC transformer secondary is a soft source. The snubbers (C20-22, R24/34/44) stay DNP and are available if any false triggering shows up.
+  - The MOC3063 stays.
+- **C40:** stays 4.7 uF 25 V (C1779, basic). JLC has no basic or preferred 4.7 uF 50 V 0805, and the cheapest extended one (C2903668) would add a $3 loading fee for a margin-only change.
+- **L1:** C83454 SWPA6045S220MT has 40,741 in stock (checked 16:3x PT).

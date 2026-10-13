@@ -1687,7 +1687,7 @@
 				)
 			)
 		)
-		(property "Value" "T435-600B"
+		(property "Value" "T405-600B"
 			(at 0 6.29 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -1723,7 +1723,7 @@
 				)
 			)
 		)
-		(property "LCSC Part" "C18186224"
+		(property "LCSC Part" "C283473"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -1735,7 +1735,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C145128"
+		(property "LCSC" "C283473"
 			(at 0 0 0)
 			(layer "F.SilkS")
 			(hide yes)
@@ -6465,7 +6465,7 @@
 				)
 			)
 		)
-		(property "Value" "T435-600B"
+		(property "Value" "T405-600B"
 			(at 0 6.29 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -6501,7 +6501,7 @@
 				)
 			)
 		)
-		(property "LCSC Part" "C18186224"
+		(property "LCSC Part" "C283473"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -6513,7 +6513,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C145128"
+		(property "LCSC" "C283473"
 			(at 0 0 0)
 			(layer "F.SilkS")
 			(hide yes)
@@ -13556,7 +13556,7 @@
 				)
 			)
 		)
-		(property "Value" "T435-600B"
+		(property "Value" "T405-600B"
 			(at 0 6.29 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -13592,7 +13592,7 @@
 				)
 			)
 		)
-		(property "LCSC Part" "C18186224"
+		(property "LCSC Part" "C283473"
 			(at 0 0 0)
 			(layer "F.Fab")
 			(hide yes)
@@ -13604,7 +13604,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C145128"
+		(property "LCSC" "C283473"
 			(at 0 0 0)
 			(layer "F.SilkS")
 			(hide yes)
@@ -38157,7 +38157,7 @@
 		(net 0)
 		(net_name "")
 		(layers "F.Cu" "B.Cu")
-		(uuid "e42d0768-4b30-4059-b3bc-0e105b6b6f65")
+		(uuid "cea77069-ce17-4656-9c0e-6ae01f8c5878")
 		(name "ISLAND")
 		(hatch edge 0.5)
 		(connect_pads
@@ -38190,7 +38190,7 @@
 		(net 0)
 		(net_name "")
 		(layers "F.Cu" "B.Cu")
-		(uuid "cea77069-ce17-4656-9c0e-6ae01f8c5878")
+		(uuid "e42d0768-4b30-4059-b3bc-0e105b6b6f65")
 		(name "ISLAND")
 		(hatch edge 0.5)
 		(connect_pads

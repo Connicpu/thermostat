@@ -894,9 +894,9 @@
 {
 "ref": "Q2",
 "sym": "tstat:TRIAC",
-"value": "T435-600B",
+"value": "T405-600B",
 "fp": "tstat:TO-252_BT136S",
-"lcsc": "C145128",
+"lcsc": "C283473",
 "pins": {
 "1": "HVAC_W",
 "2": "HVAC_R",
@@ -904,7 +904,7 @@
 },
 "dnp": false,
 "bom": true,
-"mpn": "T435-600B-TR (ST, standard-gate snubberless, was BT136S-600D)",
+"mpn": "T405-600B-TR (ST T4 logic-level, IGT 5mA IH 10mA; was T435-600B IH 35mA)",
 "uuid": "fec03acf-ec82-4cb1-b0ba-c11818f02a4b"
 },
 {
@@ -1019,9 +1019,9 @@
 {
 "ref": "Q3",
 "sym": "tstat:TRIAC",
-"value": "T435-600B",
+"value": "T405-600B",
 "fp": "tstat:TO-252_BT136S",
-"lcsc": "C145128",
+"lcsc": "C283473",
 "pins": {
 "1": "HVAC_Y",
 "2": "HVAC_R",
@@ -1029,7 +1029,7 @@
 },
 "dnp": false,
 "bom": true,
-"mpn": "T435-600B-TR (ST, standard-gate snubberless, was BT136S-600D)",
+"mpn": "T405-600B-TR (ST T4 logic-level, IGT 5mA IH 10mA; was T435-600B IH 35mA)",
 "uuid": "a03d90a4-1553-45e4-ae4b-89b934f5a2ca"
 },
 {
@@ -1144,9 +1144,9 @@
 {
 "ref": "Q4",
 "sym": "tstat:TRIAC",
-"value": "T435-600B",
+"value": "T405-600B",
 "fp": "tstat:TO-252_BT136S",
-"lcsc": "C145128",
+"lcsc": "C283473",
 "pins": {
 "1": "HVAC_G",
 "2": "HVAC_R",
@@ -1154,7 +1154,7 @@
 },
 "dnp": false,
 "bom": true,
-"mpn": "T435-600B-TR (ST, standard-gate snubberless, was BT136S-600D)",
+"mpn": "T405-600B-TR (ST T4 logic-level, IGT 5mA IH 10mA; was T435-600B IH 35mA)",
 "uuid": "a0ec001c-841b-43f0-8dbe-f1c4643594ee"
 },
 {
