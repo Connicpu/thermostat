@@ -34,23 +34,23 @@ def mat(name, col, rough=0.5, metal=0.0, trans=0.0, emit=0.0):
     return m
 
 
-# Pink is bumped + slight emission so AgX doesn't crush saturated PLA to near-black
+# Saturated PLA under Filmic (no emission — emit flattened shading and looked chalky)
 M = dict(
-    white=mat('pla_white', (0.85, 0.85, 0.83), 0.45),
-    pink=mat('pink', (0.98, 0.18, 0.48), 0.36, emit=0.22),
+    white=mat('pla_white', (0.68, 0.68, 0.66), 0.55),
+    pink=mat('pink', (0.98, 0.05, 0.30), 0.32, emit=0.12),
     black=mat('blk', (0.02, 0.02, 0.02), 0.5),
-    orange=mat('orng', (1.0, 0.45, 0.05), 0.40, emit=0.18),
-    plate=mat('plate', (0.78, 0.78, 0.80), 0.5),
-    mask=mat('mask', (0.92, 0.92, 0.9), 0.35),
+    orange=mat('orng', (1.0, 0.32, 0.02), 0.35, emit=0.10),
+    plate=mat('plate', (0.72, 0.72, 0.74), 0.5),
+    mask=mat('mask', (0.90, 0.90, 0.88), 0.35),
     chip=mat('chip', (0.04, 0.04, 0.045), 0.4),
     metal=mat('metal', (0.8, 0.8, 0.82), 0.25, 1.0),
     green=mat('termgreen', (0.05, 0.45, 0.15), 0.5),
     lime=mat('plug', (0.15, 0.65, 0.2), 0.5),
     cap=mat('ecap', (0.05, 0.12, 0.45), 0.35),
     ceram=mat('ceram', (0.55, 0.42, 0.28), 0.5),
-    epd=mat('epd', (0.9, 0.9, 0.88), 0.6),
-    aa=mat('aa', (0.6, 0.6, 0.58), 0.8),
-    wall=mat('drywall', (0.62, 0.6, 0.56), 0.9),
+    epd=mat('epd', (0.88, 0.88, 0.85), 0.6),
+    aa=mat('aa', (0.55, 0.55, 0.52), 0.8),
+    wall=mat('drywall', (0.16, 0.15, 0.14), 0.95),  # clearly darker than the shell
     copper=mat('cu', (0.95, 0.55, 0.3), 0.3, 1.0),
     silk=mat('silk', (0.05, 0.05, 0.05), 0.6),
 )
@@ -63,14 +63,21 @@ WC = {
 }
 
 
-def stl(name, m, dz=0):
+def stl(name, m, dz=0, z_push=0.0, fix_normals=False):
     bpy.ops.wm.stl_import(filepath=B + name + '.stl')
     o = bpy.context.selected_objects[0]
-    o.location.z += dz
+    o.location.z += dz + z_push
     o.data.materials.clear()
     o.data.materials.append(m)
-    for p in o.data.polygons:
-        p.use_smooth = False
+    for poly in o.data.polygons:
+        poly.use_smooth = False
+    if fix_normals:
+        # OpenSCAD flush inlays often arrive with flipped normals → render black under lit BSDF
+        bpy.context.view_layer.objects.active = o
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.select_all(action='SELECT')
+        bpy.ops.mesh.normals_make_consistent(inside=False)
+        bpy.ops.object.mode_set(mode='OBJECT')
     return o
 
 
@@ -103,14 +110,11 @@ cy = lambda y: H - OYT - y
 
 # ---- case parts
 stl('backplate', M['plate'])
-for n, m in [
-    ('shell', 'white'),
-    ('inlay_pink', 'pink'),
-    ('inlay_black', 'black'),
-    ('inlay_orange', 'orange'),
-    ('light_pipe', 'pink'),
-]:
-    stl(n, M[m], E_SH)
+stl('shell', M['white'], E_SH)
+# Face inlays: +0.12 mm toward camera avoids z-fight with the shell face; fix normals
+for n, mk in [('inlay_pink', 'pink'), ('inlay_black', 'black'), ('inlay_orange', 'orange')]:
+    stl(n, M[mk], E_SH, z_push=0.12, fix_normals=True)
+stl('light_pipe', M['pink'], E_SH, fix_normals=True)
 btn = [(112, 30), (112, 40), (112, 50)]
 for bx, by in btn:
     o = stl('cap', M['orange'], 0)
@@ -239,7 +243,7 @@ screen.scale = (abs(sx1 - sx0) / 2, abs(sy1 - sy0) / 2, 1)  # plane is 2x2 by de
 # Blender plane size=1 is 2x2 units from -1..1; use scale half-extents:
 screen.scale = (abs(sx1 - sx0) / 2, abs(sy1 - sy0) / 2, 1)
 
-# Build e-paper image material
+# E-paper: sRGB preview as emission (crisp, lighting-independent) + slight diffuse paper
 em = bpy.data.materials.new('epd_img')
 em.use_nodes = True
 nt = em.node_tree
@@ -247,36 +251,42 @@ for n in list(nt.nodes):
     nt.nodes.remove(n)
 out_n = nt.nodes.new('ShaderNodeOutputMaterial')
 bsdf = nt.nodes.new('ShaderNodeBsdfPrincipled')
+emit_n = nt.nodes.new('ShaderNodeEmission')
+mix_sh = nt.nodes.new('ShaderNodeMixShader')
 tex = nt.nodes.new('ShaderNodeTexImage')
 if os.path.isfile(EPD_IMG):
     tex.image = bpy.data.images.load(EPD_IMG)
     tex.image.colorspace_settings.name = 'sRGB'
 else:
     tex.image = None
-bsdf.inputs['Roughness'].default_value = 0.62
+bsdf.inputs['Roughness'].default_value = 0.7
 if 'Specular IOR Level' in bsdf.inputs:
-    bsdf.inputs['Specular IOR Level'].default_value = 0.12
-# UV: default plane UVs; flip U so board-x (left=temp) matches image left after cy/cx placement
+    bsdf.inputs['Specular IOR Level'].default_value = 0.05
+bsdf.inputs['Base Color'].default_value = (0.90, 0.90, 0.87, 1)
 mapn = nt.nodes.new('ShaderNodeMapping')
 texcoord = nt.nodes.new('ShaderNodeTexCoord')
-# Empirically: plane local +X is case +X (image should read L→R), V already matches case +Y→image top
-# If a prior flip left text upside-down, leave Scale at 1; mirror fix only if needed:
 mapn.inputs['Scale'].default_value[0] = 1.0
 mapn.inputs['Scale'].default_value[1] = 1.0
 nt.links.new(texcoord.outputs['UV'], mapn.inputs['Vector'])
 nt.links.new(mapn.outputs['Vector'], tex.inputs['Vector'])
 if tex.image:
-    # Slight warm paper lift: mostly texture, tiny cream blend
-    mix = nt.nodes.new('ShaderNodeMix')
-    mix.data_type = 'RGBA'
-    mix.inputs[0].default_value = 0.10  # Factor
-    # A = texture (dominant), B = cream paper
-    nt.links.new(tex.outputs['Color'], mix.inputs[6])  # A (Color)
-    mix.inputs[7].default_value = (0.93, 0.93, 0.90, 1)  # B (Color)
-    nt.links.new(mix.outputs[2], bsdf.inputs['Base Color'])  # Result
+    # Keep e-ink blacks black and paper off-white (not HDR) under Standard
+    # Gamma >1 darkens midtones → crisper e-ink text; then scale to paper white
+    gam = nt.nodes.new('ShaderNodeGamma')
+    gam.inputs['Gamma'].default_value = 1.8
+    vm = nt.nodes.new('ShaderNodeVectorMath')
+    vm.operation = 'MULTIPLY'
+    vm.inputs[1].default_value = (0.78, 0.78, 0.74)
+    nt.links.new(tex.outputs['Color'], gam.inputs['Color'])
+    nt.links.new(gam.outputs['Color'], vm.inputs[0])
+    nt.links.new(vm.outputs['Vector'], emit_n.inputs['Color'])
+    emit_n.inputs['Strength'].default_value = 0.65
+    mix_sh.inputs['Fac'].default_value = 0.88
+    nt.links.new(bsdf.outputs['BSDF'], mix_sh.inputs[1])
+    nt.links.new(emit_n.outputs['Emission'], mix_sh.inputs[2])
+    nt.links.new(mix_sh.outputs['Shader'], out_n.inputs['Surface'])
 else:
-    bsdf.inputs['Base Color'].default_value = (0.85, 0.85, 0.82, 1)
-nt.links.new(bsdf.outputs['BSDF'], out_n.inputs['Surface'])
+    nt.links.new(bsdf.outputs['BSDF'], out_n.inputs['Surface'])
 screen.data.materials.append(em)
 # FPC ribbon folded under (flat amber strip)
 fpc = mat('fpc', (0.85, 0.5, 0.1), 0.4)
@@ -338,55 +348,71 @@ sc.collection.objects.link(ob)
 ob.data.materials.append(mat('jk', (0.7, 0.68, 0.6), 0.7))
 
 # ---- lighting / world / camera
+# Washed-out diagnosis: AgX MHC crushed pink/orange; world 0.45 + multi-mega area lights
+# flattened shading; wall albedo ~ shell; EPD was diffuse-only. Fix: Filmic, low world,
+# strong key / weak fill for contact shadows, darker wall, emissive sRGB EPD.
 world = bpy.data.worlds.new('w')
 sc.world = world
 world.use_nodes = True
 bg = world.node_tree.nodes['Background']
-bg.inputs[0].default_value = (0.94, 0.95, 0.97, 1)
-bg.inputs[1].default_value = 0.45
+bg.inputs[0].default_value = (0.30, 0.32, 0.36, 1)  # cool dark-gray void
+bg.inputs[1].default_value = 0.04  # barely any ambient fill
 
 
-def light(loc, energy, size=150):
+def light(loc, energy, size=150, aim=None):
     ld = bpy.data.lights.new('l', 'AREA')
     ld.energy = energy
     ld.size = size
+    ld.spread = 90  # degrees; soft but directional
     o = bpy.data.objects.new('l', ld)
     sc.collection.objects.link(o)
     o.location = loc
-    d = Vector((73, 35, 50)) - Vector(loc)
-    o.rotation_euler = d.to_track_quat('-Z', 'Y').to_euler()
+    target = aim if aim is not None else Vector((73.5, 35.5, 20))
+    o.rotation_euler = (target - Vector(loc)).to_track_quat('-Z', 'Y').to_euler()
+    return o
 
 
 center = Vector((73.5, 35.5, 13))
 if VIEW == '34':
     camloc = Vector((330, -300, 330))
-    light((250, -200, 400), 4e6)
-    light((-200, -100, 150), 1.5e6)
-    light((100, 250, 250), 1e6)
+    aim = Vector((73, 35, 70))
+    light((280, -220, 420), 2.8e6, size=180, aim=aim)   # key
+    light((-160, -80, 200), 0.30e6, size=280, aim=aim)  # fill
+    light((40, 220, 180), 0.55e6, size=180, aim=aim)    # rim
     lens = 50
-    center = Vector((73, 35, 70))
+    center = aim
 elif VIEW == 'side':
     camloc = Vector((480, -95, 48))
-    light((350, -250, 250), 4e6)
-    light((300, 100, 30), 2e6)
-    light((-100, -200, 100), 1e6)
+    aim = Vector((73, 35, 68))
+    light((400, -220, 280), 2.6e6, size=180, aim=aim)
+    light((200, 120, 60), 0.25e6, size=260, aim=aim)
+    light((-80, -180, 120), 0.50e6, size=180, aim=aim)
     lens = 46
-    center = Vector((73, 35, 68))
+    center = aim
 elif VIEW in ('assembled', 'front'):
     # 3/4 front: mostly face-on, slight side + above to read the 26.8 mm depth
     camloc = Vector((195, -140, 155))
-    light((160, -180, 280), 3.2e6, size=180)
-    light((-60, -30, 140), 1.1e6, size=140)
-    light((90, 180, 200), 0.85e6, size=160)
-    light((73, 35, 350), 0.7e6, size=220)  # soft fill from front
+    aim = Vector((73.5, 35.5, 13))
+    # Key from ABOVE (+Y) and left so the contact shadow falls toward -Y (visible under the case)
+    light((-30, 240, 240), 1.8e6, size=75, aim=aim)
+    light((210, -50, 70), 0.08e6, size=320, aim=aim)   # very weak fill
+    light((70, 50, 360), 0.20e6, size=140, aim=aim)    # rim
+    sun = bpy.data.lights.new('sun', 'SUN')
+    sun.energy = 0.55
+    sun.angle = math.radians(3.5)
+    sun.color = (1.0, 0.97, 0.92)
+    so = bpy.data.objects.new('sun', sun)
+    sc.collection.objects.link(so)
+    so.rotation_euler = (math.radians(48), math.radians(0), math.radians(-40))
     lens = 58
-    center = Vector((73.5, 35.5, 13))
+    center = aim
 else:
     camloc = Vector((-120, -330, -40))
-    light((0, -300, -100), 8e6)
-    light((300, -200, 200), 4e6)
+    aim = Vector((73, 35, 40))
+    light((0, -300, -100), 3e6, size=200, aim=aim)
+    light((300, -200, 200), 0.6e6, size=220, aim=aim)
     lens = 60
-    center = Vector((73, 35, 40))
+    center = aim
 
 cam = bpy.data.cameras.new('c')
 cam.lens = lens
@@ -398,15 +424,19 @@ co.rotation_euler = (center - camloc).to_track_quat('-Z', 'Y').to_euler()
 sc.camera = co
 
 sc.render.engine = 'CYCLES'
-sc.cycles.samples = int(argv[2]) if len(argv) > 2 else 96
+sc.cycles.samples = int(argv[2]) if len(argv) > 2 else 128
 sc.cycles.use_denoising = False
 sc.cycles.device = 'CPU'
+sc.cycles.use_fast_gi = False
 sc.render.resolution_x = 1600
 sc.render.resolution_y = 1100
 sc.render.film_transparent = False
-sc.view_settings.view_transform = 'AgX'
-sc.view_settings.look = 'AgX - Medium High Contrast'
-sc.view_settings.exposure = -0.2 if VIEW in ('assembled', 'front') else -0.35
+# Standard: AgX/Filmic were crushing saturated pink/orange PLA to near-black.
+# Exposure negative so the white shell shades instead of clipping; contrast from lighting.
+sc.view_settings.view_transform = 'Standard'
+sc.view_settings.look = 'None'
+sc.view_settings.exposure = -0.40
+sc.view_settings.gamma = 0.95
 sc.render.filepath = OUT
 bpy.ops.render.render(write_still=True)
 print('WROTE', OUT)
