@@ -67,16 +67,16 @@
 {
 "ref": "D2",
 "sym": "Device:D_TVS",
-"value": "SMBJ40A",
+"value": "SMBJ40CA",
 "fp": "tstat:SMB_SMBJ40A",
-"lcsc": "C114003",
+"lcsc": "C19077590",
 "pins": {
 "1": "VIN_HV",
 "2": "GND"
 },
 "dnp": false,
 "bom": true,
-"mpn": "",
+"mpn": "SMBJ40CA (bidirectional, JLC preferred-extended; was SMBJ40A C114003)",
 "uuid": "f70e5444-ff6f-410d-81b4-b8d41f1e2946"
 },
 {

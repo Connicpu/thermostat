@@ -168,3 +168,18 @@ See `review/rev9-notes.md` for calculations and the final review.
   - The MOC3063 stays.
 - **C40:** stays 4.7 uF 25 V (C1779, basic). JLC has no basic or preferred 4.7 uF 50 V 0805, and the cheapest extended one (C2903668) would add a $3 loading fee for a margin-only change.
 - **L1:** C83454 SWPA6045S220MT has 40,741 in stock (checked 16:3x PT).
+
+## Rev 12 (2026-10-13): cutting JLC loading fees
+I checked every extended line against JLC's live library: basic, preferred-extended (no Economic loading fee, per the JLC FAQ), or plain extended.
+- **D2:** SMBJ40A C114003 -> **SMBJ40CA C19077590** (preferred-extended, 61k stock). It's the same SMB footprint. Standoff is 40 V, min breakdown 44.4 V, and the clamp is 64.5 V at 9.3 A, the same as the unidirectional part in the positive direction. The R51 surge analysis is unchanged (about 57.7 V at the buck, under its 60 V recommended and 65 V abs max), and so is the ripple. Bidirectional also takes polarity out of the placement check.
+- **Kept extended, with no safe basic or preferred equivalent:**
+  - C1/C2/C41/C42 4.7 uF 100 V: no basic or preferred cap at 100 V or above.
+  - R51: 3.3 R basic resistors are only 250 mW thick film (C17945 isn't basic either). The rms ripple current needs 0.75 W pulse-rated.
+  - F1: basic and preferred PTCs are rated 6-30 V; this one needs 60 V.
+  - J2: there's no basic or preferred USB-C, and swapping would change the footprint.
+  - J4: no preferred 24P 0.5 mm FPC connector.
+  - L1: needs Isat of at least 1.6 A, and no basic or preferred power inductor meets it.
+  - L2: the only preferred 22-47 uH parts are 5 mA multilayer chips.
+  - Q2-Q4 T405, U3 C6 module, U6-U8 MOC3063: locked.
+  - U1 LMR16006, U2 USBLC6, U4 STWD100, U5 SHT40: no basic or preferred equivalents.
+- **Duplicate values:** none worth merging. The only duplicate is 1k in 0402 and 0805, and both are basic.

@@ -14,7 +14,7 @@
   "val": "4.7uF 25V",
   "type": "base",
   "pref": false,
-  "stock": 2493074,
+  "stock": 2493054,
   "qty": 4,
   "unit": 0.0346,
   "cost": 0.14
@@ -34,7 +34,7 @@
   "val": "1uF 50V",
   "type": "base",
   "pref": false,
-  "stock": 10303774,
+  "stock": 10303789,
   "qty": 17,
   "unit": 0.0158,
   "cost": 0.27
@@ -44,7 +44,7 @@
   "val": "AO3400A",
   "type": "base",
   "pref": false,
-  "stock": 795453,
+  "stock": 794249,
   "qty": 4,
   "unit": 0.0891,
   "cost": 0.36
@@ -64,7 +64,7 @@
   "val": "10k",
   "type": "base",
   "pref": false,
-  "stock": 22431941,
+  "stock": 22386626,
   "qty": 27,
   "unit": 0.0033,
   "cost": 0.09
@@ -74,7 +74,7 @@
   "val": "10uF",
   "type": "base",
   "pref": false,
-  "stock": 9367729,
+  "stock": 9367727,
   "qty": 10,
   "unit": 0.0309,
   "cost": 0.31
@@ -84,7 +84,7 @@
   "val": "100nF",
   "type": "base",
   "pref": false,
-  "stock": 23495868,
+  "stock": 23426339,
   "qty": 10,
   "unit": 0.0046,
   "cost": 0.05
@@ -104,7 +104,7 @@
   "val": "1uF",
   "type": "base",
   "pref": false,
-  "stock": 7768044,
+  "stock": 7767974,
   "qty": 10,
   "unit": 0.0079,
   "cost": 0.08
@@ -144,7 +144,7 @@
   "val": "1k",
   "type": "base",
   "pref": false,
-  "stock": 44918027,
+  "stock": 44917545,
   "qty": 8,
   "unit": 0.0035,
   "cost": 0.03
@@ -164,7 +164,7 @@
   "val": "100R",
   "type": "base",
   "pref": false,
-  "stock": 8869092,
+  "stock": 8869042,
   "qty": 8,
   "unit": 0.0042,
   "cost": 0.03
@@ -194,7 +194,7 @@
   "val": "RED",
   "type": "base",
   "pref": false,
-  "stock": 7010290,
+  "stock": 7010270,
   "qty": 4,
   "unit": 0.0076,
   "cost": 0.03
@@ -204,7 +204,7 @@
   "val": "4.7k",
   "type": "base",
   "pref": false,
-  "stock": 16611794,
+  "stock": 16587572,
   "qty": 6,
   "unit": 0.0023,
   "cost": 0.01
@@ -214,7 +214,7 @@
   "val": "100k",
   "type": "base",
   "pref": false,
-  "stock": 10191250,
+  "stock": 10179130,
   "qty": 4,
   "unit": 0.0015,
   "cost": 0.01
@@ -284,7 +284,7 @@
   "val": "1M",
   "type": "base",
   "pref": false,
-  "stock": 2207858,
+  "stock": 2207828,
   "qty": 4,
   "unit": 0.0024,
   "cost": 0.01
@@ -294,7 +294,7 @@
   "val": "B5819W",
   "type": "base",
   "pref": false,
-  "stock": 391681,
+  "stock": 391679,
   "qty": 8,
   "unit": 0.0283,
   "cost": 0.23
@@ -310,13 +310,13 @@
   "cost": 0.11
  },
  {
-  "lcsc": "C114003",
-  "val": "SMBJ40A",
+  "lcsc": "C19077590",
+  "val": "SMBJ40CA",
   "type": "expand",
-  "pref": false,
-  "stock": 3355,
+  "pref": true,
+  "stock": 61463,
   "qty": 4,
-  "unit": 0.0518,
+  "unit": 0.0513,
   "cost": 0.21
  },
  {
@@ -334,7 +334,7 @@
   "val": "1k",
   "type": "base",
   "pref": false,
-  "stock": 7839725,
+  "stock": 7821659,
   "qty": 4,
   "unit": 0.0035,
   "cost": 0.01
@@ -364,7 +364,7 @@
   "val": "USBLC6-2SC6",
   "type": "expand",
   "pref": false,
-  "stock": 41144,
+  "stock": 41119,
   "qty": 4,
   "unit": 0.1772,
   "cost": 0.71

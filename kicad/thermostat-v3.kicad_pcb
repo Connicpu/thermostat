@@ -14939,7 +14939,7 @@
 				)
 			)
 		)
-		(property "Value" "SMBJ40A"
+		(property "Value" "SMBJ40CA"
 			(at 0 4 180)
 			(layer "F.Fab")
 			(hide yes)
@@ -14975,7 +14975,7 @@
 				)
 			)
 		)
-		(property "LCSC Part" "C114003"
+		(property "LCSC Part" "C19077590"
 			(at 0 0 180)
 			(layer "F.Fab")
 			(hide yes)
@@ -14987,7 +14987,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C114003"
+		(property "LCSC" "C19077590"
 			(at 0 0 180)
 			(layer "F.SilkS")
 			(hide yes)
