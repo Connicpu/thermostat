@@ -45,7 +45,8 @@ inlay_d = 0.6;                       // 3 layers @0.2 mm, flush inlays on the fa
 include <cat_logo.scad>
 cat_xy = [18.5,35]; cat_s = 0.8;     // orange cat inlay left of the window
 include <swirls.scad>
-swirl_style = "subtle";              // "subtle" | "bold" | "none"
+show_title = false;                  // front title text removed (swirls use the space)
+swirl_style = "bold";                // "subtle" | "bold" | "none"
 swirl_w = swirl_style=="bold" ? 1.8 : 1.2;   // line width (>=3 extrusion widths at 0.4 nozzle)
 swirl_margin = 2.0;                  // clearance to window/buttons/holes/lettering/cat
 
@@ -135,7 +136,7 @@ module shell(){
 
 // ---------------- multi-colour bodies ----------------
 module marks2d(){
-  translate([cx(aa[0]),cy(aa[1])+3.0]) text("Connie's Thermostat",size=3.2,font="Liberation Sans:style=Bold");
+  if(show_title) translate([cx(aa[0]),cy(aa[1])+3.0]) text("Connie's Thermostat",size=3.2,font="Liberation Sans:style=Bold");
   for(i=[0:2]) translate([cx(btn[i][0])-6.2,cy(btn[i][1])]) text(["+","\u2212","M"][i],size=3.6,halign="center",valign="center",font="Liberation Sans:style=Bold");
 }
 module cat_place2d(){ translate(cat_xy) scale(cat_s) cat2d(); }
