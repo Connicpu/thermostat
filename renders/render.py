@@ -4,7 +4,7 @@ argv=sys.argv[sys.argv.index('--')+1:]; VIEW=argv[0]; OUT=argv[1]
 B='/workspace/thermostat/v3/renders/build/'
 bpy.ops.wm.read_factory_settings(use_empty=True)
 sc=bpy.context.scene
-W,H=146,70; OX,OY=3,3; Zpb=15.0; PT=1.6
+W,H=147,71; OX,OY=3.5,3.5; Zpb=17.0; PT=1.6   # rev10: 3 plate + 14 standoff
 E_PCB=42; E_EPD=80; E_SH=128; E_CAP=112
 def mat(name,col,rough=0.5,metal=0.0,trans=0.0,emit=None):
     m=bpy.data.materials.new(name); m.use_nodes=True; p=m.node_tree.nodes['Principled BSDF']
@@ -28,7 +28,7 @@ def box(x0,y0,z0,x1,y1,z1,m,name='box'):
 def cyl(x,y,z0,z1,d,m):
     bpy.ops.mesh.primitive_cylinder_add(radius=d/2,depth=z1-z0,location=(x,y,(z0+z1)/2),vertices=48); o=bpy.context.object; o.data.materials.append(m); bpy.ops.object.shade_smooth(); return o
 cx=lambda x: OX+x; cy=lambda y: H-OYT-y
-OYT=3
+OYT=3.5
 # ---- case parts
 stl('backplate',M['plate'])
 for n,m in [('shell','white'),('inlay_pink','pink'),('inlay_black','black'),('inlay_orange','orange'),('light_pipe','pink')]: stl(n,M[m],E_SH)

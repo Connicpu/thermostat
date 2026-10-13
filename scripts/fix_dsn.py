@@ -25,4 +25,6 @@ while True:
         if depth==0: break
     j+=1
 t=t[:i]+''.join(blocks).lstrip()+t[j+1:]
+# Rev 10: hand pre-routes are fixed for the autorouter
+for n in ('DRV_G','VIN_RECT','HVAC_W','HVAC_Y','HVAC_G','VIN_HV','GND'): t=t.replace('(net %s)(type route)'%n,'(net %s)(type protect)'%n)
 open(sys.argv[1],'w').write(t); print({k:len(v) for k,v in groups.items()})

@@ -10,9 +10,9 @@ W = 147; H = 71;            // outer footprint (drywall-anchor version); 1.1 mm 
 wall = 2.4;                 // shell side walls (>=2 mm)
 clr = 0.3;                  // fit clearance
 plate_t = 3.0;              // backplate thickness
-standoff_h = 12.0;          // backplate face -> PCB back (rear right-angle 15EDGRC header + 15EDGK plug, ~10.5 mm tall)
+standoff_h = 14.0;          // backplate face -> PCB back (rev10: +2 mm so the 11.1 mm 15EDGK plug and 9.5 mm C43 clear a flat plate/lip)
 pcb_t = 1.6;
-panel_gap = 5.2;            // PCB top -> panel back (allowed 4.6..5.2, FPC fold); max, for L1 SWPA6045 (4.5) under panel
+panel_gap = 5.0;            // PCB top -> panel back (allowed 4.6..5.2, FPC fold); rev10: L1 no longer under the panel, back to 5.0 (FPC fold r~2.15)
 panel_t = 1.2;
 front_t = 2.0;              // front face thickness
 BW = 140; BH = 64;          // PCB
@@ -30,10 +30,9 @@ function cy(y) = H - OYT - y;
 // board features (board coords)
 holes = [[6.4,6.4],[133.6,6.4],[6.4,57.6],[133.6,57.6]];
 bulk = [53.25,58]; bulk_h = 9.5;          // rear C43 8x9 mm electrolytic (+0.5 lead standoff)
-lip_notch_z = 4.0;                   // lip lowered to 4 mm under C43
 plug_w = 18.3; plug_h = 11.1;        // Degson 15EDGK-3.5-05P: (N-1)*3.5+4.3 wide, 11.1 high, 15.6 deep
 plug_y0 = 40.45; plug_y1 = 56.05;    // board-y extent of the mated plug (wire entry at y0, toward the hole)
-plug_pocket = 1.2;                   // backplate pocket depth under the plug
+plug_pocket = 0;                     // rev10: no pocket (deeper standoffs instead)
 term = [70,58];                      // rear RA header J1 pin row centre (pins along x, mating face toward -y)
 panel = [29.46,26.24,108.46,62.94];  // GDEY029T94 outline (x0,y0,x1,y1)
 aa    = [32.46,30.06,99.36,59.12];   // active area (3.0/3.82 mm margins, FPC end on right)
@@ -62,17 +61,15 @@ module slot2d(l,w){ hull(){ translate([-l/2+w/2,0]) circle(d=w); translate([l/2-
 
 // ---------------- backplate ----------------
 pw = W-2*wall-2*clr; ph = H-2*wall-2*clr; po = wall+clr;
-lip_h = 6; lip_t = 2;
+lip_h = 5.5; lip_t = 2;     // rev10: 5.5 (was 6) so rear C43 clears the lip by >=2 mm without a notch
 module backplate(){
   difference(){
     union(){
-      // plate, with a pocket under the mated 15EDGK plug (11.1 mm tall) -> >=1.9 mm under it
-      difference(){ translate([po,po,0]) rbox(pw,ph,plate_t,3);
-        translate([cx(term[0])-plug_w/2-1,cy(plug_y1)-1,plate_t-plug_pocket]) cube([plug_w+2,plug_y1-plug_y0+2,plug_pocket+1]); }
+      // plate (flat; rev10 removed the plug pocket)
+      translate([po,po,0]) rbox(pw,ph,plate_t,3);
       // perimeter lip that the shell slides over
-      // (lowered to lip_notch_z under C43, the rear 8 mm electrolytic overhangs the lip)
-      difference(){ translate([po,po,0]) difference(){ rbox(pw,ph,lip_h,3); translate([lip_t,lip_t,-1]) rbox(pw-2*lip_t,ph-2*lip_t,lip_h+2,1.5); }
-        translate([cx(bulk[0])-6,po-1,lip_notch_z]) cube([12,lip_t+2,lip_h]); }
+      // (full height all round; rev10 removed the notch under C43)
+      translate([po,po,0]) difference(){ rbox(pw,ph,lip_h,3); translate([lip_t,lip_t,-1]) rbox(pw-2*lip_t,ph-2*lip_t,lip_h+2,1.5); }
       // snap bumps (45 deg both sides, print without supports)
       for(s=[[W/2-35,po,0],[W/2+35,po,0],[W/2-35,H-po,180],[W/2+35,H-po,180]])
         translate([s[0],s[1],3.2]) rotate([0,0,s[2]]) rotate([0,90,0]) linear_extrude(10,center=true) polygon([[0.9,0],[0,-0.8],[-0.9,0]]);
