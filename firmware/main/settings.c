@@ -6,7 +6,7 @@
 
 #define NS "tstat"
 #define KEY "cfg"
-#define VERSION 1
+#define VERSION 2
 
 typedef struct { uint8_t version; persist_t p; } blob_t;
 
@@ -14,6 +14,9 @@ static void defaults(persist_t *p)
 {
     memset(p, 0, sizeof *p);
     p->s = (ctrl_settings_t){.mode = CTRL_MODE_OFF, .fan = CTRL_FAN_AUTO, .heat_sp = 2000, .cool_sp = 2450};
+    p->boost_sp = 2200;
+    p->boost_minutes = 30;
+    p->boost_dir = BOOST_DIR_AUTO;
 }
 
 void settings_load(persist_t *p)
@@ -28,6 +31,9 @@ void settings_load(persist_t *p)
     ctrl_params_t prm = CTRL_PARAMS_DEFAULT();
     ctrl_sanitize_settings(&prm, &p->s, true);
     if (p->calib_tenths > 25 || p->calib_tenths < -25) p->calib_tenths = 0;
+    if (p->boost_sp < prm.min_sp || p->boost_sp > prm.max_sp) p->boost_sp = 2200;
+    if (p->boost_minutes < BOOST_TIMED_MIN_MIN || p->boost_minutes > BOOST_TIMED_MAX_MIN) p->boost_minutes = 30;
+    if (p->boost_dir > BOOST_DIR_COOL) p->boost_dir = BOOST_DIR_AUTO;
 }
 
 bool settings_save(const persist_t *p)

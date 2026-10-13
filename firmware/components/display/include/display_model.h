@@ -17,6 +17,10 @@ typedef struct {
     ctrl_fault_t fault;
     link_state_t link;
     bool         fahrenheit;
+    ctrl_boost_kind_t boost;      /* BOOST_NONE = no boost line */
+    ctrl_mode_t  boost_dir;       /* CTRL_MODE_HEAT / CTRL_MODE_COOL */
+    int16_t      boost_sp;        /* c°C (to-target) */
+    uint16_t     boost_min_left;  /* minutes, rounded up (timed) */
     const char  *banner;      /* optional one-off message (e.g. "FACTORY RESET"), NULL = none */
 } display_model_t;
 

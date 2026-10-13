@@ -4,6 +4,7 @@
 
 static btn_t s_btn[3];
 static ui_event_cb_t s_cb;
+static volatile bool s_combo;
 static const gpio_num_t s_pin[3] = {BOARD_GPIO_BTN_UP, BOARD_GPIO_BTN_DOWN, BOARD_GPIO_BTN_MODE};
 
 static void tick(void *arg)
@@ -11,6 +12,13 @@ static void tick(void *arg)
     for (int i = 0; i < 3; i++) {
         btn_event_t ev = btn_tick(&s_btn[i], gpio_get_level(s_pin[i]) == 0);
         if (ev != BTN_EV_NONE && s_cb) s_cb((ui_button_t)i, ev);
+    }
+    bool up = s_btn[UI_BTN_UP].stable, down = s_btn[UI_BTN_DOWN].stable;
+    if (up && down && !s_combo) {
+        s_combo = true;
+        if (s_cb) s_cb(UI_BTN_COMBO, BTN_EV_PRESS);
+    } else if (!up && !down) {
+        s_combo = false;
     }
 }
 
@@ -41,3 +49,5 @@ esp_err_t ui_init(ui_event_cb_t cb)
     if (err == ESP_OK) err = esp_timer_start_periodic(t, BTN_TICK_MS * 1000);
     return err;
 }
+
+bool ui_combo_active(void) { return s_combo; }

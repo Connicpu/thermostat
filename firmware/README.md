@@ -25,7 +25,9 @@ HA thermostat for a single-stage gas furnace plus AC, with 24 VAC W/Y/G triac ou
 | `components/board` | Pin map (`board.h`), STWD100 driver | no |
 | `main` | Wires it all together; NVS settings; health check and watchdog kick | no |
 | `test/host` | Native unit tests (CMake, no ESP-IDF needed) | |
-| `z2m/thermostat-v3.js` | Zigbee2MQTT external converter | |
+| `ha/zha_quirk/` | **ZHA quirk (quirks v2)** for the boost controls, plus its test and install notes | |
+| `ha/dashboard-card.yaml` | Example HA dashboard card (thermostat + boost) | |
+| `z2m/thermostat-v3.js` | Zigbee2MQTT external converter (secondary) | |
 
 ### Tasks
 - **app** (prio 6, 250 ms loop): reads the sensor every 2 s, runs the control step, writes outputs through the interlock, handles button events, publishes to Zigbee, saves to NVS (with a 5 s debounce), drives the LED, runs the health check and kicks the watchdogs.
@@ -53,6 +55,51 @@ All of these live in `control.c`, and the tests in `test/host/test_control.c` co
 
 A one-week randomised soak test (temperature drift, random mode and setpoint changes, sensor dropouts,
 garbage readings) checks the invariants on every simulated second.
+
+## Boost
+
+Two temporary overrides. **Boosts are not saved:** after a reboot or power cut the thermostat is
+back to normal operation. The boost *preferences* (target, duration, direction) are saved.
+
+| | Boost to target | Timed boost |
+|---|---|---|
+| What it does | Heats or cools to a separate **boost setpoint**, then returns to normal | Heats or cools for **N minutes** (1–120), then returns to normal |
+| Direction | Heat / Cool / Auto (Auto picks from where the temperature is compared to the target) | Heat / Cool / Auto (Auto follows the current HEAT/COOL mode, or which normal setpoint you're outside) |
+| Ends when | target reached, **3 h maximum**, cancelled, system mode changed, or failsafe | time is up, cancelled, mode changed, failsafe, or the temperature hits 32 °C (heat) / 10 °C (cool) |
+| Rejected when | already at the target, sensor fault | invalid duration, sensor fault, no direction to pick, already at the limit |
+
+A boost only changes what the thermostat *asks for*. It goes through the same timers and interlock
+as everything else: the 5 min compressor minimum off-time and the 3 min minimum on-time (a stage
+that's running when a boost ends or is cancelled still gets its minimum on-time), the heat↔cool
+changeover delay, W/Y never on together, and the failsafe, which turns everything off and **ends**
+the boost. A boost does not resume after a failsafe or a reboot. It works from any system mode,
+including OFF, and returns to that mode afterwards.
+
+- **Screen:** the bottom bar turns black and reads `BOOST heat to 72°F` or `BOOST cool 15 min left`.
+- **Locally:** press UP and DOWN together to start a *timed* boost with the saved duration and
+  direction. Press them together again to cancel. The setpoint nudge from whichever button landed
+  first is undone.
+- **Home Assistant (ZHA):** install the quirk in `ha/zha_quirk/`. You get a target-temperature
+  number, a duration number, a mode select, Start-to-target / Start-timed / Cancel buttons, and Boost
+  state, Boost active and Time-remaining sensors (plus a diagnostic "last result" that explains a
+  rejected start). See `ha/dashboard-card.yaml`.
+
+![boost to target](docs/display_preview_boost_target.png)
+![timed boost](docs/display_preview_boost_timed.png)
+
+### Boost wire protocol (cluster 0xFC57, manufacturer code 0x131B)
+| Attr | Type | Access | Meaning |
+|---|---|---|---|
+| 0x0000 | int16 | RW | boost target, 0.01 °C |
+| 0x0001 | uint16 | RW | timed boost length, minutes (1–120) |
+| 0x0002 | enum8 | RW | 0 auto, 1 heat, 2 cool |
+| 0x0003 | enum8 | W | 1 start to target, 2 start timed, 0 cancel |
+| 0x0004 | enum8 | R, reported | 0 off, 1 heating to target, 2 cooling to target, 3 timed heat, 4 timed cool |
+| 0x0005 | uint16 | R, reported | minutes remaining |
+| 0x0006 | enum8 | R, reported | last result (see `zb_boost.h`) |
+
+The device sends attribute reports for 0x0004–0x0006 to the coordinator itself whenever they
+change, so ZHA doesn't have to configure reporting on the custom cluster.
 
 ## Why a (sleepy) end device and not a router
 
@@ -151,14 +198,19 @@ The device starts network steering by itself whenever it isn't joined (on first 
 reset) and retries every 10 s. The bottom line of the screen shows *Zigbee: pairing...*. To pair again
 later: hold MODE for 10 s (factory reset), or hold it for 3 s if it's already unjoined.
 
-### ZHA
-Settings → Devices & services → Zigbee Home Automation → *Add device*, then power the thermostat or
+### ZHA (primary)
+Install the boost quirk first (`ha/zha_quirk/README.md`): add `zha: custom_quirks_path:` and copy
+the file there. Then: Settings → Devices & services → Zigbee Home Automation → *Add device*, then power the thermostat or
 start pairing. ZHA's generic thermostat support should pick up cluster 0x0201 and create a
 `climate` entity (off/heat/cool/heat_cool, both setpoints, HVAC action from running state), plus
 humidity and temperature sensors and a fan-mode control. No quirk should be needed. If the fan mode or
 running state doesn't show up, a small ZHA quirk v2 can be added later.
 
-### Zigbee2MQTT
+### Zigbee2MQTT (secondary)
+The converter includes the boost cluster: `boost_setpoint`, `boost_duration`, `boost_mode`,
+`boost_command` (set `start_to_target` / `start_timed` / `cancel`), `boost_state`,
+`boost_remaining` and `boost_last_result`. It loads cleanly with `zigbee-herdsman-converters`
+(prepareDefinition lists all exposes) but hasn't been tested against a device.
 Z2M only exposes devices it has a definition for. This model is custom, so **Z2M will list it as
 "unsupported" unless you add the external converter** in `z2m/thermostat-v3.js`:
 1. Copy it to `<z2m data>/external_converters/thermostat-v3.js` (Z2M 2.x). On 1.x, add it under
@@ -200,6 +252,10 @@ The converter is written against the standard `fz.thermostat` / `tz.thermostat_*
 - Default reporting isn't configured on the device. ZHA and Z2M set it up when the device joins. No
   manufacturer-specific attributes yet (fan run-on time, minimum-time overrides, °F/°C over Zigbee via the
   Thermostat UI Config cluster 0x0204).
+- Boost: the remaining-minutes field on the screen follows the 3-minute background refresh limit, so
+  it can lag by up to 3 minutes (HA gets it every minute). Boost options can only be edited from HA
+  (locally only start/cancel). The quirk is tested with mocks against zha 2.3.1 / zha-quirks 2.3.0,
+  not in a live HA instance.
 - Fan mode can't be changed on the device (no spare button). A possible future combo is MODE + UP.
 - Setback/schedules, occupancy and the setpoint raise/lower command are not implemented (HA can schedule).
 - The Z2M converter and ZHA behaviour are untested. The OTA flow is untested end to end.

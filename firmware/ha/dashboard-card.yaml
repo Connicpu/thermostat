@@ -1,0 +1,55 @@
+# Example Lovelace card for the thermostat + boost controls (ZHA).
+# Entity IDs depend on the name you gave the device in HA. Check them under
+# Settings -> Devices -> <thermostat> and search-and-replace "connie_thermostat_v3".
+type: vertical-stack
+cards:
+  - type: thermostat
+    entity: climate.connie_thermostat_v3
+    features:
+      - type: climate-hvac-modes
+        hvac_modes: [off, heat, cool, heat_cool]
+      - type: climate-fan-modes
+        style: icons
+  - type: entities
+    title: Boost
+    state_color: true
+    entities:
+      - entity: binary_sensor.connie_thermostat_v3_boost_active
+        name: Boost running
+      - entity: sensor.connie_thermostat_v3_boost
+        name: Boost
+      - entity: sensor.connie_thermostat_v3_boost_time_remaining
+        name: Time left
+      - type: divider
+      - entity: select.connie_thermostat_v3_boost_mode
+        name: Direction
+      - entity: number.connie_thermostat_v3_boost_target_temperature
+        name: Boost to
+      - entity: number.connie_thermostat_v3_boost_duration
+        name: Timed boost length
+  - type: horizontal-stack
+    cards:
+      - type: button
+        entity: button.connie_thermostat_v3_start_boost_to_target
+        name: Boost to target
+        icon: mdi:thermometer-chevron-up
+        tap_action: {action: toggle}
+      - type: button
+        entity: button.connie_thermostat_v3_start_timed_boost
+        name: Timed boost
+        icon: mdi:timer-play-outline
+        tap_action: {action: toggle}
+      - type: button
+        entity: button.connie_thermostat_v3_cancel_boost
+        name: Cancel
+        icon: mdi:cancel
+        tap_action: {action: toggle}
+  - type: conditional
+    conditions:
+      - condition: state
+        entity: sensor.connie_thermostat_v3_last_boost_result
+        state_not: none_
+    card:
+      type: entity
+      entity: sensor.connie_thermostat_v3_last_boost_result
+      name: Last boost result

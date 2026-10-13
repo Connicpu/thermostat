@@ -13,6 +13,7 @@
 #include "esp_err.h"
 #include "control.h"
 #include "display_model.h"   /* link_state_t */
+#include "zb_boost.h"
 
 #define ZB_THERMOSTAT_EP 1
 
@@ -23,7 +24,18 @@ typedef struct {
     void (*on_identify)(uint16_t seconds);
     void (*on_ota_progress)(int percent);               /* -1 = finished/aborted */
     void (*before_ota_reboot)(void);                     /* outputs off etc. */
+    /* Boost cluster (0xFC57) writes. Called from the Zigbee task. */
+    void (*on_boost_params)(int16_t sp, uint16_t minutes, uint8_t dir);
+    void (*on_boost_command)(uint8_t cmd);                /* ZB_BOOST_CMD_* */
 } zb_thermostat_cbs_t;
+
+typedef struct {
+    ctrl_settings_t s;
+    int8_t   calib;
+    int16_t  boost_sp;
+    uint16_t boost_minutes;
+    uint8_t  boost_dir;
+} zb_thermostat_init_t;
 
 typedef struct {
     bool     temp_valid;
@@ -32,9 +44,12 @@ typedef struct {
     uint16_t rh;           /* c%RH */
     ctrl_settings_t s;
     bool     w, y, g;      /* actual outputs (ThermostatRunningState) */
+    uint8_t  boost_state;          /* ZB_BOOST_STATE_* */
+    uint16_t boost_remaining_min;
+    uint8_t  boost_last_result;    /* ZB_BOOST_RESULT_* */
 } zb_thermostat_state_t;
 
-esp_err_t    zb_thermostat_start(const zb_thermostat_cbs_t *cbs, const ctrl_settings_t *initial, int8_t calib);
+esp_err_t    zb_thermostat_start(const zb_thermostat_cbs_t *cbs, const zb_thermostat_init_t *init);
 void         zb_thermostat_publish(const zb_thermostat_state_t *st);
 link_state_t zb_thermostat_link(void);
 void         zb_thermostat_pair(void);           /* (re)start network steering if not joined */

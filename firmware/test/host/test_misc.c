@@ -100,6 +100,24 @@ static void render_preview_auto_celsius_fault(void)
     write_pbm(&fb, "display_preview_auto_c.pbm");
 }
 
+static void render_preview_boosts(void)
+{
+    static gfx_fb_t fb;
+    display_model_t m;
+    memset(&m, 0, sizeof m);
+    m.temp_valid = true; m.temp = 2050; m.rh_valid = true; m.rh = 4000;
+    m.s = (ctrl_settings_t){.mode = CTRL_MODE_HEAT, .fan = CTRL_FAN_AUTO, .heat_sp = 2000, .cool_sp = 2450};
+    m.w = true; m.link = LINK_JOINED; m.fahrenheit = true;
+    m.boost = BOOST_TO_TARGET; m.boost_dir = CTRL_MODE_HEAT; m.boost_sp = 2222;   /* 72 F */
+    display_render(&fb, &m);
+    write_pbm(&fb, "display_preview_boost_target.pbm");
+    CHECK(gfx_get(&fb, GFX_W - 2, 120));       /* inverted status bar */
+    m.boost = BOOST_TIMED; m.boost_dir = CTRL_MODE_COOL; m.boost_min_left = 15; m.w = false; m.y = true; m.g = true;
+    m.s.mode = CTRL_MODE_COOL;
+    display_render(&fb, &m);
+    write_pbm(&fb, "display_preview_boost_timed.pbm");
+}
+
 static void render_preview(void)
 {
     static gfx_fb_t fb;
@@ -124,5 +142,6 @@ int main(void)
     RUN(temp_formatting);
     RUN(render_preview);
     RUN(render_preview_auto_celsius_fault);
+    RUN(render_preview_boosts);
     DONE();
 }

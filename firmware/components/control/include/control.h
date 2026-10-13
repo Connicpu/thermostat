@@ -92,8 +92,43 @@ typedef struct {
     bool waiting;               /* demand present but blocked by min-off / changeover */
 } ctrl_output_t;
 
+/* ---------------- boost (runtime only, never persisted) ---------------- */
+typedef enum { BOOST_NONE = 0, BOOST_TO_TARGET = 1, BOOST_TIMED = 2 } ctrl_boost_kind_t;
+/* Requested direction. Values match the Zigbee boost_mode attribute. */
+typedef enum { BOOST_DIR_AUTO = 0, BOOST_DIR_HEAT = 1, BOOST_DIR_COOL = 2 } ctrl_boost_dir_t;
+typedef enum {
+    BOOST_END_NONE = 0, BOOST_END_REACHED, BOOST_END_EXPIRED, BOOST_END_CANCELLED,
+    BOOST_END_MODE_CHANGED, BOOST_END_FAULT, BOOST_END_LIMIT,
+} ctrl_boost_end_t;
+typedef enum {
+    BOOST_OK = 0, BOOST_ERR_ARG, BOOST_ERR_FAULT, BOOST_ERR_AT_TARGET, BOOST_ERR_NO_DIRECTION,
+} ctrl_boost_result_t;
+
+#define BOOST_TIMED_MIN_MIN     1
+#define BOOST_TIMED_MAX_MIN     120     /* timed boost: 1..120 min */
+#define BOOST_TARGET_MAX_MIN    180     /* boost-to-target gives up after 3 h */
+
+typedef struct {
+    ctrl_boost_kind_t kind;
+    ctrl_mode_t dir;          /* resolved: CTRL_MODE_HEAT or CTRL_MODE_COOL */
+    int16_t     sp;           /* target (BOOST_TO_TARGET) */
+    uint64_t    end_at;       /* hard deadline */
+    ctrl_mode_t base_mode;    /* system mode when started; changing it cancels */
+    ctrl_boost_end_t last_end;
+} ctrl_boost_t;
+
+typedef struct {
+    ctrl_boost_kind_t kind;   /* BOOST_NONE if inactive */
+    ctrl_mode_t dir;
+    int16_t     sp;
+    uint32_t    remaining_s;
+    ctrl_boost_end_t last_end;
+} ctrl_boost_status_t;
+
 typedef struct {
     ctrl_params_t p;
+    ctrl_boost_t boost;
+    bool     soft_stop;   /* boost just ended: running stage still honours its min on-time */
     bool     w, y, g;
     bool     heat_call, cool_call;     /* latched hysteresis state */
     uint64_t w_on_at, w_off_at, y_on_at, y_off_at;
@@ -123,6 +158,17 @@ ctrl_mode_t ctrl_next_mode(ctrl_mode_t m);
 bool ctrl_mode_valid(int v);
 
 const char *ctrl_fault_str(ctrl_fault_t f);
+
+/* Start a boost. `s` = current normal settings (used for AUTO direction of a
+ * timed boost and for detecting later mode changes). BOOST_TO_TARGET uses
+ * `sp` (clamped to min_sp..max_sp) and ends when reached or after
+ * BOOST_TARGET_MAX_MIN. BOOST_TIMED runs `minutes` (1..120). Starting a new
+ * boost replaces a running one. All safety rules still apply: the boost only
+ * changes what the thermostat *asks for*. */
+ctrl_boost_result_t ctrl_boost_start(ctrl_t *c, const ctrl_settings_t *s, ctrl_boost_kind_t kind,
+                                     ctrl_boost_dir_t dir, int16_t sp, uint16_t minutes, uint64_t now_ms);
+void ctrl_boost_cancel(ctrl_t *c);
+ctrl_boost_status_t ctrl_boost_status(const ctrl_t *c, uint64_t now_ms);
 
 #ifdef __cplusplus
 }

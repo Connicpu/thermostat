@@ -320,6 +320,243 @@ static void fuzz_safety_invariants(void)
     CHECK(y_starts > 5 && w_starts > 5);
 }
 
+
+/* ---------------------------- boost ---------------------------- */
+
+static void boost_target_heat_reaches_and_returns(void)
+{
+    setup(CTRL_MODE_HEAT, 2000, 2400);
+    run(MIN(2), 2000, true);                 /* satisfied at normal SP */
+    CHECK(!out.w);
+    CHECK_EQ(ctrl_boost_start(&c, &st, BOOST_TO_TARGET, BOOST_DIR_AUTO, 2250, 0, now), BOOST_OK);
+    ctrl_boost_status_t b = ctrl_boost_status(&c, now);
+    CHECK_EQ(b.kind, BOOST_TO_TARGET);
+    CHECK_EQ(b.dir, CTRL_MODE_HEAT);
+    run(S(2), 2000, true);
+    CHECK(out.w);
+    run(MIN(3), 2240, true);                 /* still below target */
+    CHECK(out.w);
+    run(S(1), 2250, true);                   /* reached */
+    b = ctrl_boost_status(&c, now);
+    CHECK_EQ(b.kind, BOOST_NONE);
+    CHECK_EQ(b.last_end, BOOST_END_REACHED);
+    CHECK(!out.w);                           /* back to normal: 22.5 >> 20.0 */
+}
+
+static void boost_target_cool_auto_direction(void)
+{
+    setup(CTRL_MODE_OFF, 2000, 2400);
+    run(MIN(6), 2600, true);
+    CHECK(!out.y);
+    CHECK_EQ(ctrl_boost_start(&c, &st, BOOST_TO_TARGET, BOOST_DIR_AUTO, 2300, 0, now), BOOST_OK);
+    CHECK_EQ(ctrl_boost_status(&c, now).dir, CTRL_MODE_COOL);
+    run(S(1), 2600, true);
+    CHECK(out.y && out.g && !out.w);
+    run(MIN(1), 2290, true);                 /* reached after 1 min: min on-time still holds Y */
+    CHECK_EQ(ctrl_boost_status(&c, now).kind, BOOST_NONE);
+    CHECK(out.y);
+    uint64_t on_at = c.y_on_at;
+    while (out.y && now < on_at + MIN(10)) run(S(1), 2290, true);
+    CHECK(now - on_at >= P.comp_min_on_ms);
+    CHECK(now - on_at <= P.comp_min_on_ms + 1000);
+}
+
+static void boost_target_rejects_bad_requests(void)
+{
+    setup(CTRL_MODE_HEAT, 2000, 2400);
+    CHECK_EQ(ctrl_boost_start(&c, &st, BOOST_TO_TARGET, BOOST_DIR_AUTO, 2200, 0, now), BOOST_ERR_FAULT); /* no reading yet */
+    run(S(5), 2200, true);
+    CHECK_EQ(ctrl_boost_start(&c, &st, BOOST_TO_TARGET, BOOST_DIR_AUTO, 2210, 0, now), BOOST_ERR_AT_TARGET);
+    CHECK_EQ(ctrl_boost_start(&c, &st, BOOST_TO_TARGET, BOOST_DIR_HEAT, 2100, 0, now), BOOST_ERR_AT_TARGET);
+    CHECK_EQ(ctrl_boost_start(&c, &st, BOOST_TO_TARGET, BOOST_DIR_COOL, 2300, 0, now), BOOST_ERR_AT_TARGET);
+    CHECK_EQ(ctrl_boost_start(&c, &st, BOOST_TIMED, BOOST_DIR_HEAT, 0, 0, now), BOOST_ERR_ARG);
+    CHECK_EQ(ctrl_boost_start(&c, &st, BOOST_TIMED, BOOST_DIR_HEAT, 0, 121, now), BOOST_ERR_ARG);
+    CHECK_EQ(ctrl_boost_start(&c, &st, (ctrl_boost_kind_t)9, BOOST_DIR_HEAT, 0, 5, now), BOOST_ERR_ARG);
+    /* target is clamped to the setpoint range */
+    CHECK_EQ(ctrl_boost_start(&c, &st, BOOST_TO_TARGET, BOOST_DIR_HEAT, 9000, 0, now), BOOST_OK);
+    CHECK_EQ(ctrl_boost_status(&c, now).sp, P.max_sp);
+    /* timed AUTO with nothing to do (in deadband, mode OFF) */
+    st.mode = CTRL_MODE_OFF;
+    ctrl_boost_cancel(&c);
+    CHECK_EQ(ctrl_boost_start(&c, &st, BOOST_TIMED, BOOST_DIR_AUTO, 0, 10, now), BOOST_ERR_NO_DIRECTION);
+}
+
+static void boost_target_gives_up_after_max(void)
+{
+    setup(CTRL_MODE_OFF, 2000, 2400);
+    run(S(5), 1800, true);
+    CHECK_EQ(ctrl_boost_start(&c, &st, BOOST_TO_TARGET, BOOST_DIR_HEAT, 2500, 0, now), BOOST_OK);
+    run(MIN(BOOST_TARGET_MAX_MIN) - S(5), 1800, true);
+    CHECK(out.w);
+    run(S(10), 1800, true);
+    CHECK_EQ(ctrl_boost_status(&c, now).last_end, BOOST_END_EXPIRED);
+    CHECK(!out.w);                           /* mode OFF again */
+}
+
+static void boost_timed_runs_n_minutes_and_ends(void)
+{
+    setup(CTRL_MODE_HEAT, 2000, 2400);
+    run(MIN(2), 2100, true);                 /* above SP: normal would not heat */
+    CHECK(!out.w);
+    CHECK_EQ(ctrl_boost_start(&c, &st, BOOST_TIMED, BOOST_DIR_AUTO, 0, 15, now), BOOST_OK);
+    CHECK_EQ(ctrl_boost_status(&c, now).dir, CTRL_MODE_HEAT);
+    CHECK_EQ(ctrl_boost_status(&c, now).remaining_s, 15 * 60);
+    run(S(1), 2300, true);
+    CHECK(out.w);                            /* forced call despite 23 > 20 */
+    run(MIN(10), 2300, true);
+    CHECK(out.w);
+    CHECK_EQ(ctrl_boost_status(&c, now).remaining_s, 15 * 60 - 601);
+    run(MIN(5), 2300, true);
+    CHECK_EQ(ctrl_boost_status(&c, now).kind, BOOST_NONE);
+    CHECK_EQ(ctrl_boost_status(&c, now).last_end, BOOST_END_EXPIRED);
+    CHECK(!out.w);
+}
+
+static void boost_timed_cool_respects_compressor_min_off(void)
+{
+    setup(CTRL_MODE_COOL, 2000, 2400);
+    run(MIN(6), 2800, true);
+    CHECK(out.y);
+    run(MIN(4), 2300, true);
+    CHECK(!out.y);
+    uint64_t off_at = c.y_off_at;
+    CHECK_EQ(ctrl_boost_start(&c, &st, BOOST_TIMED, BOOST_DIR_COOL, 0, 30, now), BOOST_OK);
+    run(S(1), 2300, true);
+    CHECK(!out.y);                           /* boost cannot bypass the 5 min off-time */
+    CHECK(out.waiting);
+    while (!out.y && now < off_at + MIN(10)) run(S(1), 2300, true);
+    CHECK(now - off_at >= P.comp_min_off_ms);
+}
+
+static void boost_cancel_returns_to_normal(void)
+{
+    setup(CTRL_MODE_OFF, 2000, 2400);
+    run(S(5), 1900, true);
+    CHECK_EQ(ctrl_boost_start(&c, &st, BOOST_TIMED, BOOST_DIR_HEAT, 0, 60, now), BOOST_OK);
+    run(MIN(5), 1900, true);
+    CHECK(out.w);
+    ctrl_boost_cancel(&c);
+    run(S(1), 1900, true);
+    CHECK(!out.w);                           /* min on (2 min) already satisfied */
+    CHECK_EQ(ctrl_boost_status(&c, now).last_end, BOOST_END_CANCELLED);
+    ctrl_boost_cancel(&c);                   /* idempotent */
+    CHECK_EQ(ctrl_boost_status(&c, now).kind, BOOST_NONE);
+}
+
+static void boost_mode_change_cancels(void)
+{
+    setup(CTRL_MODE_HEAT, 2000, 2400);
+    run(S(5), 1900, true);
+    CHECK_EQ(ctrl_boost_start(&c, &st, BOOST_TO_TARGET, BOOST_DIR_HEAT, 2300, 0, now), BOOST_OK);
+    run(MIN(3), 1900, true);
+    CHECK(out.w);
+    st.mode = CTRL_MODE_COOL;
+    run(S(1), 1900, true);
+    CHECK_EQ(ctrl_boost_status(&c, now).last_end, BOOST_END_MODE_CHANGED);
+    CHECK(!out.w && !out.y);
+}
+
+static void boost_opposite_direction_never_overlaps(void)
+{
+    setup(CTRL_MODE_AUTO, 2000, 2400);
+    run(MIN(10), 1800, true);
+    CHECK(out.w);                            /* normal heat running */
+    CHECK_EQ(ctrl_boost_start(&c, &st, BOOST_TIMED, BOOST_DIR_COOL, 0, 30, now), BOOST_OK);
+    for (int i = 0; i < 600; i++) { run(S(1), 1800, true); CHECK(!(out.w && out.y)); }
+    CHECK(!out.w);
+    CHECK(out.y);                            /* after min-on + changeover */
+    CHECK(c.y_on_at - c.w_off_at >= P.changeover_ms);
+}
+
+static void boost_failsafe_kills_and_cancels(void)
+{
+    setup(CTRL_MODE_OFF, 2000, 2400);
+    run(S(5), 1900, true);
+    CHECK_EQ(ctrl_boost_start(&c, &st, BOOST_TIMED, BOOST_DIR_HEAT, 0, 60, now), BOOST_OK);
+    run(S(65), 1900, true);                  /* furnace min-off from boot is 60 s */
+    CHECK(out.w);
+    run(S(1), 7000, true);                   /* implausible reading */
+    CHECK(!out.w && !out.y && !out.g);
+    CHECK_EQ(ctrl_boost_status(&c, now).kind, BOOST_NONE);
+    CHECK_EQ(ctrl_boost_status(&c, now).last_end, BOOST_END_FAULT);
+    run(MIN(5), 1900, true);                 /* sensor recovers: boost does NOT resume */
+    CHECK(!out.w);
+    /* sensor timeout during a boost behaves the same */
+    CHECK_EQ(ctrl_boost_start(&c, &st, BOOST_TIMED, BOOST_DIR_HEAT, 0, 60, now), BOOST_OK);
+    run(MIN(2), 1900, true);
+    CHECK(out.w);
+    run(S(31), 0, false);
+    CHECK(!out.w);
+    CHECK_EQ(ctrl_boost_status(&c, now).last_end, BOOST_END_FAULT);
+}
+
+static void boost_timed_comfort_limit(void)
+{
+    setup(CTRL_MODE_OFF, 2000, 2400);
+    run(S(5), 3100, true);
+    CHECK_EQ(ctrl_boost_start(&c, &st, BOOST_TIMED, BOOST_DIR_HEAT, 0, 60, now), BOOST_OK);
+    run(MIN(3), 3100, true);
+    CHECK(out.w);
+    run(S(1), 3200, true);                   /* hit max_sp: boost stops */
+    CHECK_EQ(ctrl_boost_status(&c, now).last_end, BOOST_END_LIMIT);
+    CHECK(!out.w);
+    CHECK_EQ(ctrl_boost_start(&c, &st, BOOST_TIMED, BOOST_DIR_HEAT, 0, 60, now), BOOST_ERR_AT_TARGET);
+}
+
+static void boost_not_persisted_across_reboot(void)
+{
+    setup(CTRL_MODE_OFF, 2000, 2400);
+    run(S(5), 1900, true);
+    CHECK_EQ(ctrl_boost_start(&c, &st, BOOST_TIMED, BOOST_DIR_HEAT, 0, 60, now), BOOST_OK);
+    run(MIN(2), 1900, true);
+    CHECK(out.w);
+    /* "reboot": the settings survive (NVS), the controller is re-initialised */
+    ctrl_init(&c, &P, 0);
+    now = 0;
+    CHECK_EQ(ctrl_boost_status(&c, now).kind, BOOST_NONE);
+    run(MIN(10), 1900, true);
+    CHECK(!out.w);                           /* mode OFF: nothing runs */
+}
+
+static void fuzz_with_boosts(void)
+{
+    setup(CTRL_MODE_AUTO, 2000, 2400);
+    int16_t t = 2200;
+    bool prev_y = false;
+    uint64_t y_off = 0, y_on = 0;
+    int boosts = 0;
+    for (int i = 0; i < 3 * 24 * 3600; i++) {
+        now += 1000;
+        uint32_t r = rnd();
+        if (r % 400 == 0) {
+            ctrl_boost_kind_t k = (rnd() & 1) ? BOOST_TO_TARGET : BOOST_TIMED;
+            if (ctrl_boost_start(&c, &st, k, (ctrl_boost_dir_t)(rnd() % 3), 1500 + rnd() % 1500, 1 + rnd() % 120, now) == BOOST_OK) boosts++;
+        }
+        if (r % 1500 == 1) ctrl_boost_cancel(&c);
+        if (r % 3000 == 2) st.mode = (ctrl_mode_t[]){CTRL_MODE_OFF, CTRL_MODE_AUTO, CTRL_MODE_COOL, CTRL_MODE_HEAT}[rnd() % 4];
+        t += (int16_t)((int)(rnd() % 21) - 10);
+        if (t < 1200) t = 1200;
+        if (t > 3300) t = 3300;
+        ctrl_input_t in = {.valid = rnd() % 60 != 0, .temp = (rnd() % 30000 == 0) ? 9000 : t};
+        ctrl_feed_sensor(&c, &in, now);
+        out = ctrl_step(&c, &st, now);
+        CHECK(!(out.w && out.y));
+        if (out.fault != CTRL_FAULT_NONE) CHECK(!out.w && !out.y && !out.g && ctrl_boost_status(&c, now).kind == BOOST_NONE);
+        if (out.y && !prev_y) { CHECK(now - y_off >= P.comp_min_off_ms); y_on = now; }
+        if (!out.y && prev_y) {
+            if (out.fault == CTRL_FAULT_NONE && st.mode != CTRL_MODE_OFF && st.mode != CTRL_MODE_HEAT)
+                CHECK(now - y_on >= P.comp_min_on_ms);
+            y_off = now;
+        }
+        ctrl_boost_status_t b = ctrl_boost_status(&c, now);
+        if (b.kind) CHECK(b.remaining_s <= BOOST_TARGET_MAX_MIN * 60u);
+        prev_y = out.y;
+        if (tt_cur_fail) { printf("  at step %d\n", i); return; }
+    }
+    printf("  (3-day soak with %d boosts)\n", boosts);
+    CHECK(boosts > 20);
+}
+
 int main(void)
 {
     RUN(boot_failsafe_until_good_samples);
@@ -340,5 +577,18 @@ int main(void)
     RUN(mode_cycle);
     RUN(interlock_rule);
     RUN(fuzz_safety_invariants);
+    RUN(boost_target_heat_reaches_and_returns);
+    RUN(boost_target_cool_auto_direction);
+    RUN(boost_target_rejects_bad_requests);
+    RUN(boost_target_gives_up_after_max);
+    RUN(boost_timed_runs_n_minutes_and_ends);
+    RUN(boost_timed_cool_respects_compressor_min_off);
+    RUN(boost_cancel_returns_to_normal);
+    RUN(boost_mode_change_cancels);
+    RUN(boost_opposite_direction_never_overlaps);
+    RUN(boost_failsafe_kills_and_cancels);
+    RUN(boost_timed_comfort_limit);
+    RUN(boost_not_persisted_across_reboot);
+    RUN(fuzz_with_boosts);
     DONE();
 }

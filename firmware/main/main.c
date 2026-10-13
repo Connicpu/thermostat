@@ -51,6 +51,9 @@ static volatile uint16_t s_identify_s;
 static volatile int s_ota_pct = -1;
 
 typedef struct { uint8_t which, ev; } btn_msg_t;
+static QueueHandle_t s_boost_q;      /* uint8_t ZB_BOOST_CMD_* from Zigbee or the UP+DOWN combo */
+static uint8_t s_boost_result;
+static bool s_boost_active;          /* mirror for the UI combo */       /* ZB_BOOST_RESULT_* last outcome, reported to HA */
 
 static uint64_t now_ms(void) { return (uint64_t)(esp_timer_get_time() / 1000); }
 
@@ -75,6 +78,15 @@ static persist_t settings_get(void)
     return p;
 }
 
+static const char *s_banner;
+static uint64_t s_banner_until;
+
+static void banner(const char *b)
+{
+    s_banner = b;
+    s_banner_until = now_ms() + BANNER_MS;
+}
+
 /* ---------------- Zigbee callbacks (Zigbee task) ---------------- */
 
 static void zb_on_settings(const ctrl_settings_t *s, bool keep_heat) { settings_update(s, keep_heat); }
@@ -88,6 +100,71 @@ static void zb_on_calib(int8_t c)
     s_dirty = true;
     s_dirty_at = now_ms();
     xSemaphoreGive(s_mtx);
+}
+
+static void zb_on_boost_params(int16_t sp, uint16_t minutes, uint8_t dir)
+{
+    xSemaphoreTake(s_mtx, portMAX_DELAY);
+    s_persist.boost_sp = sp;
+    s_persist.boost_minutes = minutes;
+    s_persist.boost_dir = dir;
+    s_dirty = true;
+    s_dirty_at = now_ms();
+    xSemaphoreGive(s_mtx);
+}
+
+static void zb_on_boost_cmd(uint8_t cmd) { xQueueSend(s_boost_q, &cmd, 0); }
+
+static uint8_t end_to_result(ctrl_boost_end_t e)
+{
+    switch (e) {
+    case BOOST_END_REACHED:      return ZB_BOOST_RESULT_REACHED;
+    case BOOST_END_EXPIRED:      return ZB_BOOST_RESULT_EXPIRED;
+    case BOOST_END_CANCELLED:    return ZB_BOOST_RESULT_CANCELLED;
+    case BOOST_END_MODE_CHANGED: return ZB_BOOST_RESULT_MODE_CHANGED;
+    case BOOST_END_FAULT:        return ZB_BOOST_RESULT_FAULT;
+    case BOOST_END_LIMIT:        return ZB_BOOST_RESULT_LIMIT;
+    default:                     return ZB_BOOST_RESULT_NONE;
+    }
+}
+
+static uint8_t start_to_result(ctrl_boost_result_t r)
+{
+    switch (r) {
+    case BOOST_OK:               return ZB_BOOST_RESULT_STARTED;
+    case BOOST_ERR_FAULT:        return ZB_BOOST_RESULT_REJECTED_FAULT;
+    case BOOST_ERR_AT_TARGET:    return ZB_BOOST_RESULT_REJECTED_AT_TARGET;
+    case BOOST_ERR_NO_DIRECTION: return ZB_BOOST_RESULT_REJECTED_NO_DIRECTION;
+    default:                     return ZB_BOOST_RESULT_REJECTED_ARG;
+    }
+}
+
+static void handle_boost_cmd(ctrl_t *ctl, uint8_t cmd, uint64_t now)
+{
+    persist_t p = settings_get();
+    ctrl_boost_result_t r;
+    switch (cmd) {
+    case ZB_BOOST_CMD_CANCEL:
+        if (ctrl_boost_status(ctl, now).kind != BOOST_NONE) {
+            ctrl_boost_cancel(ctl);
+            s_boost_result = ZB_BOOST_RESULT_CANCELLED;
+        }
+        return;
+    case ZB_BOOST_CMD_START_TARGET:
+        r = ctrl_boost_start(ctl, &p.s, BOOST_TO_TARGET, (ctrl_boost_dir_t)p.boost_dir, p.boost_sp, 0, now);
+        break;
+    case ZB_BOOST_CMD_START_TIMED:
+        r = ctrl_boost_start(ctl, &p.s, BOOST_TIMED, (ctrl_boost_dir_t)p.boost_dir, 0, p.boost_minutes, now);
+        break;
+    default:
+        r = BOOST_ERR_ARG;
+        break;
+    }
+    s_boost_result = start_to_result(r);
+    ESP_LOGI(TAG, "boost cmd %u -> result %u", cmd, s_boost_result);
+    if (r != BOOST_OK) banner(r == BOOST_ERR_AT_TARGET ? "Boost: already there" :
+                              r == BOOST_ERR_FAULT ? "Boost: sensor fault" :
+                              r == BOOST_ERR_NO_DIRECTION ? "Boost: set mode HEAT/COOL" : "Boost: invalid");
 }
 
 static void zb_on_identify(uint16_t secs) { s_identify_s = secs; }
@@ -115,14 +192,6 @@ static int16_t step_sp(int16_t sp, int dir)
     return (int16_t)(half * 50);
 }
 
-static const char *s_banner;
-static uint64_t s_banner_until;
-
-static void banner(const char *b)
-{
-    s_banner = b;
-    s_banner_until = now_ms() + BANNER_MS;
-}
 
 /* returns true if the display should refresh promptly */
 static bool handle_button(const btn_msg_t *m)
@@ -130,11 +199,23 @@ static bool handle_button(const btn_msg_t *m)
     persist_t p = settings_get();
     ctrl_settings_t s = p.s;
     int dir = m->which == UI_BTN_UP ? 1 : -1;
+    static ctrl_settings_t before_nudge;
+    static uint64_t nudge_at;
 
     switch (m->which) {
+    case UI_BTN_COMBO: {
+        /* UP+DOWN together: toggle a timed boost. Undo the setpoint nudge the
+         * first of the two presses caused. */
+        if (now_ms() - nudge_at < 1500) settings_update(&before_nudge, true);
+        uint8_t cmd = s_boost_active ? ZB_BOOST_CMD_CANCEL : ZB_BOOST_CMD_START_TIMED;
+        xQueueSend(s_boost_q, &cmd, 0);
+        return true;
+    }
     case UI_BTN_UP:
     case UI_BTN_DOWN:
         if (m->ev != BTN_EV_PRESS && m->ev != BTN_EV_REPEAT) return false;
+        if (ui_combo_active()) return false;
+        if (m->ev == BTN_EV_PRESS) { before_nudge = s; nudge_at = now_ms(); }
         switch (s.mode) {
         case CTRL_MODE_HEAT: s.heat_sp = step_sp(s.heat_sp, dir); settings_update(&s, true); break;
         case CTRL_MODE_COOL: s.cool_sp = step_sp(s.cool_sp, dir); settings_update(&s, false); break;
@@ -222,15 +303,28 @@ static void app_task(void *arg)
         btn_msg_t m;
         while (xQueueReceive(s_btn_q, &m, 0) == pdTRUE) urgent |= handle_button(&m);
         p = settings_get();
+        uint8_t bcmd;
+        while (xQueueReceive(s_boost_q, &bcmd, 0) == pdTRUE) { handle_boost_cmd(&ctl, bcmd, now); urgent = true; }
 
         /* 3. control + outputs (the interlock lives in hvac_outputs_set) */
         ctrl_output_t o = ctrl_step(&ctl, &p.s, now);
         hvac_state_t act = hvac_outputs_set((hvac_state_t){.w = o.w, .y = o.y, .g = o.g});
+        ctrl_boost_status_t bs = ctrl_boost_status(&ctl, now);
+        if (s_boost_active && bs.kind == BOOST_NONE && bs.last_end != BOOST_END_CANCELLED) {
+            s_boost_result = end_to_result(bs.last_end);       /* ended by itself */
+            urgent = true;
+        }
+        s_boost_active = bs.kind != BOOST_NONE;
+        uint16_t bmin = (uint16_t)((bs.remaining_s + 59) / 60);
+        uint8_t bstate = ZB_BOOST_STATE_OFF;
+        if (bs.kind == BOOST_TO_TARGET) bstate = bs.dir == CTRL_MODE_HEAT ? ZB_BOOST_STATE_HEAT_TO_TARGET : ZB_BOOST_STATE_COOL_TO_TARGET;
+        if (bs.kind == BOOST_TIMED)     bstate = bs.dir == CTRL_MODE_HEAT ? ZB_BOOST_STATE_HEAT_TIMED : ZB_BOOST_STATE_COOL_TIMED;
 
         /* 4. Zigbee */
         zb_thermostat_state_t zs = {
             .temp_valid = rd.valid && o.fault != CTRL_FAULT_TEMP_RANGE, .temp = rd.temp_c100,
             .rh_valid = rd.valid, .rh = rd.rh_c100, .s = p.s, .w = act.w, .y = act.y, .g = act.g,
+            .boost_state = bstate, .boost_remaining_min = bmin, .boost_last_result = s_boost_result,
         };
         zb_thermostat_publish(&zs);
         link_state_t link = zb_thermostat_link();
@@ -249,6 +343,10 @@ static void app_task(void *arg)
         dm.fault = o.fault;
         dm.link = link;
         dm.fahrenheit = FAHRENHEIT;
+        dm.boost = bs.kind;
+        dm.boost_dir = bs.dir;
+        dm.boost_sp = bs.sp;
+        dm.boost_min_left = bs.kind == BOOST_TIMED ? bmin : 0;
         if (s_ota_pct >= 0) {
             snprintf(ota_banner, sizeof ota_banner, "Updating firmware %d%%", s_ota_pct);
             dm.banner = ota_banner;
@@ -321,6 +419,7 @@ void app_main(void)
 
     s_mtx = xSemaphoreCreateMutex();
     s_btn_q = xQueueCreate(16, sizeof(btn_msg_t));
+    s_boost_q = xQueueCreate(4, sizeof(uint8_t));
     settings_load(&s_persist);
     ESP_LOGI(TAG, "settings: mode %d heat %d cool %d fan %d calib %d", s_persist.s.mode, s_persist.s.heat_sp,
              s_persist.s.cool_sp, s_persist.s.fan, s_persist.calib_tenths);
@@ -335,8 +434,14 @@ void app_main(void)
         .on_identify = zb_on_identify,
         .on_ota_progress = zb_on_ota,
         .before_ota_reboot = zb_before_reboot,
+        .on_boost_params = zb_on_boost_params,
+        .on_boost_command = zb_on_boost_cmd,
     };
-    ESP_ERROR_CHECK(zb_thermostat_start(&cbs, &s_persist.s, s_persist.calib_tenths));
+    zb_thermostat_init_t zi = {
+        .s = s_persist.s, .calib = s_persist.calib_tenths,
+        .boost_sp = s_persist.boost_sp, .boost_minutes = s_persist.boost_minutes, .boost_dir = s_persist.boost_dir,
+    };
+    ESP_ERROR_CHECK(zb_thermostat_start(&cbs, &zi));
 
     xTaskCreate(app_task, "app", 4096, NULL, 6, NULL);
 }

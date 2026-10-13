@@ -94,5 +94,20 @@ void display_render(gfx_fb_t *fb, const display_model_t *m)
 
     /* ---- bottom status bar ---- */
     gfx_hline(fb, 0, 104, GFX_W);
-    gfx_text(fb, &font_small, 4, 108, m->banner ? m->banner : link_str(m->link), true);
+    if (m->banner) {
+        gfx_text(fb, &font_small, 4, 108, m->banner, true);
+    } else if (m->boost != BOOST_NONE) {
+        const char *d = m->boost_dir == CTRL_MODE_COOL ? "cool" : "heat";
+        if (m->boost == BOOST_TO_TARGET) {
+            format_temp(h, sizeof h, m->boost_sp, F, !F);
+            snprintf(b, sizeof b, "BOOST %s to %s" FONT_DEGREE "%s", d, h, F ? "F" : "C");
+        } else {
+            snprintf(b, sizeof b, "BOOST %s %u min left", d, (unsigned)m->boost_min_left);
+        }
+        /* inverted bar so a running boost is obvious from across the room */
+        gfx_fill_rect(fb, 0, 105, GFX_W, GFX_H - 105, true);
+        gfx_text(fb, &font_small, 4, 108, b, false);
+    } else {
+        gfx_text(fb, &font_small, 4, 108, link_str(m->link), true);
+    }
 }

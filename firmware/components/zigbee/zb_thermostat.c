@@ -25,6 +25,9 @@ static const char *TAG = "zb";
 #define RUNNING_FAN  0x0004
 
 static zb_thermostat_cbs_t s_cbs;
+static int16_t  s_boost_sp;
+static uint16_t s_boost_min;
+static uint8_t  s_boost_dir;
 static ctrl_settings_t s_settings;           /* last value known to the stack */
 static volatile link_state_t s_link = LINK_OFFLINE;
 static bool s_started;
@@ -152,6 +155,24 @@ static esp_err_t on_set_attr(const esp_zb_zcl_set_attr_value_message_t *m)
             changed = true;
         }
         break;
+    case ZB_BOOST_CLUSTER_ID: {
+        int16_t sp = s_boost_sp; uint16_t mins = s_boost_min; uint8_t dir = s_boost_dir;
+        switch (m->attribute.id) {
+        case ZB_BOOST_ATTR_SETPOINT: sp = *(const int16_t *)v; break;
+        case ZB_BOOST_ATTR_DURATION: mins = *(const uint16_t *)v; break;
+        case ZB_BOOST_ATTR_MODE:     dir = *(const uint8_t *)v; break;
+        case ZB_BOOST_ATTR_COMMAND:
+            if (s_cbs.on_boost_command) s_cbs.on_boost_command(*(const uint8_t *)v);
+            return ESP_OK;
+        default: return ESP_OK;
+        }
+        if (mins < BOOST_TIMED_MIN_MIN) mins = BOOST_TIMED_MIN_MIN;
+        if (mins > BOOST_TIMED_MAX_MIN) mins = BOOST_TIMED_MAX_MIN;
+        if (dir > BOOST_DIR_COOL) dir = BOOST_DIR_AUTO;
+        s_boost_sp = sp; s_boost_min = mins; s_boost_dir = dir;
+        if (s_cbs.on_boost_params) s_cbs.on_boost_params(sp, mins, dir);
+        return ESP_OK;
+    }
     case ESP_ZB_ZCL_CLUSTER_ID_IDENTIFY:
         if (m->attribute.id == ESP_ZB_ZCL_ATTR_IDENTIFY_IDENTIFY_TIME_ID && s_cbs.on_identify)
             s_cbs.on_identify(*(const uint16_t *)v);
@@ -318,6 +339,28 @@ static esp_zb_ep_list_t *build_endpoint(const ctrl_settings_t *init, int8_t cali
     esp_zb_humidity_meas_cluster_cfg_t h_cfg = {.measured_value = 0xFFFF, .min_value = 0, .max_value = 10000};
     ESP_ERROR_CHECK(esp_zb_cluster_list_add_humidity_meas_cluster(cl, esp_zb_humidity_meas_cluster_create(&h_cfg), SERVER));
 
+    /* Manufacturer-specific Boost cluster (see zb_boost.h). */
+    esp_zb_attribute_list_t *bc = esp_zb_zcl_attr_list_create(ZB_BOOST_CLUSTER_ID);
+    static uint8_t b_cmd = 0, b_state = 0, b_result = 0;
+    static uint16_t b_rem = 0;
+    const uint8_t RW = ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE | ESP_ZB_ZCL_ATTR_MANUF_SPEC;
+    const uint8_t RO = ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY | ESP_ZB_ZCL_ATTR_ACCESS_REPORTING | ESP_ZB_ZCL_ATTR_MANUF_SPEC;
+    ESP_ERROR_CHECK(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_SETPOINT, ZB_BOOST_MANUF_CODE,
+                                                         ESP_ZB_ZCL_ATTR_TYPE_S16, RW, &s_boost_sp));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_DURATION, ZB_BOOST_MANUF_CODE,
+                                                         ESP_ZB_ZCL_ATTR_TYPE_U16, RW, &s_boost_min));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_MODE, ZB_BOOST_MANUF_CODE,
+                                                         ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, RW, &s_boost_dir));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_COMMAND, ZB_BOOST_MANUF_CODE,
+                                                         ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, RW, &b_cmd));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_STATE, ZB_BOOST_MANUF_CODE,
+                                                         ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, RO, &b_state));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_REMAINING, ZB_BOOST_MANUF_CODE,
+                                                         ESP_ZB_ZCL_ATTR_TYPE_U16, RO, &b_rem));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_LAST_RESULT, ZB_BOOST_MANUF_CODE,
+                                                         ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, RO, &b_result));
+    ESP_ERROR_CHECK(esp_zb_cluster_list_add_custom_cluster(cl, bc, SERVER));
+
     /* OTA upgrade client */
     esp_zb_ota_cluster_cfg_t ota_cfg = {
         .ota_upgrade_file_version = CONFIG_THERMO_OTA_FILE_VERSION,
@@ -374,11 +417,14 @@ static void zb_task(void *arg)
     esp_zb_stack_main_loop();
 }
 
-esp_err_t zb_thermostat_start(const zb_thermostat_cbs_t *cbs, const ctrl_settings_t *initial, int8_t calib)
+esp_err_t zb_thermostat_start(const zb_thermostat_cbs_t *cbs, const zb_thermostat_init_t *init)
 {
     s_cbs = *cbs;
-    s_settings = s_init = *initial;
-    s_init_calib = calib;
+    s_settings = s_init = init->s;
+    s_init_calib = init->calib;
+    s_boost_sp = init->boost_sp;
+    s_boost_min = init->boost_minutes;
+    s_boost_dir = init->boost_dir;
     esp_zb_platform_config_t pc = {
         .radio_config = {.radio_mode = ZB_RADIO_MODE_NATIVE},
         .host_config = {.host_connection_mode = ZB_HOST_CONNECTION_MODE_NONE},
@@ -395,6 +441,22 @@ static void set_attr(uint16_t cluster, uint16_t attr, void *v)
 {
     esp_zb_zcl_status_t st = esp_zb_zcl_set_attribute_val(EP, cluster, SERVER, attr, v, false);
     if (st != ESP_ZB_ZCL_STATUS_SUCCESS) ESP_LOGW(TAG, "set 0x%04x/0x%04x: %d", cluster, attr, st);
+}
+
+static void report_boost_attr(uint16_t attr)
+{
+    esp_zb_zcl_report_attr_cmd_t r = {0};
+    r.zcl_basic_cmd.dst_addr_u.addr_short = 0x0000;   /* coordinator (ZHA) */
+    r.zcl_basic_cmd.dst_endpoint = 1;
+    r.zcl_basic_cmd.src_endpoint = EP;
+    r.address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT;
+    r.clusterID = ZB_BOOST_CLUSTER_ID;
+    r.manuf_specific = 1;
+    r.direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_CLI;
+    r.manuf_code = ZB_BOOST_MANUF_CODE;
+    r.attributeID = attr;
+    esp_err_t e = esp_zb_zcl_report_attr_cmd_req(&r);
+    if (e != ESP_OK) ESP_LOGW(TAG, "boost report 0x%04x: %s", attr, esp_err_to_name(e));
 }
 
 void zb_thermostat_publish(const zb_thermostat_state_t *st)
@@ -421,6 +483,22 @@ void zb_thermostat_publish(const zb_thermostat_state_t *st)
         set_attr(ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT, ESP_ZB_ZCL_ATTR_THERMOSTAT_OCCUPIED_COOLING_SETPOINT_ID, &cs);
         set_attr(ESP_ZB_ZCL_CLUSTER_ID_FAN_CONTROL, ESP_ZB_ZCL_ATTR_FAN_CONTROL_FAN_MODE_ID, &fan);
         s_settings = st->s;
+    }
+    /* Boost status: write the attributes and push an explicit report to the
+     * coordinator whenever they change (ZHA does not configure reporting for
+     * a quirk-added manufacturer cluster by itself). */
+    struct { uint16_t id; void *v; uint8_t was_changed; } battrs[] = {
+        {ZB_BOOST_ATTR_STATE, (void *)&st->boost_state, !have_last || st->boost_state != last.boost_state},
+        {ZB_BOOST_ATTR_REMAINING, (void *)&st->boost_remaining_min,
+         !have_last || st->boost_remaining_min != last.boost_remaining_min},
+        {ZB_BOOST_ATTR_LAST_RESULT, (void *)&st->boost_last_result,
+         !have_last || st->boost_last_result != last.boost_last_result},
+    };
+    for (size_t i = 0; i < sizeof battrs / sizeof battrs[0]; i++) {
+        if (!battrs[i].was_changed) continue;
+        esp_zb_zcl_set_manufacturer_attribute_val(EP, ZB_BOOST_CLUSTER_ID, SERVER, ZB_BOOST_MANUF_CODE, battrs[i].id,
+                                                  battrs[i].v, false);
+        if (s_link == LINK_JOINED) report_boost_attr(battrs[i].id);
     }
     esp_zb_lock_release();
     last = *st;

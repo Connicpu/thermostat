@@ -4,6 +4,11 @@
 typedef struct {
     ctrl_settings_t s;
     int8_t calib_tenths;    /* LocalTemperatureCalibration, 0.1 °C */
+    /* boost *preferences* (what the next boost will use). An active boost is
+     * deliberately NOT persisted: after a reboot the thermostat is back to normal. */
+    int16_t  boost_sp;      /* c°C */
+    uint16_t boost_minutes;
+    uint8_t  boost_dir;     /* ctrl_boost_dir_t */
 } persist_t;
 void settings_load(persist_t *p);          /* defaults if absent/corrupt */
 bool settings_save(const persist_t *p);

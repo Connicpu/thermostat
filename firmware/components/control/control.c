@@ -99,11 +99,38 @@ ctrl_output_t ctrl_step(ctrl_t *c, const ctrl_settings_t *s_in, uint64_t now)
         c->g = false;
         c->fan_runon_until = 0;      /* no run-on in failsafe */
         c->heat_call = c->cool_call = false;
+        if (c->boost.kind) { c->boost.kind = BOOST_NONE; c->boost.last_end = BOOST_END_FAULT; }
         o.fault = c->fault != CTRL_FAULT_NONE ? c->fault : CTRL_FAULT_SENSOR_TIMEOUT;
         return o;
     }
 
     const int16_t t = c->last_temp, h = c->p.hysteresis;
+
+    /* ---- boost: end conditions, then override what we ask for ---- */
+    bool force_heat = false, force_cool = false;
+    if (c->boost.kind != BOOST_NONE) {
+        ctrl_boost_t *b = &c->boost;
+        ctrl_boost_end_t end = BOOST_END_NONE;
+        if (s.mode != b->base_mode) end = BOOST_END_MODE_CHANGED;
+        else if (now >= b->end_at) end = BOOST_END_EXPIRED;
+        else if (b->kind == BOOST_TO_TARGET &&
+                 ((b->dir == CTRL_MODE_HEAT && t >= b->sp) || (b->dir == CTRL_MODE_COOL && t <= b->sp)))
+            end = BOOST_END_REACHED;
+        else if (b->kind == BOOST_TIMED &&
+                 ((b->dir == CTRL_MODE_HEAT && t >= c->p.max_sp) || (b->dir == CTRL_MODE_COOL && t <= c->p.min_sp)))
+            end = BOOST_END_LIMIT;            /* comfort cap on timed boosts */
+        if (end != BOOST_END_NONE) {
+            b->kind = BOOST_NONE;
+            b->last_end = end;
+            c->soft_stop = true;
+            /* drop the boost's latched call; normal hysteresis re-evaluates below */
+            if (b->dir == CTRL_MODE_HEAT) c->heat_call = false; else c->cool_call = false;
+        } else {
+            s.mode = b->dir;
+            if (b->dir == CTRL_MODE_HEAT) { force_heat = true; }
+            else                          { force_cool = true; }
+        }
+    }
     const bool heat_allowed = (s.mode == CTRL_MODE_HEAT || s.mode == CTRL_MODE_AUTO);
     const bool cool_allowed = (s.mode == CTRL_MODE_COOL || s.mode == CTRL_MODE_AUTO);
 
@@ -116,6 +143,9 @@ ctrl_output_t ctrl_step(ctrl_t *c, const ctrl_settings_t *s_in, uint64_t now)
     else if (t >= s.cool_sp + h)     c->cool_call = true;
     else if (t <= s.cool_sp - h)     c->cool_call = false;
 
+    if (force_heat) { c->heat_call = true; c->cool_call = false; }
+    if (force_cool) { c->cool_call = true; c->heat_call = false; }
+
     /* Deadband makes both calls impossible, but be explicit: an active stage wins. */
     if (c->heat_call && c->cool_call) {
         if (c->y) c->heat_call = false; else c->cool_call = false;
@@ -125,7 +155,7 @@ ctrl_output_t ctrl_step(ctrl_t *c, const ctrl_settings_t *s_in, uint64_t now)
 
     /* ---- heat (W) ---- */
     if (c->w) {
-        bool stop = !heat_allowed ||                          /* user turned heat off: immediate */
+        bool stop = (!heat_allowed && (!c->soft_stop || elapsed(now, c->w_on_at, c->p.heat_min_on_ms))) ||
                     (!c->heat_call && elapsed(now, c->w_on_at, c->p.heat_min_on_ms));
         if (stop) set_w(c, false, now);
     } else if (c->heat_call && !c->y) {
@@ -138,7 +168,7 @@ ctrl_output_t ctrl_step(ctrl_t *c, const ctrl_settings_t *s_in, uint64_t now)
 
     /* ---- cool (Y, compressor) ---- */
     if (c->y) {
-        bool stop = !cool_allowed ||
+        bool stop = (!cool_allowed && (!c->soft_stop || elapsed(now, c->y_on_at, c->p.comp_min_on_ms))) ||
                     (!c->cool_call && elapsed(now, c->y_on_at, c->p.comp_min_on_ms));
         if (stop) set_y(c, false, now);
     } else if (c->cool_call && !c->w) {
@@ -148,6 +178,8 @@ ctrl_output_t ctrl_step(ctrl_t *c, const ctrl_settings_t *s_in, uint64_t now)
         else
             o.waiting = true;
     }
+
+    if (!c->w && !c->y) c->soft_stop = false;
 
     /* ---- fan (G) ---- */
     bool g = (s.fan == CTRL_FAN_ON) || c->y || (c->w && c->p.heat_drives_fan) ||
@@ -184,4 +216,65 @@ const char *ctrl_fault_str(ctrl_fault_t f)
     case CTRL_FAULT_TEMP_RANGE:     return "TEMP RANGE";
     default:                        return "?";
     }
+}
+
+ctrl_boost_result_t ctrl_boost_start(ctrl_t *c, const ctrl_settings_t *s, ctrl_boost_kind_t kind,
+                                     ctrl_boost_dir_t dir, int16_t sp, uint16_t minutes, uint64_t now)
+{
+    if (c->fault != CTRL_FAULT_NONE || !c->have_temp) return BOOST_ERR_FAULT;
+    if (dir != BOOST_DIR_AUTO && dir != BOOST_DIR_HEAT && dir != BOOST_DIR_COOL) return BOOST_ERR_ARG;
+    const int16_t t = c->last_temp, h = c->p.hysteresis;
+    ctrl_boost_t b = {.kind = kind, .base_mode = s->mode, .last_end = BOOST_END_NONE};
+
+    if (kind == BOOST_TO_TARGET) {
+        sp = clamp16(sp, c->p.min_sp, c->p.max_sp);
+        if (dir == BOOST_DIR_AUTO) {
+            if (t <= sp - h)      b.dir = CTRL_MODE_HEAT;
+            else if (t >= sp + h) b.dir = CTRL_MODE_COOL;
+            else return BOOST_ERR_AT_TARGET;
+        } else {
+            b.dir = dir == BOOST_DIR_HEAT ? CTRL_MODE_HEAT : CTRL_MODE_COOL;
+            if ((b.dir == CTRL_MODE_HEAT && t >= sp) || (b.dir == CTRL_MODE_COOL && t <= sp)) return BOOST_ERR_AT_TARGET;
+        }
+        b.sp = sp;
+        b.end_at = now + (uint64_t)BOOST_TARGET_MAX_MIN * 60000u;
+    } else if (kind == BOOST_TIMED) {
+        if (minutes < BOOST_TIMED_MIN_MIN || minutes > BOOST_TIMED_MAX_MIN) return BOOST_ERR_ARG;
+        if (dir == BOOST_DIR_AUTO) {
+            if (s->mode == CTRL_MODE_HEAT)      b.dir = CTRL_MODE_HEAT;
+            else if (s->mode == CTRL_MODE_COOL) b.dir = CTRL_MODE_COOL;
+            else if (t < s->heat_sp)            b.dir = CTRL_MODE_HEAT;
+            else if (t > s->cool_sp)            b.dir = CTRL_MODE_COOL;
+            else return BOOST_ERR_NO_DIRECTION;
+        } else {
+            b.dir = dir == BOOST_DIR_HEAT ? CTRL_MODE_HEAT : CTRL_MODE_COOL;
+        }
+        if ((b.dir == CTRL_MODE_HEAT && t >= c->p.max_sp) || (b.dir == CTRL_MODE_COOL && t <= c->p.min_sp))
+            return BOOST_ERR_AT_TARGET;
+        b.end_at = now + (uint64_t)minutes * 60000u;
+    } else {
+        return BOOST_ERR_ARG;
+    }
+    /* switching direction mid-boost: drop the old latched call */
+    if (c->boost.kind && c->boost.dir != b.dir) c->heat_call = c->cool_call = false;
+    c->boost = b;
+    c->soft_stop = true;   /* a stage the boost displaces still gets its min on-time */
+    return BOOST_OK;
+}
+
+void ctrl_boost_cancel(ctrl_t *c)
+{
+    if (!c->boost.kind) return;
+    if (c->boost.dir == CTRL_MODE_HEAT) c->heat_call = false; else c->cool_call = false;
+    c->boost.kind = BOOST_NONE;
+    c->boost.last_end = BOOST_END_CANCELLED;
+    c->soft_stop = true;
+}
+
+ctrl_boost_status_t ctrl_boost_status(const ctrl_t *c, uint64_t now)
+{
+    ctrl_boost_status_t st = {.kind = c->boost.kind, .dir = c->boost.dir, .sp = c->boost.sp,
+                              .last_end = c->boost.last_end};
+    if (st.kind) st.remaining_s = now >= c->boost.end_at ? 0 : (uint32_t)((c->boost.end_at - now + 999) / 1000);
+    return st;
 }
