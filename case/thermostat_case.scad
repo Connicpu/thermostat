@@ -29,12 +29,13 @@ function cy(y) = H - OYT - y;
 
 // board features (board coords)
 holes = [[6.4,6.4],[133.6,6.4],[6.4,57.6],[133.6,57.6]];
+bulk = [55,58]; bulk_h = 9.5;          // rear C43 8x9 mm electrolytic (+0.5 lead standoff)
 term = [70,58];                      // rear RA header J1 pin row centre (pins along x, mating face toward -y)
 panel = [29.46,26.24,108.46,62.94];  // GDEY029T94 outline (x0,y0,x1,y1)
 aa    = [32.46,30.06,99.36,59.12];   // active area (3.0/3.82 mm margins, FPC end on right)
 win_m = 0.5;                         // window margin around active area
 btn = [[112,30],[112,40],[112,50]];  // UP DOWN MODE
-pin = [[91,5]];                      // RESET pinhole only (BOOT is only useful with USB attached)
+pin = [[93,5]];                      // RESET pinhole only (BOOT is only useful with USB attached)
 led = [63.3,21.2];                   // D5 status LED -> light-pipe hole
 usb_x = 121;                         // USB-C centre x (mouth faces board bottom edge)
 island = [121,25,135,39];            // SHT40 thermal island
@@ -174,7 +175,8 @@ module pcb(){ color("darkgreen") translate([OX,cy(BH),Z_pcb_b]) difference(){ cu
   color("green") translate([cx(term[0])-9.2,cy(term[1])-1.2,Z_pcb_b-9.5]) cube([18.4,9.2,9.5]);           // rear RA header
   color("limegreen") translate([cx(term[0])-9.6,cy(term[1])+8,Z_pcb_b-10.5]) cube([19.2,11.5,10.0]);      // 15EDGK plug (wire entry faces the hole)
   color("darkred") for(i=[0:4]) hull(){ translate([cx(term[0])-7+i*3.5,cy(term[1])+19.5,Z_pcb_b-6]) sphere(d=1.2); translate([W/2-8+i*4,H/2,-2]) sphere(d=1.2);} // wires
-  color("gray") translate([cx(usb_x)-4.5,cy(BH)+0.5,Z_pcb_t]) cube([9,7,3.2]);
+  color("gray") translate([cx(usb_x)-4.5,cy(BH),Z_pcb_t]) cube([9,7.3,3.2]);                    // USB-C flush with board edge
+  color("royalblue") translate([cx(bulk[0]),cy(bulk[1]),Z_pcb_b-bulk_h]) cylinder(d=8,h=bulk_h);       // C43 47uF/63V THT, back side
   color("orange") translate([cx(127),cy(32.7),Z_pcb_t]) cube([1.5,1.5,0.5]);                 // SHT40
 }
 module epd(){ color("white") translate([cx(panel[0]),cy(panel[3]),Z_panel_b]) cube([panel[2]-panel[0],panel[3]-panel[1],panel_t]);
@@ -192,6 +194,11 @@ else if(part=="assembly"){ color("lightgray") backplate(); pcb(); epd(); color("
 else if(part=="exploded"){ color("lightgray") backplate(); translate([0,0,25]){ pcb(); } translate([0,0,40]) epd(); translate([0,0,75]){ color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); } for(b=btn) color("orange") translate([cx(b[0]),cy(b[1]),sw_top+60]) cap(); }
 else if(part=="section") difference(){ union(){ color("lightgray") backplate(); pcb(); epd(); color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); for(b=btn) color("orange") translate([cx(b[0]),cy(b[1]),sw_top]) cap(); }
   translate([-1,-1,-30]) cube([W+2, cy(44)+1, 80]); }   // cut at board y=44 (through panel, FPC, DOWN button)
+else if(part=="section_j1") difference(){ union(){ color("lightgray") backplate(); pcb(); epd(); color("white") shell(false); }
+  translate([-1,cy(54),-30]) cube([W+2, H, 80]); }   // cut through J1 header / plug and C43 (board y=54)
+// rear clearance check: tallest rear parts must clear the backplate top (plate_t)
+assert(Z_pcb_b-bulk_h>plate_t+1, "C43 hits backplate");
+assert(Z_pcb_b-10.5>plate_t+1, "J1 plug hits backplate");
 // all parts laid out for a 256x256 bed (Bambu P2S), print orientation, no supports
 if(part=="plate"){
   translate([5,5,0]) translate([0,H,Z_out]) rotate([180,0,0]) shell();

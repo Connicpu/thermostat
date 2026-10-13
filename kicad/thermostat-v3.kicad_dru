@@ -6,3 +6,7 @@
 (rule "island_thin_traces"
   (condition "A.intersectsArea('ISLAND') && A.Type == 'Track'")
   (constraint track_width (max 0.25mm)))
+# 24VAC side: GND pour keeps >=1.0 mm from AC / triac / opto-output copper (IPC-2221B B2 31-100V = 0.6 mm, plus margin)
+(rule "hv_pour_clearance"
+  (condition "A.Type == 'Zone' && (B.NetName == 'HVAC_*' || B.NetName == 'R_FUSED' || B.NetName == 'OPTO_MT2_*' || B.NetName == 'GATE_*' || B.NetName == 'SNUB_*')")
+  (constraint clearance (min 1.0mm)))

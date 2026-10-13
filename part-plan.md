@@ -131,3 +131,20 @@ Source: GD GDEY029T94 datasheet p.7 (mechanical drawing), p.6 (79.0x36.7x1.2, AA
 - Schematic nets / GPIO map unchanged (firmware pin map above still valid).
 - 24VAC nets (HVAC_*, R_FUSED, SNUB_*) are >= 43 mm from the SHT40 island; island crossings still only +3V3/GND/SDA/SCL (0.2 mm).
 - Case: standoffs 4 -> 12 mm (header+plug ~10.5 mm), depth 16.8 -> 24.8 mm; centred 25x20 mm wire hole; 146 x 70 mm unchanged; anchors clear.
+
+
+## Rev 8 - independent review fixes (2026-10-13)
+See `review/pcb-review.md` (the review) and `review/rev8-response.md` (the fixes, with full supply calculations).
+- **J1 really at board (70,58), B.Cu, mating face toward -y.** Verified in PTH.drl (X63-77, Y6) and in the copper gerbers. `gen_pcb2.py` asserts the position and also sets the aux origin, so regeneration can't revert it.
+- **D3:** B5819W 40 V -> SS210 100 V (C14996, basic).
+- **F1:** -> mSMD050-60V (C70113).
+- **R50:** 100k (C25741) in series with LMR16006 SHDN (new net BUCK_EN).
+- **C43:** 47 uF 63 V 8x9 THT (C19270693) on the BACK at (55,58), hand-soldered, excluded from the JLC BOM/CPL. Bulk is now about 59 uF effective. Vmin at 18 VAC and 0.88 W in is about 18 V.
+- **Triacs Q2-Q4:** BT136S-600D (sensitive gate) -> **T435-600B** (ST, standard gate IGT 35 mA, Snubberless, 4 A 600 V, C145128). This matches V1's standard-gate BT136-600. The 100R opto feed gives 35 mA gate current at about 8 V instantaneous line voltage.
+- **Optos stay MOC3063S (zero-cross), snubbers stay DNP.** Field evidence: the user's working V1 ran the same zero-cross opto family (MOC3033) with no snubbers on this exact HVAC system.
+- **Antenna keepout:** widened to x 61-89, y 0-6.4 on both layers. SW1/SW2/R6 moved +2 mm in x (RESET pinhole now at (93,5) in the case).
+- **USB-C J2:** moved flush with the board edge (y 60.35). The CPL offset -1.575 mm was re-verified against EasyEDA C165948.
+- **GND pour:** custom DRC rule keeps the pour >= 1.0 mm from all 24 VAC/triac/opto-output nets.
+- **Test pads (back side, no BOM):** TP1 VIN_HV, TP2 GND, TP3 +3V3, TP4 VBUS.
+- **Firmware pins:** unchanged; board.h untouched.
+- **Known, accepted:** SMBJ40A clamp at a full 9.3 A (64.5 V) vs the LMR 65 V abs max; L1 Isat 1.0 A (only on a hard short); buck hot loop about 7 mm (not re-laid out).
