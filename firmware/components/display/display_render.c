@@ -62,6 +62,12 @@ void display_render(gfx_fb_t *fb, const display_model_t *m)
         snprintf(b, sizeof b, "%u%% RH", (unsigned)((m->rh + 50) / 100));
         gfx_text(fb, &font_small, 8, 66, b, true);
     }
+    if (m->swing > 0 && m->s.mode != CTRL_MODE_OFF) {
+        /* swing is a temperature *difference*: °F = °C * 1.8, no offset */
+        int d = F ? (m->swing * 18 + 50) / 100 : (m->swing + 5) / 10;   /* tenths */
+        snprintf(b, sizeof b, "%s%d.%d" FONT_DEGREE, "+/-", d / 10, d % 10);
+        gfx_text(fb, &font_small, 96, 66, b, true);
+    }
 
     /* ---- right column: mode, setpoint(s), running state ---- */
     const int rx = 176;

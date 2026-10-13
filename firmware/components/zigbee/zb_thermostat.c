@@ -28,6 +28,7 @@ static zb_thermostat_cbs_t s_cbs;
 static int16_t  s_boost_sp;
 static uint16_t s_boost_min;
 static uint8_t  s_boost_dir;
+static uint16_t s_swing = CTRL_SWING_DEFAULT;   /* ZB_ATTR_SWING backing store */
 static ctrl_settings_t s_settings;           /* last value known to the stack */
 static volatile link_state_t s_link = LINK_OFFLINE;
 static bool s_started;
@@ -164,6 +165,17 @@ static esp_err_t on_set_attr(const esp_zb_zcl_set_attr_value_message_t *m)
         case ZB_BOOST_ATTR_COMMAND:
             if (s_cbs.on_boost_command) s_cbs.on_boost_command(*(const uint8_t *)v);
             return ESP_OK;
+        case ZB_ATTR_SWING: {
+            uint16_t raw = *(const uint16_t *)v;
+            int16_t sw = ctrl_clamp_swing(raw > 1000 ? 1000 : raw);
+            if (sw != (int16_t)raw) {   /* store the clamped value so a read-back shows reality */
+                s_swing = (uint16_t)sw;
+                esp_zb_zcl_set_attribute_val(EP, ZB_BOOST_CLUSTER_ID, SERVER, ZB_ATTR_SWING, &s_swing, false);
+            }
+            s_swing = (uint16_t)sw;
+            if (s_cbs.on_swing) s_cbs.on_swing(sw);
+            return ESP_OK;
+        }
         default: return ESP_OK;
         }
         if (mins < BOOST_TIMED_MIN_MIN) mins = BOOST_TIMED_MIN_MIN;
@@ -359,6 +371,8 @@ static esp_zb_ep_list_t *build_endpoint(const ctrl_settings_t *init, int8_t cali
                                                          ESP_ZB_ZCL_ATTR_TYPE_U16, RO, &b_rem));
     ESP_ERROR_CHECK(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_LAST_RESULT, ZB_BOOST_MANUF_CODE,
                                                          ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, RO, &b_result));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_ATTR_SWING, ZB_BOOST_MANUF_CODE,
+                                                         ESP_ZB_ZCL_ATTR_TYPE_U16, RW, &s_swing));
     ESP_ERROR_CHECK(esp_zb_cluster_list_add_custom_cluster(cl, bc, SERVER));
 
     /* OTA upgrade client */
@@ -425,6 +439,7 @@ esp_err_t zb_thermostat_start(const zb_thermostat_cbs_t *cbs, const zb_thermosta
     s_boost_sp = init->boost_sp;
     s_boost_min = init->boost_minutes;
     s_boost_dir = init->boost_dir;
+    s_swing = (uint16_t)ctrl_clamp_swing(init->swing);
     esp_zb_platform_config_t pc = {
         .radio_config = {.radio_mode = ZB_RADIO_MODE_NATIVE},
         .host_config = {.host_connection_mode = ZB_HOST_CONNECTION_MODE_NONE},

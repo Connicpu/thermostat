@@ -104,6 +104,8 @@ class ConnieBoostCluster(CustomCluster):
         boost_state = ZCLAttributeDef(id=0x0004, type=BoostState, access="rp", is_manufacturer_specific=True)
         boost_remaining = ZCLAttributeDef(id=0x0005, type=t.uint16_t, access="rp", is_manufacturer_specific=True)
         boost_last_result = ZCLAttributeDef(id=0x0006, type=BoostResult, access="rp", is_manufacturer_specific=True)
+        # Temperature swing (hysteresis), 0.01 °C each side of the setpoint, 10..100.
+        temperature_swing = ZCLAttributeDef(id=0x0010, type=t.uint16_t, is_manufacturer_specific=True)
 
 
 QUIRK_ENTRY = (
@@ -144,6 +146,24 @@ QUIRK_ENTRY = (
         entity_type=EntityType.STANDARD,
         translation_key="boost_mode",
         fallback_name="Boost mode",
+    )
+    # --- control tuning ---
+    # Neither HA's climate entity nor ZHA has a hysteresis/swing concept (HA "swing
+    # mode" is louver swing), so this is a plain number entity. It is a temperature
+    # *difference*: no temperature device_class, otherwise HA would convert 0.5 °C
+    # to 32.9 °F on imperial systems.
+    .number(
+        ConnieBoostCluster.AttributeDefs.temperature_swing.name,
+        ConnieBoostCluster.cluster_id,
+        min_value=0.1,
+        max_value=1.0,
+        step=0.1,
+        multiplier=0.01,                      # attribute is in 0.01 °C
+        unit=UnitOfTemperature.CELSIUS,
+        mode="slider",
+        entity_type=EntityType.CONFIG,
+        translation_key="temperature_swing",
+        fallback_name="Temperature swing",
     )
     # --- triggers ---
     .write_attr_button(

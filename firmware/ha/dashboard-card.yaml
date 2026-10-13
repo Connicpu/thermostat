@@ -10,6 +10,16 @@ cards:
         hvac_modes: [off, heat, cool, heat_cool]
       - type: climate-fan-modes
         style: icons
+  # Temperature swing (hysteresis). HA's thermostat card has no swing/hysteresis
+  # feature, so it sits directly under the card as a tile with a slider.
+  - type: tile
+    entity: number.connie_thermostat_v3_temperature_swing
+    name: Swing (± °C)
+    icon: mdi:arrow-expand-vertical
+    features_position: inline
+    features:
+      - type: numeric-input
+        style: slider
   - type: entities
     title: Boost
     state_color: true

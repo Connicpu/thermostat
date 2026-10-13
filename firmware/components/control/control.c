@@ -16,6 +16,7 @@ void ctrl_init(ctrl_t *c, const ctrl_params_t *p, uint64_t now_ms)
 {
     memset(c, 0, sizeof(*c));
     c->p = *p;
+    c->p.hysteresis = ctrl_clamp_swing(p->hysteresis);
     /* Treat boot as "everything just turned off": after a power blip the
      * compressor gets its full minimum off-time before restarting. */
     c->w_off_at = c->y_off_at = now_ms;
@@ -277,4 +278,14 @@ ctrl_boost_status_t ctrl_boost_status(const ctrl_t *c, uint64_t now)
                               .last_end = c->boost.last_end};
     if (st.kind) st.remaining_s = now >= c->boost.end_at ? 0 : (uint32_t)((c->boost.end_at - now + 999) / 1000);
     return st;
+}
+
+int16_t ctrl_clamp_swing(int32_t v)
+{
+    return clamp16(v, CTRL_SWING_MIN, CTRL_SWING_MAX);
+}
+
+void ctrl_set_swing(ctrl_t *c, int16_t swing)
+{
+    c->p.hysteresis = ctrl_clamp_swing(swing);
 }

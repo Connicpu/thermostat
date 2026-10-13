@@ -27,6 +27,7 @@ typedef struct {
     /* Boost cluster (0xFC57) writes. Called from the Zigbee task. */
     void (*on_boost_params)(int16_t sp, uint16_t minutes, uint8_t dir);
     void (*on_boost_command)(uint8_t cmd);                /* ZB_BOOST_CMD_* */
+    void (*on_swing)(int16_t swing_c100);                 /* ZB_ATTR_SWING write (already clamped) */
 } zb_thermostat_cbs_t;
 
 typedef struct {
@@ -35,6 +36,7 @@ typedef struct {
     int16_t  boost_sp;
     uint16_t boost_minutes;
     uint8_t  boost_dir;
+    int16_t  swing;        /* c°C */
 } zb_thermostat_init_t;
 
 typedef struct {

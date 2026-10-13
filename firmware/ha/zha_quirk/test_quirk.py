@@ -59,6 +59,7 @@ def test_entities_declared():
         "Boost target temperature", "Boost duration", "Boost mode",
         "Start boost to target", "Start timed boost", "Cancel boost",
         "Boost", "Boost active", "Boost time remaining", "Last boost result",
+        "Temperature swing",
     ])
 
 
@@ -87,3 +88,4 @@ def test_enum_values_match_firmware_header():
     attrs = q.ConnieBoostCluster.AttributeDefs
     assert val("ZB_BOOST_ATTR_LAST_RESULT") == attrs.boost_last_result.id
     assert val("ZB_BOOST_ATTR_REMAINING") == attrs.boost_remaining.id
+    assert val("ZB_ATTR_SWING") == attrs.temperature_swing.id

@@ -26,7 +26,7 @@ HA thermostat for a single-stage gas furnace plus AC, with 24 VAC W/Y/G triac ou
 | `main` | Wires it all together; NVS settings; health check and watchdog kick | no |
 | `test/host` | Native unit tests (CMake, no ESP-IDF needed) | |
 | `ha/zha_quirk/` | **ZHA quirk (quirks v2)** for the boost controls, plus its test and install notes | |
-| `ha/dashboard-card.yaml` | Example HA dashboard card (thermostat + boost) | |
+| `ha/dashboard-card.yaml` | Example HA dashboard card (thermostat + swing slider + boost) | |
 | `z2m/thermostat-v3.js` | Zigbee2MQTT external converter (secondary) | |
 
 ### Tasks
@@ -41,7 +41,7 @@ All of these live in `control.c`, and the tests in `test/host/test_control.c` co
 
 | Rule | Default |
 |---|---|
-| Hysteresis | ±0.3 °C around the setpoint (heat on at SP−0.3, off at SP+0.3; cooling is the mirror image) |
+| Temperature swing (hysteresis) | Configurable 0.1–1.0 °C, default ±0.5 °C, stored in NVS. Heat on at SP−swing, off at SP+swing; cooling is the mirror image. Minimum on/off times and changeover delays still apply on top. Set from HA (*Temperature swing* number, Zigbee 0xFC57/0x0010); shown on the e-paper as `+/-0.5°` next to the humidity (in °F when the display is in °F) |
 | Auto deadband | cool SP − heat SP ≥ 1.5 °C (the setpoint you didn't edit moves) |
 | Setpoint range | 10.0–32.0 °C |
 | **Compressor minimum off-time** | **5 min**, also applied from boot, so a power blip can't short-cycle the compressor |

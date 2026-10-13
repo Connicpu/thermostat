@@ -6,9 +6,19 @@
 
 #define NS "tstat"
 #define KEY "cfg"
-#define VERSION 2
+#define VERSION 3
 
 typedef struct { uint8_t version; persist_t p; } blob_t;
+
+/* v2 layout (before the swing setting); migrated on load. */
+typedef struct {
+    ctrl_settings_t s;
+    int8_t calib_tenths;
+    int16_t boost_sp;
+    uint16_t boost_minutes;
+    uint8_t boost_dir;
+} persist_v2_t;
+typedef struct { uint8_t version; persist_v2_t p; } blob_v2_t;
 
 static void defaults(persist_t *p)
 {
@@ -17,6 +27,7 @@ static void defaults(persist_t *p)
     p->boost_sp = 2200;
     p->boost_minutes = 30;
     p->boost_dir = BOOST_DIR_AUTO;
+    p->swing = CTRL_SWING_DEFAULT;
 }
 
 void settings_load(persist_t *p)
@@ -24,9 +35,19 @@ void settings_load(persist_t *p)
     defaults(p);
     nvs_handle_t h;
     if (nvs_open(NS, NVS_READONLY, &h) != ESP_OK) return;
-    blob_t b;
+    union { blob_t v3; blob_v2_t v2; } b;
     size_t n = sizeof b;
-    if (nvs_get_blob(h, KEY, &b, &n) == ESP_OK && n == sizeof b && b.version == VERSION) *p = b.p;
+    if (nvs_get_blob(h, KEY, &b, &n) == ESP_OK) {
+        if (n == sizeof b.v3 && b.v3.version == VERSION) {
+            *p = b.v3.p;
+        } else if (n == sizeof b.v2 && b.v2.version == 2) {   /* keep settings, add default swing */
+            p->s = b.v2.p.s;
+            p->calib_tenths = b.v2.p.calib_tenths;
+            p->boost_sp = b.v2.p.boost_sp;
+            p->boost_minutes = b.v2.p.boost_minutes;
+            p->boost_dir = b.v2.p.boost_dir;
+        }
+    }
     nvs_close(h);
     ctrl_params_t prm = CTRL_PARAMS_DEFAULT();
     ctrl_sanitize_settings(&prm, &p->s, true);
@@ -34,6 +55,7 @@ void settings_load(persist_t *p)
     if (p->boost_sp < prm.min_sp || p->boost_sp > prm.max_sp) p->boost_sp = 2200;
     if (p->boost_minutes < BOOST_TIMED_MIN_MIN || p->boost_minutes > BOOST_TIMED_MAX_MIN) p->boost_minutes = 30;
     if (p->boost_dir > BOOST_DIR_COOL) p->boost_dir = BOOST_DIR_AUTO;
+    if (p->swing < CTRL_SWING_MIN || p->swing > CTRL_SWING_MAX) p->swing = CTRL_SWING_DEFAULT;
 }
 
 bool settings_save(const persist_t *p)

@@ -13,6 +13,15 @@ cluster (0xFC57, manufacturer code 0x131B) to the device and creates these entit
 | Boost active | binary_sensor (running) | 0x0004 ≠ Off |
 | Boost time remaining | sensor, min | 0x0005 |
 | Last boost result (diagnostic) | sensor, e.g. *Target reached*, *Rejected already at target* | 0x0006 |
+| Temperature swing (config) | number slider, 0.1–1.0 °C, step 0.1 (raw uint16 in 0.01 °C) | 0x0010 |
+
+**Why swing isn't on the thermostat card itself:** HA's climate entity has no hysteresis
+property (its "swing mode" means air-louver swing, and `target_temp_step` is only the setpoint
+button increment), and ZHA doesn't map any Thermostat-cluster attribute to one. ZCL also has no
+standard hysteresis attribute (0x0019 is *MinSetpointDeadBand*, which means something else). So
+the swing is a number entity on the manufacturer cluster, and `dashboard-card.yaml` puts it as
+a slider tile right under the thermostat card. It's a temperature *difference*, so it has no
+temperature device class and always shows in °C (HA would otherwise turn 0.5 °C into 32.9 °F).
 
 The thermostat, fan and humidity entities still come from ZHA's built-in handling of the
 standard clusters.
@@ -42,5 +51,5 @@ python -m venv .venv && .venv/bin/pip install zha zha-quirks pytest
 ```
 
 The test checks that the quirk matches the device, adds the cluster without touching the
-standard ones, declares all ten entities, sends writes with manufacturer code 0x131B, and that
+standard ones, declares all eleven entities, sends writes with manufacturer code 0x131B, and that
 every attribute ID and enum value matches the firmware header `zb_boost.h`.

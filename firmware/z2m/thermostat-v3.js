@@ -24,6 +24,7 @@ const boostExtend = [
             boostState: {ID: 0x0004, type: Zcl.DataType.ENUM8},
             boostRemaining: {ID: 0x0005, type: Zcl.DataType.UINT16},
             boostLastResult: {ID: 0x0006, type: Zcl.DataType.ENUM8},
+            swing: {ID: 0x0010, type: Zcl.DataType.UINT16},
         },
         commands: {},
         commandsResponse: {},
@@ -46,6 +47,11 @@ const boostExtend = [
             stopped_by_failsafe: 6, temperature_limit: 7, rejected_invalid: 16, rejected_sensor_fault: 17,
             rejected_already_at_target: 18, rejected_no_direction: 19},
         description: 'Last boost outcome', access: 'STATE_GET'}),
+    // swing is a temperature *difference* in °C (do not convert it like an absolute temperature)
+    m.numeric({name: 'temperature_swing', ...boostOpts, attribute: 'swing', scale: 100, unit: '°C',
+        valueMin: 0.1, valueMax: 1, valueStep: 0.1, entityCategory: 'config',
+        description: 'Hysteresis each side of the setpoint: heat on at setpoint - swing, off at setpoint + swing (cooling mirrored)',
+        access: 'ALL'}),
 ];
 
 const definition = {

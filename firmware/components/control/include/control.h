@@ -38,7 +38,8 @@ typedef struct {
 } ctrl_settings_t;
 
 typedef struct {
-    int16_t  hysteresis;          /* c°C each side of the setpoint (0.3 °C)   */
+    int16_t  hysteresis;          /* swing, c°C each side of the setpoint (user setting,
+                                   * CTRL_SWING_MIN..MAX, default 0.5 °C)       */
     int16_t  min_sp, max_sp;      /* allowed setpoint range                    */
     int16_t  deadband;            /* min cool_sp - heat_sp (auto changeover)   */
     int16_t  temp_min, temp_max;  /* plausible room temp; outside -> failsafe  */
@@ -54,9 +55,15 @@ typedef struct {
     bool     heat_drives_fan;     /* energise G with W (electric/hydro-air); false for gas furnace */
 } ctrl_params_t;
 
+/* Temperature swing (hysteresis), c°C each side of the setpoint. Heat turns on
+ * at SP-swing and off at SP+swing; cooling is the mirror image. */
+#define CTRL_SWING_MIN      10      /* 0.1 °C */
+#define CTRL_SWING_MAX      100     /* 1.0 °C */
+#define CTRL_SWING_DEFAULT  50      /* 0.5 °C */
+
 /* Sensible defaults for a single-stage gas furnace + AC. */
 #define CTRL_PARAMS_DEFAULT() {            \
-    .hysteresis        = 30,               \
+    .hysteresis        = CTRL_SWING_DEFAULT,             \
     .min_sp            = 1000,             \
     .max_sp            = 3200,             \
     .deadband          = 150,              \
@@ -168,6 +175,12 @@ const char *ctrl_fault_str(ctrl_fault_t f);
 ctrl_boost_result_t ctrl_boost_start(ctrl_t *c, const ctrl_settings_t *s, ctrl_boost_kind_t kind,
                                      ctrl_boost_dir_t dir, int16_t sp, uint16_t minutes, uint64_t now_ms);
 void ctrl_boost_cancel(ctrl_t *c);
+
+/* Clamp a swing value into CTRL_SWING_MIN..MAX. */
+int16_t ctrl_clamp_swing(int32_t swing);
+/* Change the swing at runtime (clamped). Latched heat/cool calls are kept, so
+ * a running stage simply finishes against the new off threshold. */
+void ctrl_set_swing(ctrl_t *c, int16_t swing);
 ctrl_boost_status_t ctrl_boost_status(const ctrl_t *c, uint64_t now_ms);
 
 #ifdef __cplusplus

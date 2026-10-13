@@ -91,7 +91,7 @@ static void render_preview_auto_celsius_fault(void)
     memset(&m, 0, sizeof m);
     m.temp_valid = false; m.rh_valid = false;
     m.s = (ctrl_settings_t){.mode = CTRL_MODE_AUTO, .fan = CTRL_FAN_ON, .heat_sp = 2050, .cool_sp = 2450};
-    m.fault = CTRL_FAULT_SENSOR_TIMEOUT; m.link = LINK_PAIRING; m.fahrenheit = false;
+    m.fault = CTRL_FAULT_SENSOR_TIMEOUT; m.link = LINK_PAIRING; m.fahrenheit = false; m.swing = 100;
     display_render(&fb, &m);
     /* nothing may be drawn past the right edge: last column must be clear except the status rule */
     int edge = 0;
@@ -125,7 +125,7 @@ static void render_preview(void)
     memset(&m, 0, sizeof m);
     m.temp_valid = true; m.temp = 2147; m.rh_valid = true; m.rh = 4630;
     m.s = (ctrl_settings_t){.mode = CTRL_MODE_HEAT, .fan = CTRL_FAN_AUTO, .heat_sp = 2111, .cool_sp = 2444};
-    m.w = true; m.link = LINK_JOINED; m.fahrenheit = true;
+    m.w = true; m.link = LINK_JOINED; m.fahrenheit = true; m.swing = 50;   /* +/-0.9 F */
     display_render(&fb, &m);
     int black = 0;
     for (int y = 0; y < GFX_H; y++) for (int x = 0; x < GFX_W; x++) black += gfx_get(&fb, x, y);

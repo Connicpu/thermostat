@@ -113,6 +113,15 @@ static void zb_on_boost_params(int16_t sp, uint16_t minutes, uint8_t dir)
     xSemaphoreGive(s_mtx);
 }
 
+static void zb_on_swing(int16_t sw)
+{
+    xSemaphoreTake(s_mtx, portMAX_DELAY);
+    s_persist.swing = ctrl_clamp_swing(sw);
+    s_dirty = true;
+    s_dirty_at = now_ms();
+    xSemaphoreGive(s_mtx);
+}
+
 static void zb_on_boost_cmd(uint8_t cmd) { xQueueSend(s_boost_q, &cmd, 0); }
 
 static uint8_t end_to_result(ctrl_boost_end_t e)
@@ -306,6 +315,8 @@ static void app_task(void *arg)
         uint8_t bcmd;
         while (xQueueReceive(s_boost_q, &bcmd, 0) == pdTRUE) { handle_boost_cmd(&ctl, bcmd, now); urgent = true; }
 
+        if (ctl.p.hysteresis != p.swing) ctrl_set_swing(&ctl, p.swing);
+
         /* 3. control + outputs (the interlock lives in hvac_outputs_set) */
         ctrl_output_t o = ctrl_step(&ctl, &p.s, now);
         hvac_state_t act = hvac_outputs_set((hvac_state_t){.w = o.w, .y = o.y, .g = o.g});
@@ -343,6 +354,7 @@ static void app_task(void *arg)
         dm.fault = o.fault;
         dm.link = link;
         dm.fahrenheit = FAHRENHEIT;
+        dm.swing = p.swing;
         dm.boost = bs.kind;
         dm.boost_dir = bs.dir;
         dm.boost_sp = bs.sp;
@@ -436,10 +448,12 @@ void app_main(void)
         .before_ota_reboot = zb_before_reboot,
         .on_boost_params = zb_on_boost_params,
         .on_boost_command = zb_on_boost_cmd,
+        .on_swing = zb_on_swing,
     };
     zb_thermostat_init_t zi = {
         .s = s_persist.s, .calib = s_persist.calib_tenths,
         .boost_sp = s_persist.boost_sp, .boost_minutes = s_persist.boost_minutes, .boost_dir = s_persist.boost_dir,
+        .swing = s_persist.swing,
     };
     ESP_ERROR_CHECK(zb_thermostat_start(&cbs, &zi));
 

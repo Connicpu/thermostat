@@ -16,6 +16,7 @@ static ctrl_output_t out;
 static void setup(ctrl_mode_t mode, int16_t heat, int16_t cool)
 {
     P = (ctrl_params_t)CTRL_PARAMS_DEFAULT();
+    P.hysteresis = 30;                  /* legacy tests were written for 0.3 °C */
     now = 0;
     ctrl_init(&c, &P, now);
     st = (ctrl_settings_t){.mode = mode, .fan = CTRL_FAN_AUTO, .heat_sp = heat, .cool_sp = cool};
@@ -557,10 +558,95 @@ static void fuzz_with_boosts(void)
     CHECK(boosts > 20);
 }
 
+static void swing_default_and_clamp(void)
+{
+    ctrl_params_t d = CTRL_PARAMS_DEFAULT();
+    CHECK_EQ(d.hysteresis, 50);
+    CHECK_EQ(ctrl_clamp_swing(0), CTRL_SWING_MIN);
+    CHECK_EQ(ctrl_clamp_swing(-50), CTRL_SWING_MIN);
+    CHECK_EQ(ctrl_clamp_swing(500), CTRL_SWING_MAX);
+    CHECK_EQ(ctrl_clamp_swing(70), 70);
+    setup(CTRL_MODE_HEAT, 2000, 2400);
+    ctrl_set_swing(&c, 1000);
+    CHECK_EQ(c.p.hysteresis, CTRL_SWING_MAX);
+}
+
+static void heat_swing_1c(void)
+{
+    setup(CTRL_MODE_HEAT, 2000, 2400);
+    ctrl_set_swing(&c, 100);
+    run(MIN(2), 1910, true);            /* 19.1: inside ±1.0 band */
+    CHECK(!out.w);
+    run(S(5), 1900, true);              /* 19.0 = sp - 1.0 -> on */
+    CHECK(out.w);
+    run(MIN(5), 2090, true);            /* 20.9: still on */
+    CHECK(out.w);
+    run(S(1), 2100, true);              /* 21.0 -> off */
+    CHECK(!out.w);
+}
+
+static void cool_swing_mirror(void)
+{
+    setup(CTRL_MODE_COOL, 2000, 2400);
+    ctrl_set_swing(&c, 70);
+    run(MIN(6), 2460, true);            /* 24.6 < 24.7: no call */
+    CHECK(!out.y);
+    run(S(2), 2470, true);              /* 24.7 = sp + 0.7 -> on (min off long elapsed) */
+    CHECK(out.y);
+    run(MIN(4), 2340, true);            /* 23.4 > 23.3: stays on */
+    CHECK(out.y);
+    run(S(1), 2330, true);              /* 23.3 -> off (min on elapsed) */
+    CHECK(!out.y);
+}
+
+static void swing_change_while_running(void)
+{
+    setup(CTRL_MODE_HEAT, 2000, 2400);
+    ctrl_set_swing(&c, 100);
+    run(MIN(2), 1890, true);
+    CHECK(out.w);
+    run(MIN(3), 2040, true);            /* inside wide band */
+    CHECK(out.w);
+    ctrl_set_swing(&c, 30);             /* narrow it: 20.4 >= 20.3 -> off */
+    run(S(1), 2040, true);
+    CHECK(!out.w);
+}
+
+static void swing_still_honours_min_on(void)
+{
+    setup(CTRL_MODE_HEAT, 2000, 2400);
+    ctrl_set_swing(&c, 10);
+    run(MIN(2), 1990, true);            /* 19.9 = sp - 0.1 -> on */
+    CHECK(out.w);
+    uint64_t on_at = c.w_on_at;
+    run(S(10), 2010, true);             /* satisfied, but min on not elapsed */
+    CHECK(out.w);
+    while (out.w && now < on_at + MIN(5)) run(S(1), 2010, true);
+    CHECK(now - on_at >= P.heat_min_on_ms);
+}
+
+static void auto_wide_swing_never_overlaps(void)
+{
+    /* 1.0 °C swing on both sides with the minimum 1.5 °C deadband */
+    setup(CTRL_MODE_AUTO, 2000, 2150);
+    ctrl_set_swing(&c, 100);
+    for (int k = 0; k < 6; k++) {
+        for (int16_t t = 1800; t <= 2350; t += 5) run(S(20), t, true);
+        for (int16_t t = 2350; t >= 1800; t -= 5) run(S(20), t, true);
+    }
+    CHECK(!(out.w && out.y));
+}
+
 int main(void)
 {
     RUN(boot_failsafe_until_good_samples);
     RUN(heat_hysteresis);
+    RUN(swing_default_and_clamp);
+    RUN(heat_swing_1c);
+    RUN(cool_swing_mirror);
+    RUN(swing_change_while_running);
+    RUN(swing_still_honours_min_on);
+    RUN(auto_wide_swing_never_overlaps);
     RUN(heat_min_on_time);
     RUN(compressor_min_off_after_boot);
     RUN(compressor_min_off_between_cycles);

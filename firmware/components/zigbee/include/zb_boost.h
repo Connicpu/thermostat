@@ -16,6 +16,8 @@ enum {
     ZB_BOOST_ATTR_STATE       = 0x0004, /* enum8  R   see ZB_BOOST_STATE_*                      */
     ZB_BOOST_ATTR_REMAINING   = 0x0005, /* uint16 R   minutes left (0 when idle)                */
     ZB_BOOST_ATTR_LAST_RESULT = 0x0006, /* enum8  R   see ZB_BOOST_RESULT_*                     */
+    /* not boost-specific, but lives here so there is one manufacturer cluster */
+    ZB_ATTR_SWING             = 0x0010, /* uint16 RW  c°C each side of setpoint, 10..100 (0.1..1.0 °C), default 50 */
 };
 
 enum { ZB_BOOST_CMD_CANCEL = 0, ZB_BOOST_CMD_START_TARGET = 1, ZB_BOOST_CMD_START_TIMED = 2 };

@@ -3,3 +3,4 @@
 _autosave-*
 *.lck
 fp-info-cache
+__pycache__/
