@@ -7,7 +7,7 @@
 	(property "Reference" "REF**"
 		(at 0 -4.95 0)
 		(layer "F.SilkS")
-		(uuid "66dfff76-ff2a-4f9a-9c4d-24d914273cd7")
+		(uuid "9877eddf-c920-41fe-9ba3-ca32073bec42")
 		(effects
 			(font
 				(size 1 1)
@@ -18,7 +18,7 @@
 	(property "Value" "SOT-23-3_L2.9-W1.3-P1.90-LS2.4-BR"
 		(at 0 4.95 0)
 		(layer "F.Fab")
-		(uuid "d7247b63-172f-4033-bc7f-bd818cc26543")
+		(uuid "30956045-bad8-4c74-a69f-e1d40f5d9fa6")
 		(effects
 			(font
 				(size 1 1)
@@ -30,7 +30,7 @@
 		(at 0 0 0)
 		(layer "F.Fab")
 		(hide yes)
-		(uuid "258cf387-8631-4858-aa19-b781dbf82595")
+		(uuid "08677a3f-740b-4ff6-85c2-48fedd188a54")
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -42,7 +42,7 @@
 		(at 0 0 0)
 		(layer "F.Fab")
 		(hide yes)
-		(uuid "8b567275-576e-40c3-aa21-2b59eba913a5")
+		(uuid "d5f411ac-5011-428a-bdd3-ad0c37534c66")
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -54,7 +54,7 @@
 		(at 0 0 0)
 		(layer "F.Fab")
 		(hide yes)
-		(uuid "ac0a4085-0968-4ccb-bc1f-6ff3ddf988b3")
+		(uuid "43da5725-3e7c-46dc-bb1e-24db124e3479")
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -71,7 +71,7 @@
 			(type solid)
 		)
 		(layer "F.SilkS")
-		(uuid "aee47301-64a3-43a0-a178-87add158d10d")
+		(uuid "ed9138c5-1a2a-4726-8831-d3b383edcf76")
 	)
 	(fp_line
 		(start -0.73 1.53)
@@ -81,7 +81,7 @@
 			(type solid)
 		)
 		(layer "F.SilkS")
-		(uuid "d3bdfa30-399a-4560-ad49-3e4a8c461517")
+		(uuid "ffe350b3-01e8-4961-b562-bca6b3091135")
 	)
 	(fp_line
 		(start 0.73 -1.53)
@@ -91,7 +91,7 @@
 			(type solid)
 		)
 		(layer "F.SilkS")
-		(uuid "a20625d2-fb1f-4019-8957-66c447ed5d9b")
+		(uuid "7f1f7294-55ef-4138-aa8c-f2f5e84757f8")
 	)
 	(fp_line
 		(start 0.73 -0.46)
@@ -101,7 +101,7 @@
 			(type solid)
 		)
 		(layer "F.SilkS")
-		(uuid "439459b3-2125-4311-afc5-159289c7a7b1")
+		(uuid "2f904609-7d01-4160-8921-212c254abf7c")
 	)
 	(fp_line
 		(start 0.73 1.53)
@@ -111,7 +111,7 @@
 			(type solid)
 		)
 		(layer "F.SilkS")
-		(uuid "74630dc9-de48-4760-b40c-3b3f5b1e6912")
+		(uuid "5e62ee2a-16a3-43c4-8bb3-9cf38ae1296a")
 	)
 	(fp_circle
 		(center 1.2 1.45)
@@ -122,7 +122,7 @@
 		)
 		(fill no)
 		(layer "F.SilkS")
-		(uuid "04cb5bde-7587-471a-b2d3-2848d5520568")
+		(uuid "83f4c66c-8c74-464e-89c6-9bf9f99b7b95")
 	)
 	(fp_circle
 		(center 1.46 1.1)
@@ -133,7 +133,7 @@
 		)
 		(fill no)
 		(layer "Cmts.User")
-		(uuid "8963654c-9d34-42c7-9d39-0bc519444841")
+		(uuid "78c163d0-de14-4223-b38b-9f45c059fbfb")
 	)
 	(fp_line
 		(start -0.65 -1.45)
@@ -143,7 +143,7 @@
 			(type solid)
 		)
 		(layer "F.CrtYd")
-		(uuid "81576796-f3d0-4974-b0f2-d8bd843ed81c")
+		(uuid "371b89ed-e4bc-4ae5-92f1-03c17cd74491")
 	)
 	(fp_line
 		(start -0.65 1.45)
@@ -153,7 +153,7 @@
 			(type solid)
 		)
 		(layer "F.CrtYd")
-		(uuid "eb089214-4d50-471d-9a6d-cf7dc6bd372c")
+		(uuid "cf77c2f0-60aa-4387-8f20-a7ad66b0b9f5")
 	)
 	(fp_line
 		(start 0.65 -1.45)
@@ -163,7 +163,7 @@
 			(type solid)
 		)
 		(layer "F.CrtYd")
-		(uuid "0c287199-c760-4b3a-8bdb-81ab29f5d485")
+		(uuid "79363e67-c051-4abe-a156-5052adc19a32")
 	)
 	(fp_line
 		(start 0.65 1.45)
@@ -173,12 +173,12 @@
 			(type solid)
 		)
 		(layer "F.CrtYd")
-		(uuid "d6509984-3a82-4015-ac39-39f165663520")
+		(uuid "7f36aff4-1b97-4f41-b10f-5f7174ed85a8")
 	)
 	(fp_text user "${REFERENCE}"
 		(at 0 0 0)
 		(layer "F.Fab")
-		(uuid "0fb05312-cd00-46b2-9501-a831c4fa9300")
+		(uuid "53f260a2-cf22-44cc-baac-2e745dea1626")
 		(effects
 			(font
 				(size 1 1)
@@ -190,19 +190,19 @@
 		(at 1 0.95)
 		(size 1 0.65)
 		(layers "F.Cu" "F.Mask" "F.Paste")
-		(uuid "aedf4d9e-6566-4045-a6de-d6e7fc3604c9")
+		(uuid "06ab7604-04e0-4f8e-9e0c-e809659cfb76")
 	)
 	(pad "2" smd rect
 		(at 1 -0.95)
 		(size 1 0.65)
 		(layers "F.Cu" "F.Mask" "F.Paste")
-		(uuid "cdab3462-2788-4401-8369-d0c198e926f8")
+		(uuid "0ba2d268-e1e9-43cc-8a1f-7edd9bfa4c39")
 	)
 	(pad "3" smd rect
 		(at -1 0)
 		(size 1 0.65)
 		(layers "F.Cu" "F.Mask" "F.Paste")
-		(uuid "dabf48e6-380a-430b-b38b-45ccc4094aa7")
+		(uuid "c365a660-6b28-4e65-a459-4af2c3640aaa")
 	)
 	(embedded_fonts no)
 	(model "/workspace/ez/lib.3dshapes/SOT-23-3P_L2.9-W1.3-H1.0-LS2.4-P0.95.wrl"

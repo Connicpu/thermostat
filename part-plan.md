@@ -114,3 +114,9 @@ Source: GD GDEY029T94 datasheet p.7 (mechanical drawing), p.6 (79.0x36.7x1.2, AA
 - Extended->basic swaps: Q1 SI1308EDL (C469327) -> AO3400A (C20917, SOT-23, 30 V/5.7 A, same G/S/D pinout); R16 2.2R 0402 (C25101) -> 2.2R 0603 (C22939); C2 2.2uF 100V (C170101) -> 2.2uF 50V X7R 1206 (C50254, VIN_HV <= ~37 V, TVS standoff 40 V); J3 Stemma QT (C51940130) -> DNP (hand-solder if wanted).
 - Kept extended (no basic equivalent with same function): ESP32-C6, SHT40, LMR16006, MOC3063S, BT136S, STWD100, USBLC6, USB-C, FPC conn, 22uH/47uH inductors, SMBJ40A, PTC, 100uF/63V.
 - Silkscreen: refs 0.8/0.15 mm auto-placed, footprint silk trimmed at pads/edge; 0 silk DRC warnings. Cat logo + "Connie's Super Awesome Thermostat / VERSION 3.0" on bottom silk.
+
+## Rev 5 – case + rear terminal (2026-10-13 PT)
+- J1 -> vertical-entry MX15EDGVC-3.5-05P (C5188321) on the BACK + 15EDGK-3.5-05P plug (C5188252): wires come straight out of the wall into the plug. Hand-soldered; front shows only THT pins (x 4.5-12 mm, clear of panel at x>=29.5).
+- C1 100uF/63V 10x10 (10.5 mm tall, overlapped panel corner) -> 22uF/50V 6.3x5.4 (C72505), moved to (24.6,56.2) outside panel. Ripple at ~15 mA input ~5 V; TVS standoff 40 V.
+- SHT40 island: rule area ISLAND + kicad_dru rule: only +3V3/GND/I2C_SDA/I2C_SCL tracks (<=0.25 mm) allowed; routing keepout during autoroute. Verified: 8 tracks inside, all sensor nets, 0.2 mm, F.Cu.
+- Case: case/thermostat_case.scad (backplate, front shell, button caps), STLs + Bambu P2S 3MF.

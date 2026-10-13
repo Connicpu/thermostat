@@ -1,0 +1,8 @@
+(version 1)
+# SHT40 thermal island: only the sensor's own nets may enter (thin traces over the slot bridge)
+(rule "island_only_sensor_nets"
+  (condition "A.intersectsArea('ISLAND') && (A.Type == 'Track' || A.Type == 'Via') && A.NetName != '+3V3' && A.NetName != 'GND' && A.NetName != 'I2C_SDA' && A.NetName != 'I2C_SCL'")
+  (constraint disallow track via))
+(rule "island_thin_traces"
+  (condition "A.intersectsArea('ISLAND') && A.Type == 'Track'")
+  (constraint track_width (max 0.25mm)))
