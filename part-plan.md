@@ -107,3 +107,10 @@ Source: GD GDEY029T94 datasheet p.7 (mechanical drawing), p.6 (79.0x36.7x1.2, AA
 - Panel placement (face up, FPC on right edge, 180 deg fold under): outline x 29.46..108.46, y 26.24..62.94, panel bottom 5.0 mm above PCB (M2.5x5 standoffs or case ledge). Bend r~2.15 mm, ~6.8 mm of tail in the bend, ~3.0 mm inserted. Pin 1 / pad 1 y match exactly (49.74). Contacts face down -> bottom-contact AFC07 correct.
 - Panel standoff height must be >= ~4.5 mm (MOC3063S optos ~4 mm under panel). Every +1 mm of height pulls the tail ~1.6 mm out of the connector; keep 4.6-5.2 mm.
 - No copper change; only the Cmts.User panel outline moved (-0.54, +1.24). Image: fab/display-fit.png
+
+## Rev 4 – JLC upload fixes (2026-10-13 PT)
+- CPL/gerber origin: aux/drill/grid origin set at board bottom-left (abs 100,164). Gerbers exported with --use-drill-file-origin, drill with --drill-origin plot, CPL = (x-100, 164-y). Verified: CPL range x 13.5..128, y 3.5..59; U5 pad 1 at (127.3, 32.4) flashes at X127.3 Y32.4 in F_Cu/F_Paste gerbers.
+- Switches: EasyEDA footprint for C318884 (TS-1187A-B-A-B, 5.1x5.1 4-pad, pads 1/2 -> pin 1, 3/4 -> pin 2); BOM grouped by LCSC+footprint -> one line "TS-1187A-B-A-B" SW1..SW5.
+- Extended->basic swaps: Q1 SI1308EDL (C469327) -> AO3400A (C20917, SOT-23, 30 V/5.7 A, same G/S/D pinout); R16 2.2R 0402 (C25101) -> 2.2R 0603 (C22939); C2 2.2uF 100V (C170101) -> 2.2uF 50V X7R 1206 (C50254, VIN_HV <= ~37 V, TVS standoff 40 V); J3 Stemma QT (C51940130) -> DNP (hand-solder if wanted).
+- Kept extended (no basic equivalent with same function): ESP32-C6, SHT40, LMR16006, MOC3063S, BT136S, STWD100, USBLC6, USB-C, FPC conn, 22uH/47uH inductors, SMBJ40A, PTC, 100uF/63V.
+- Silkscreen: refs 0.8/0.15 mm auto-placed, footprint silk trimmed at pads/edge; 0 silk DRC warnings. Cat logo + "Connie's Super Awesome Thermostat / VERSION 3.0" on bottom silk.
