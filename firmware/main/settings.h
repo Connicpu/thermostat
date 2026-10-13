@@ -10,6 +10,7 @@ typedef struct {
     uint16_t boost_minutes;
     uint8_t  boost_dir;     /* ctrl_boost_dir_t */
     int16_t  swing;         /* c°C each side of the setpoint, CTRL_SWING_MIN..MAX (v3+) */
+    uint8_t  fahrenheit;    /* display units, 1 = °F (v4+; default from Kconfig) */
 } persist_t;
 void settings_load(persist_t *p);          /* defaults if absent/corrupt */
 bool settings_save(const persist_t *p);

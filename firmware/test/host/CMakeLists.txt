@@ -11,6 +11,10 @@ add_executable(test_control test_control.c
 add_executable(test_misc test_misc.c
     ${FW}/sensor/sht40_parse.c ${FW}/ui/buttons.c
     ${FW}/display/gfx.c ${FW}/display/font_data.c ${FW}/display/display_render.c ${FW}/control/control.c)
+add_executable(test_menu test_menu.c
+    ${FW}/ui/menu.c ${FW}/ui/buttons.c
+    ${FW}/display/gfx.c ${FW}/display/font_data.c ${FW}/display/display_render.c ${FW}/control/control.c)
 enable_testing()
 add_test(NAME control COMMAND test_control)
 add_test(NAME misc COMMAND test_misc)
+add_test(NAME menu COMMAND test_menu)

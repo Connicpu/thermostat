@@ -44,8 +44,90 @@ static const char *link_str(link_state_t l)
     }
 }
 
+/* ---------------- menu views ---------------- */
+
+#define TITLE_H   22
+#define ROW_Y0    24
+#define ROW_H     20
+#define ROWS_VIS  4
+#define HINT_Y    108
+
+static void title_bar(gfx_fb_t *fb, const char *t, const char *right)
+{
+    gfx_fill_rect(fb, 0, 0, GFX_W, TITLE_H, true);
+    gfx_text(fb, &font_small, 6, 2, t, false);
+    if (right) gfx_text(fb, &font_small, GFX_W - 6 - gfx_text_width(&font_small, right), 2, right, false);
+}
+
+static void hint_line(gfx_fb_t *fb, const char *h)
+{
+    gfx_hline(fb, 0, HINT_Y - 4, GFX_W);
+    gfx_text(fb, &font_small, 6, HINT_Y, h, true);
+}
+
+static void render_rows(gfx_fb_t *fb, const menu_view_t *v, bool select)
+{
+    int first = 0;
+    if (select && v->sel >= ROWS_VIS) first = v->sel - ROWS_VIS + 1;
+    for (int i = first; i < v->n_rows && i < first + ROWS_VIS; i++) {
+        int y = ROW_Y0 + (i - first) * ROW_H;
+        bool inv = select && i == v->sel;
+        if (inv) gfx_fill_rect(fb, 0, y - 1, GFX_W, ROW_H, true);
+        gfx_text(fb, &font_small, 10, y, v->label[i], !inv);
+        if (v->value[i][0])
+            gfx_text(fb, &font_small, GFX_W - 10 - gfx_text_width(&font_small, v->value[i]), y, v->value[i], !inv);
+    }
+    /* scroll marks on the right edge when rows are hidden */
+    if (select && first > 0) gfx_fill_rect(fb, GFX_W - 4, ROW_Y0, 3, 6, true);
+    if (select && first + ROWS_VIS < v->n_rows) gfx_fill_rect(fb, GFX_W - 4, ROW_Y0 + ROWS_VIS * ROW_H - 8, 3, 6, true);
+}
+
+static void render_view(gfx_fb_t *fb, const menu_view_t *v)
+{
+    char pos[8];
+    gfx_clear(fb);
+    switch (v->kind) {
+    case VIEW_LIST:
+        snprintf(pos, sizeof pos, "%u/%u", (unsigned)(v->sel + 1), (unsigned)v->n_rows);
+        title_bar(fb, v->title, pos);
+        render_rows(fb, v, true);
+        break;
+    case VIEW_TEXT:
+        title_bar(fb, v->title, NULL);
+        render_rows(fb, v, false);
+        break;
+    case VIEW_VALUE: {
+        title_bar(fb, v->title, NULL);
+        const font_t *f = v->big_is_text ? &font_med : &font_big;
+        int w = gfx_text_width(f, v->big), uw = v->big_unit[0] ? gfx_text_width(&font_med, v->big_unit) + 4 : 0;
+        int x = (GFX_W - w - uw) / 2, y = v->big_is_text ? 48 : 34;
+        gfx_text(fb, f, x, y, v->big, true);
+        if (uw) gfx_text(fb, &font_med, x + w + 4, y + 6, v->big_unit, true);
+        /* up/down arrows either side */
+        for (int i = 0; i < 7; i++) {
+            gfx_hline(fb, 20 - i, 50 + i, 1 + 2 * i);
+            gfx_hline(fb, GFX_W - 20 - i, 70 - i, 1 + 2 * i);
+        }
+        break;
+    }
+    case VIEW_WARNING: {
+        gfx_fill_rect(fb, 0, 0, GFX_W, GFX_H, true);
+        int w = gfx_text_width(&font_med, v->title);
+        gfx_text(fb, &font_med, (GFX_W - w) / 2, 6, v->title, false);
+        for (int i = 0; i < v->n_rows; i++) {
+            w = gfx_text_width(&font_small, v->label[i]);
+            gfx_text(fb, &font_small, (GFX_W - w) / 2, 46 + i * 24, v->label[i], false);
+        }
+        return;
+    }
+    default: break;
+    }
+    if (v->hint[0]) hint_line(fb, v->hint);
+}
+
 void display_render(gfx_fb_t *fb, const display_model_t *m)
 {
+    if (m->view.kind != VIEW_HOME && m->view.kind != VIEW_HOME_BANNER) { render_view(fb, &m->view); return; }
     char b[32];
     gfx_clear(fb);
     const bool F = m->fahrenheit;
@@ -79,8 +161,9 @@ void display_render(gfx_fb_t *fb, const display_model_t *m)
     format_temp(h, sizeof h, m->s.heat_sp, F, !F);
     format_temp(c, sizeof c, m->s.cool_sp, F, !F);
     switch (m->s.mode) {
-    case CTRL_MODE_HEAT: snprintf(b, sizeof b, "Set %s" FONT_DEGREE, h); break;
-    case CTRL_MODE_COOL: snprintf(b, sizeof b, "Set %s" FONT_DEGREE, c); break;
+    /* "Set 21.5°" does not fit the column in medium font: drop "Set" in °C */
+    case CTRL_MODE_HEAT: snprintf(b, sizeof b, "%s%s" FONT_DEGREE, F ? "Set " : "", h); break;
+    case CTRL_MODE_COOL: snprintf(b, sizeof b, "%s%s" FONT_DEGREE, F ? "Set " : "", c); break;
     case CTRL_MODE_AUTO: snprintf(b, sizeof b, "%s - %s" FONT_DEGREE, h, c); break;
     default:             b[0] = 0; break;
     }
@@ -100,7 +183,10 @@ void display_render(gfx_fb_t *fb, const display_model_t *m)
 
     /* ---- bottom status bar ---- */
     gfx_hline(fb, 0, 104, GFX_W);
-    if (m->banner) {
+    if (m->view.kind == VIEW_HOME_BANNER) {
+        gfx_fill_rect(fb, 0, 105, GFX_W, GFX_H - 105, true);
+        gfx_text(fb, &font_small, 4, 108, m->view.hint, false);
+    } else if (m->banner) {
         gfx_text(fb, &font_small, 4, 108, m->banner, true);
     } else if (m->boost != BOOST_NONE) {
         const char *d = m->boost_dir == CTRL_MODE_COOL ? "cool" : "heat";

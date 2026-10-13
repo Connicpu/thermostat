@@ -21,13 +21,13 @@ btn_event_t btn_tick(btn_t *b, bool raw)
 
     if (b->stable && !was) {                  /* press edge */
         b->held_ms = 0;
-        b->long_fired = b->vlong_fired = false;
+        b->hold_fired = b->long_fired = b->warn_fired = b->vlong_fired = false;
         b->next_repeat_ms = BTN_REPEAT_DELAY;
         return b->autorepeat ? BTN_EV_PRESS : BTN_EV_NONE;
     }
     if (!b->stable && was) {                  /* release edge */
-        if (!b->autorepeat && !b->long_fired) return BTN_EV_PRESS;
-        return BTN_EV_NONE;
+        if (b->autorepeat) return BTN_EV_NONE;
+        return b->hold_fired ? BTN_EV_RELEASE : BTN_EV_PRESS;
     }
     if (b->stable) {
         b->held_ms += BTN_TICK_MS;
@@ -37,8 +37,11 @@ btn_event_t btn_tick(btn_t *b, bool raw)
                 return BTN_EV_REPEAT;
             }
         } else {
-            if (!b->vlong_fired && b->held_ms >= BTN_VLONG_MS) { b->vlong_fired = true; return BTN_EV_VLONG; }
+            /* one event per tick, in order; stages are far apart so none is ever late */
+            if (!b->hold_fired && b->held_ms >= BTN_HOLD_MS)   { b->hold_fired = true;  return BTN_EV_HOLD; }
             if (!b->long_fired && b->held_ms >= BTN_LONG_MS)   { b->long_fired = true;  return BTN_EV_LONG; }
+            if (!b->warn_fired && b->held_ms >= BTN_WARN_MS)   { b->warn_fired = true;  return BTN_EV_WARN; }
+            if (!b->vlong_fired && b->held_ms >= BTN_VLONG_MS) { b->vlong_fired = true; return BTN_EV_VLONG; }
         }
     }
     return BTN_EV_NONE;

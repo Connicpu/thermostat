@@ -49,6 +49,10 @@ typedef struct {
     uint8_t  boost_state;          /* ZB_BOOST_STATE_* */
     uint16_t boost_remaining_min;
     uint8_t  boost_last_result;    /* ZB_BOOST_RESULT_* */
+    /* Writable 0xFC57 settings; pushed (and reported) when changed locally, e.g. from the on-device menu. */
+    int16_t  boost_sp;
+    uint16_t boost_minutes;
+    int16_t  swing;
 } zb_thermostat_state_t;
 
 esp_err_t    zb_thermostat_start(const zb_thermostat_cbs_t *cbs, const zb_thermostat_init_t *init);

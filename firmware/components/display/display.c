@@ -2,7 +2,8 @@
  * - Button-driven changes: partial refresh ~400 ms after the last change.
  * - Background changes (temp, humidity, link, running state): at most one
  *   refresh per 3 min (Good Display / Waveshare guidance), partial.
- * - A full refresh every 20 partials or every 6 h clears ghosting. */
+ * - A full refresh every 20 partials or every 6 h clears ghosting, and
+ *   whenever display_model_t.full_epoch changes (leaving the menu). */
 #include "display.h"
 #include "ssd1680.h"
 #include "esp_log.h"
@@ -47,6 +48,7 @@ static void display_task(void *arg)
 {
     uint64_t last_refresh = 0, last_full = 0;
     int partials = 0;
+    uint8_t epoch = 0;
     bool first = true;
     for (;;) {
         ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(200));
@@ -65,8 +67,10 @@ static void display_task(void *arg)
         if (!go) continue;
 
         display_render(&s_fb, &m);
-        if (!first && memcmp(&s_fb, &s_prev, sizeof s_fb) == 0) continue;
-        bool full = first || partials >= FULL_EVERY_PARTIALS || now - last_full >= FULL_EVERY_MS;
+        bool want_full = m.full_epoch != epoch;   /* menu exit / reset warning: clear ghosting */
+        epoch = m.full_epoch;
+        if (!first && !want_full && memcmp(&s_fb, &s_prev, sizeof s_fb) == 0) continue;
+        bool full = first || want_full || partials >= FULL_EVERY_PARTIALS || now - last_full >= FULL_EVERY_MS;
         esp_err_t err = ssd1680_show(&s_fb, &s_prev, full);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "refresh failed: %s", esp_err_to_name(err));

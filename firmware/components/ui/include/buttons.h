@@ -8,15 +8,23 @@
 #define BTN_DEBOUNCE_MS    30
 #define BTN_REPEAT_DELAY   600
 #define BTN_REPEAT_EVERY   200
-#define BTN_LONG_MS        3000    /* MODE: pairing */
-#define BTN_VLONG_MS       10000   /* MODE: factory reset */
+/* Non-repeating (MODE) button hold stages. A release before BTN_HOLD_MS is a
+ * short PRESS; after that the release is reported as BTN_EV_RELEASE so the
+ * caller can act on the stage it reached (see components/ui/menu.h). */
+#define BTN_HOLD_MS        1500    /* menu: "hold M to confirm" */
+#define BTN_LONG_MS        5000    /* home: pairing (acted on at release, before WARN) */
+#define BTN_WARN_MS        8000    /* home: factory-reset warning on screen */
+#define BTN_VLONG_MS       15000   /* home: factory reset */
 
 typedef enum {
     BTN_EV_NONE = 0,
-    BTN_EV_PRESS,     /* auto-repeat buttons: on press. others: on release if short */
+    BTN_EV_PRESS,     /* auto-repeat buttons: on press. others: on release if < BTN_HOLD_MS */
     BTN_EV_REPEAT,    /* auto-repeat buttons while held */
     BTN_EV_LONG,      /* held >= BTN_LONG_MS (fires once, while still held) */
     BTN_EV_VLONG,     /* held >= BTN_VLONG_MS (fires once, while still held) */
+    BTN_EV_HOLD,      /* held >= BTN_HOLD_MS (fires once, while still held) */
+    BTN_EV_WARN,      /* held >= BTN_WARN_MS (fires once, while still held) */
+    BTN_EV_RELEASE,   /* released after BTN_EV_HOLD fired (non-repeating buttons) */
 } btn_event_t;
 
 typedef struct {
@@ -26,7 +34,7 @@ typedef struct {
     uint32_t raw_same_ms;
     uint32_t held_ms;
     uint32_t next_repeat_ms;
-    bool     long_fired, vlong_fired;
+    bool     hold_fired, long_fired, warn_fired, vlong_fired;
 } btn_t;
 
 void        btn_init(btn_t *b, bool autorepeat);

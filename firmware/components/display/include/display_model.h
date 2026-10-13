@@ -7,6 +7,31 @@
 
 typedef enum { LINK_OFFLINE = 0, LINK_PAIRING, LINK_JOINED, LINK_LOST } link_state_t;
 
+/* What the on-device menu wants on screen (filled by menu_view(), see
+ * components/ui/menu.h). VIEW_HOME = normal screen. Plain text only, so the
+ * whole model stays memcmp-able for change detection. */
+typedef enum {
+    VIEW_HOME = 0,
+    VIEW_HOME_BANNER,   /* normal screen, `hint` replaces the status bar (inverted) */
+    VIEW_LIST,          /* title bar + scrolling rows, `sel` highlighted */
+    VIEW_VALUE,         /* title bar + one big value being edited */
+    VIEW_TEXT,          /* title bar + read-only label/value rows */
+    VIEW_WARNING,       /* full-screen inverted warning */
+} view_kind_t;
+
+#define VIEW_MAX_ROWS 8
+typedef struct {
+    view_kind_t kind;
+    char    title[20];
+    char    hint[40];                     /* bottom line */
+    uint8_t n_rows, sel;
+    char    label[VIEW_MAX_ROWS][28];
+    char    value[VIEW_MAX_ROWS][16];
+    char    big[12];                      /* VIEW_VALUE: value text */
+    char    big_unit[8];
+    bool    big_is_text;                  /* letters: medium font instead of the digit-only big font */
+} menu_view_t;
+
 typedef struct {
     bool         temp_valid;
     int16_t      temp;        /* c°C */
@@ -22,7 +47,9 @@ typedef struct {
     int16_t      boost_sp;        /* c°C (to-target) */
     uint16_t     boost_min_left;  /* minutes, rounded up (timed) */
     int16_t      swing;       /* c°C each side of the setpoint; 0 = not shown */
-    const char  *banner;      /* optional one-off message (e.g. "FACTORY RESET"), NULL = none */
+    const char  *banner;
+    menu_view_t  view;
+    uint8_t      full_epoch;  /* bump to force a full (de-ghosting) refresh */      /* optional one-off message (e.g. "FACTORY RESET"), NULL = none */
 } display_model_t;
 
 /* Temperature formatting helpers shared with the UI. */

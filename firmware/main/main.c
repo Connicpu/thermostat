@@ -29,6 +29,8 @@
 #include "sensor.h"
 #include "settings.h"
 #include "ui.h"
+#include "menu.h"
+#include "fw_version.h"
 #include "zb_thermostat.h"
 
 static const char *TAG = "app";
@@ -40,7 +42,10 @@ static const char *TAG = "app";
 #define OTA_VALID_AFTER_MS  60000
 #define BANNER_MS           4000
 
-static const bool FAHRENHEIT = CONFIG_THERMO_DISPLAY_FAHRENHEIT;
+/* on-device menu (pure state machine in components/ui/menu.c) */
+static menu_t s_menu;
+static uint8_t s_full_epoch;          /* bumped -> display does a full refresh */
+static sensor_reading_t s_raw;        /* last reading, calibration removed (Device info) */
 
 static SemaphoreHandle_t s_mtx;     /* guards s_persist */
 static persist_t s_persist;
@@ -188,26 +193,13 @@ static void on_button(ui_button_t which, btn_event_t ev)
     xQueueSend(s_btn_q, &m, 0);
 }
 
-/* Step a setpoint by one display unit (1 °F or 0.5 °C). */
-static int16_t step_sp(int16_t sp, int dir)
-{
-    if (FAHRENHEIT) {
-        int32_t f10 = (int32_t)sp * 9 / 5 + 3200;                 /* c°F */
-        int32_t f = (f10 >= 0 ? f10 + 50 : f10 - 50) / 100 + dir; /* whole °F */
-        int32_t c = ((f * 100 - 3200) * 5 + (f >= 32 ? 4 : -4)) / 9;
-        return (int16_t)c;
-    }
-    int32_t half = (sp + (sp >= 0 ? 25 : -25)) / 50 + dir;
-    return (int16_t)(half * 50);
-}
-
-
 /* returns true if the display should refresh promptly */
-static bool handle_button(const btn_msg_t *m)
+static bool handle_home_key(const btn_msg_t *m)
 {
     persist_t p = settings_get();
     ctrl_settings_t s = p.s;
     int dir = m->which == UI_BTN_UP ? 1 : -1;
+    const bool F = p.fahrenheit;
     static ctrl_settings_t before_nudge;
     static uint64_t nudge_at;
 
@@ -226,47 +218,112 @@ static bool handle_button(const btn_msg_t *m)
         if (ui_combo_active()) return false;
         if (m->ev == BTN_EV_PRESS) { before_nudge = s; nudge_at = now_ms(); }
         switch (s.mode) {
-        case CTRL_MODE_HEAT: s.heat_sp = step_sp(s.heat_sp, dir); settings_update(&s, true); break;
-        case CTRL_MODE_COOL: s.cool_sp = step_sp(s.cool_sp, dir); settings_update(&s, false); break;
+        case CTRL_MODE_HEAT: s.heat_sp = menu_step_temp(s.heat_sp, dir, F); settings_update(&s, true); break;
+        case CTRL_MODE_COOL: s.cool_sp = menu_step_temp(s.cool_sp, dir, F); settings_update(&s, false); break;
         case CTRL_MODE_AUTO: {
-            int16_t nh = step_sp(s.heat_sp, dir);
+            int16_t nh = menu_step_temp(s.heat_sp, dir, F);
             s.cool_sp = (int16_t)(s.cool_sp + (nh - s.heat_sp));
             s.heat_sp = nh;
             settings_update(&s, dir > 0 ? false : true);
             break;
         }
-        default: banner("Mode is OFF - press MODE"); break;
+        default: banner("Mode is OFF - M: menu > Mode"); break;
         }
         return true;
-    case UI_BTN_MODE:
-        if (m->ev == BTN_EV_PRESS) {
-            s.mode = ctrl_next_mode(s.mode);
-            settings_update(&s, true);
-            return true;
-        }
-        if (m->ev == BTN_EV_LONG) {
-            banner("Pairing... (keep holding to reset)");
-            zb_thermostat_pair();
-            return true;
-        }
-        if (m->ev == BTN_EV_VLONG) {
-            ESP_LOGW(TAG, "factory reset");
-            hvac_outputs_all_off();
-            settings_erase();
-            display_model_t dm = {0};
-            dm.banner = "FACTORY RESET";
-            display_post(&dm, true);
-            for (int i = 0; i < 12; i++) {          /* ~3 s for the panel to show it; keep the dogs fed */
-                vTaskDelay(pdMS_TO_TICKS(250));
-                esp_task_wdt_reset();
-                if (hw_watchdog_armed()) hw_watchdog_kick();
-            }
-            zb_thermostat_factory_reset();          /* erases Zigbee NVRAM and restarts */
-            esp_restart();
-        }
+    default:
         return false;
     }
     return false;
+}
+
+static void factory_reset(void)
+{
+    ESP_LOGW(TAG, "factory reset");
+    hvac_outputs_all_off();
+    settings_erase();
+    display_model_t dm = {0};
+    dm.banner = "FACTORY RESET";
+    dm.full_epoch = (uint8_t)(s_full_epoch + 1);
+    display_post(&dm, true);
+    for (int i = 0; i < 12; i++) {          /* ~3 s for the panel to show it; keep the dogs fed */
+        vTaskDelay(pdMS_TO_TICKS(250));
+        esp_task_wdt_reset();
+        if (hw_watchdog_armed()) hw_watchdog_kick();
+    }
+    zb_thermostat_factory_reset();          /* erases Zigbee NVRAM and restarts */
+    esp_restart();
+}
+
+static void persist_edit(void (*fn)(persist_t *, int32_t), int32_t v)
+{
+    xSemaphoreTake(s_mtx, portMAX_DELAY);
+    fn(&s_persist, v);
+    s_dirty = true;
+    s_dirty_at = now_ms();
+    xSemaphoreGive(s_mtx);
+}
+static void set_boost_sp(persist_t *p, int32_t v)  { p->boost_sp = (int16_t)v; }
+static void set_boost_min(persist_t *p, int32_t v) { p->boost_minutes = (uint16_t)v; }
+static void set_swing(persist_t *p, int32_t v)     { p->swing = ctrl_clamp_swing(v); }
+static void set_units(persist_t *p, int32_t v)     { p->fahrenheit = v ? 1 : 0; }
+
+static menu_ctx_t menu_ctx(const persist_t *p, uint64_t now)
+{
+    return (menu_ctx_t){
+        .mode = p->s.mode, .boost_active = s_boost_active, .boost_sp = p->boost_sp,
+        .boost_minutes = p->boost_minutes, .swing = p->swing, .fahrenheit = p->fahrenheit,
+        .link = zb_thermostat_link(), .fw_version = FW_VERSION,
+        .raw_valid = s_raw.valid, .raw_temp = s_raw.temp_c100, .raw_rh = s_raw.rh_c100,
+        .uptime_s = (uint32_t)(now / 1000),
+    };
+}
+
+static bool apply_menu_action(const menu_action_t *a)
+{
+    uint8_t cmd;
+    persist_t p = settings_get();
+    switch (a->kind) {
+    case MA_SET_MODE:
+        p.s.mode = (ctrl_mode_t)a->value;
+        settings_update(&p.s, true);
+        break;
+    case MA_BOOST_TARGET:
+        persist_edit(set_boost_sp, a->value);
+        cmd = ZB_BOOST_CMD_START_TARGET; xQueueSend(s_boost_q, &cmd, 0);
+        break;
+    case MA_BOOST_TIMED:
+        persist_edit(set_boost_min, a->value);
+        cmd = ZB_BOOST_CMD_START_TIMED; xQueueSend(s_boost_q, &cmd, 0);
+        break;
+    case MA_BOOST_CANCEL:
+        cmd = ZB_BOOST_CMD_CANCEL; xQueueSend(s_boost_q, &cmd, 0);
+        break;
+    case MA_SET_SWING: persist_edit(set_swing, a->value); break;
+    case MA_SET_UNITS: persist_edit(set_units, a->value); break;
+    case MA_PAIR:
+        banner(zb_thermostat_link() == LINK_JOINED ? "Already paired (reset to re-pair)" : "Pairing...");
+        zb_thermostat_pair();
+        break;
+    case MA_FACTORY_RESET:
+        factory_reset();
+        break;
+    default: break;
+    }
+    if (a->full_refresh) s_full_epoch++;
+    return a->redraw || a->full_refresh;
+}
+
+/* returns true if the display should refresh promptly */
+static bool handle_button(const btn_msg_t *m)
+{
+    static const menu_key_t KEYS[] = {MENU_KEY_UP, MENU_KEY_DOWN, MENU_KEY_M, MENU_KEY_COMBO};
+    persist_t p = settings_get();
+    menu_ctx_t c = menu_ctx(&p, now_ms());
+    /* while UP+DOWN are held together their single events are not menu moves */
+    if ((m->which == UI_BTN_UP || m->which == UI_BTN_DOWN) && ui_combo_active() && !menu_is_home(&s_menu)) return false;
+    menu_action_t a = menu_key(&s_menu, &c, KEYS[m->which], (btn_event_t)m->ev, now_ms());
+    if (a.kind == MA_HOME_KEY) return handle_home_key(m);
+    return apply_menu_action(&a);
 }
 
 /* ---------------- LED ---------------- */
@@ -306,11 +363,14 @@ static void app_task(void *arg)
             rd = sensor_read((int16_t)(CONFIG_THERMO_SELF_HEAT_OFFSET_C100 + p.calib_tenths * 10));
             ctrl_input_t in = {.valid = rd.valid, .temp = rd.temp_c100};
             ctrl_feed_sensor(&ctl, &in, now);
+            s_raw = rd;
+            s_raw.temp_c100 = (int16_t)(rd.temp_c100 - (CONFIG_THERMO_SELF_HEAT_OFFSET_C100 + p.calib_tenths * 10));
         }
 
         /* 2. buttons */
         btn_msg_t m;
         while (xQueueReceive(s_btn_q, &m, 0) == pdTRUE) urgent |= handle_button(&m);
+        { menu_action_t ma = menu_tick(&s_menu, now); urgent |= apply_menu_action(&ma); }   /* 10 s idle */
         p = settings_get();
         uint8_t bcmd;
         while (xQueueReceive(s_boost_q, &bcmd, 0) == pdTRUE) { handle_boost_cmd(&ctl, bcmd, now); urgent = true; }
@@ -336,6 +396,7 @@ static void app_task(void *arg)
             .temp_valid = rd.valid && o.fault != CTRL_FAULT_TEMP_RANGE, .temp = rd.temp_c100,
             .rh_valid = rd.valid, .rh = rd.rh_c100, .s = p.s, .w = act.w, .y = act.y, .g = act.g,
             .boost_state = bstate, .boost_remaining_min = bmin, .boost_last_result = s_boost_result,
+            .boost_sp = p.boost_sp, .boost_minutes = p.boost_minutes, .swing = p.swing,
         };
         zb_thermostat_publish(&zs);
         link_state_t link = zb_thermostat_link();
@@ -353,7 +414,13 @@ static void app_task(void *arg)
         dm.w = act.w; dm.y = act.y; dm.g = act.g; dm.waiting = o.waiting;
         dm.fault = o.fault;
         dm.link = link;
-        dm.fahrenheit = FAHRENHEIT;
+        dm.fahrenheit = p.fahrenheit;
+        {
+            menu_ctx_t mc = menu_ctx(&p, now);
+            if (!menu_is_home(&s_menu)) mc.raw_temp = (int16_t)(s_raw.temp_c100 / 10 * 10); /* 0.1 steps: fewer refreshes */
+            menu_view(&s_menu, &mc, &dm.view);
+        }
+        dm.full_epoch = s_full_epoch;
         dm.swing = p.swing;
         dm.boost = bs.kind;
         dm.boost_dir = bs.dir;
@@ -433,6 +500,7 @@ void app_main(void)
     s_btn_q = xQueueCreate(16, sizeof(btn_msg_t));
     s_boost_q = xQueueCreate(4, sizeof(uint8_t));
     settings_load(&s_persist);
+    menu_init(&s_menu);
     ESP_LOGI(TAG, "settings: mode %d heat %d cool %d fan %d calib %d", s_persist.s.mode, s_persist.s.heat_sp,
              s_persist.s.cool_sp, s_persist.s.fan, s_persist.calib_tenths);
 

@@ -20,7 +20,7 @@ HA thermostat for a single-stage gas furnace plus AC, with 24 VAC W/Y/G triac ou
 | `components/hvac_outputs` | `hvac_interlock.c` (pure) is the **single** W/Y interlock. `hvac_outputs.c` is the only code that touches DRV_W/Y/G | interlock: yes |
 | `components/sensor` | SHT40 over I2C (`sht40_parse.c` handles CRC and conversion and is pure) | parser: yes |
 | `components/display` | SSD1680/GDEY029T94 driver, 1-bpp graphics plus fonts, screen renderer (pure), refresh-policy task | renderer: yes |
-| `components/ui` | Button debounce, auto-repeat and long-press state machine (pure), 10 ms sampler, LED | state machine: yes |
+| `components/ui` | Button debounce, auto-repeat and hold-stage state machine (pure), on-device menu state machine (pure), 10 ms sampler, LED | state machines: yes |
 | `components/zigbee` | Endpoint and cluster model, commissioning, attribute writes, OTA client | no |
 | `components/board` | Pin map (`board.h`), STWD100 driver | no |
 | `main` | Wires it all together; NVS settings; health check and watchdog kick | no |
@@ -135,18 +135,57 @@ Changes made on the device (buttons) are written into the local attributes, so c
 
 | Input | Action |
 |---|---|
-| UP / DOWN | Setpoint ±1 °F (or ±0.5 °C). Auto-repeats after 0.6 s. HEAT edits the heat setpoint, COOL edits the cool setpoint, AUTO shifts both. Ignored in OFF |
-| MODE (short) | OFF → HEAT → COOL → AUTO → OFF |
-| MODE hold 3 s | Start pairing (network steering) if not joined |
-| MODE hold 10 s | **Factory reset**: outputs off, settings erased, leave the network, reboot |
+| UP / DOWN | Main screen: setpoint ±1 °F (or ±0.5 °C). Auto-repeats after 0.6 s. HEAT edits the heat setpoint, COOL edits the cool setpoint, AUTO shifts both. Ignored in OFF |
+| UP + DOWN | Start a timed boost, or cancel the running one |
+| M (short) | Open the menu |
+| M hold 5 s | Bottom bar: *Let go: pair / hold on: reset*. **Releasing between 5 and 8 s starts pairing** |
+| M hold 8 s | Full-screen **factory reset warning** ("keep holding M to reset, release to cancel"). Releasing now cancels and the screen is restored with a full refresh |
+| M hold 15 s | **Factory reset**: outputs off, settings erased, leave the network, reboot |
 | RESET pinhole | Hardware reset |
 
 Debounce is 30 ms. Fan On/Auto is currently Zigbee-only (see TODO).
+
+Pairing is triggered on *release* in the 5–8 s window rather than at 5 s, so a hold that goes on to
+a factory reset never starts pairing on the way. A short press is a release before 1.5 s; a release
+between 1.5 and 5 s does nothing. Long holds only do this on the main screen; in the menu they're
+ignored (except *Zigbee → hold M*), and after a hold action the rest of that hold is swallowed.
+
+### Menu
+
+UP/DOWN move (wrapping), M selects. Editors: UP/DOWN change, M saves. **10 s without a key anywhere
+in the menu returns to the main screen without saving.** Leaving the menu (Back, a boost start,
+timeout) does a full refresh to clear ghosting; inside the menu each key press is a partial refresh,
+and the usual every-20th-refresh full refresh still applies.
+
+| Item | What it does |
+|---|---|
+| Mode | Off / Heat / Cool / Auto |
+| Boost → To target | Set the target (0.5 °C / 1 °F steps, 10–32 °C), M starts it |
+| Boost → For N minutes | 15–120 min in 15 min steps, M starts it |
+| Boost → Cancel boost | Only listed while a boost runs |
+| Swing | ±0.1–1.0 °C in 0.1 °C steps (shown converted when the units are °F) |
+| Units | °C / °F for the display (persisted; Kconfig sets the factory default; display only, HA keeps its own units) |
+| Zigbee | Link status; **hold M (1.5 s)** to start pairing |
+| Device info | Firmware version, raw (uncalibrated) temperature and RH, uptime |
+| Back | Main screen |
+
+Changes go through the same paths as the buttons and HA: mode via the Thermostat cluster, boost
+target/duration and swing via the 0xFC57 attributes (written locally and reported, so HA sees them),
+boosts through the same command queue as HA's Start/Cancel buttons. The logic is a pure state
+machine in `components/ui/menu.c`, unit-tested on the host (`test/host/test_menu.c`, including the
+hold timings fed through the real debouncer).
+
+| | | |
+|---|---|---|
+| ![menu](docs/display_menu_main.png) | ![menu scrolled](docs/display_menu_main_scrolled.png) | ![mode](docs/display_menu_mode.png) |
+| ![boost](docs/display_menu_boost.png) | ![boost to](docs/display_menu_boost_target.png) | ![boost for](docs/display_menu_boost_minutes.png) |
+| ![swing °F](docs/display_menu_swing_f.png) | ![units](docs/display_menu_units.png) | ![zigbee](docs/display_menu_zigbee.png) |
+| ![info](docs/display_menu_info.png) | ![hold 5 s](docs/display_menu_hold_pair.png) | ![reset warning](docs/display_menu_reset_warning.png) |
 Display refreshes: a partial refresh ~0.4 s after a button change. Background changes (temperature,
 humidity, running state, link) refresh at most every 3 min, as partials. Every 20th refresh, or every
 6 h, is a full refresh to clear ghosting. The panel deep-sleeps between refreshes. Displayed temperature
 is rounded to 0.1 °C before comparing, so sensor noise doesn't trigger refreshes.
-Settings (mode, fan, both setpoints, calibration) are saved to NVS 5 s after the last change.
+Settings (mode, fan, both setpoints, calibration, boost preferences, swing, units) are saved to NVS 5 s after the last change.
 
 ## Building
 

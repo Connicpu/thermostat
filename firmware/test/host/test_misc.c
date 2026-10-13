@@ -59,10 +59,14 @@ static void buttons_mode_short_long(void)
     btn_init(&b, false);
     n = feed(&b, true, 500, ev, 8);  CHECK_EQ(n, 0);           /* nothing until release */
     n = feed(&b, false, 100, ev, 8); CHECK_EQ(n, 1); CHECK_EQ(ev[0], BTN_EV_PRESS);
-    n = feed(&b, true, 3100, ev, 8); CHECK_EQ(n, 1); CHECK_EQ(ev[0], BTN_EV_LONG);
-    n = feed(&b, false, 100, ev, 8); CHECK_EQ(n, 0);           /* no short press after long */
-    n = feed(&b, true, 10100, ev, 8); CHECK_EQ(n, 2); CHECK_EQ(ev[0], BTN_EV_LONG); CHECK_EQ(ev[1], BTN_EV_VLONG);
-    n = feed(&b, false, 100, ev, 8); CHECK_EQ(n, 0);
+    n = feed(&b, true, 1600, ev, 8); CHECK_EQ(n, 1); CHECK_EQ(ev[0], BTN_EV_HOLD);
+    n = feed(&b, false, 100, ev, 8); CHECK_EQ(n, 1); CHECK_EQ(ev[0], BTN_EV_RELEASE); /* no short press after hold */
+    n = feed(&b, true, 5100, ev, 8); CHECK_EQ(n, 2); CHECK_EQ(ev[0], BTN_EV_HOLD); CHECK_EQ(ev[1], BTN_EV_LONG);
+    n = feed(&b, true, 2850, ev, 8); CHECK_EQ(n, 0);                       /* ~7.9 s held: no warning yet */
+    n = feed(&b, true, 100, ev, 8); CHECK_EQ(n, 1); CHECK_EQ(ev[0], BTN_EV_WARN);
+    n = feed(&b, true, 6900, ev, 8); CHECK_EQ(n, 0);
+    n = feed(&b, true, 100, ev, 8); CHECK_EQ(n, 1); CHECK_EQ(ev[0], BTN_EV_VLONG);
+    n = feed(&b, false, 100, ev, 8); CHECK_EQ(n, 1); CHECK_EQ(ev[0], BTN_EV_RELEASE);
 }
 
 static void temp_formatting(void)

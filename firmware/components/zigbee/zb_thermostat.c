@@ -9,6 +9,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "sdkconfig.h"
+#include "fw_version.h"
 
 static const char *TAG = "zb";
 
@@ -18,7 +19,7 @@ static const char *TAG = "zb";
 /* ZCL char strings: first byte = length */
 #define MANUFACTURER_NAME "\x06" "Connie"
 #define MODEL_ID          "\x0d" "thermostat-v3"
-#define SW_BUILD_ID       "\x05" "0.1.0"
+#define SW_BUILD_ID       "\x05" FW_VERSION   /* ZCL char string: length prefix, keep FW_VERSION 5 chars */
 
 #define RUNNING_HEAT 0x0001
 #define RUNNING_COOL 0x0002
@@ -170,7 +171,8 @@ static esp_err_t on_set_attr(const esp_zb_zcl_set_attr_value_message_t *m)
             int16_t sw = ctrl_clamp_swing(raw > 1000 ? 1000 : raw);
             if (sw != (int16_t)raw) {   /* store the clamped value so a read-back shows reality */
                 s_swing = (uint16_t)sw;
-                esp_zb_zcl_set_attribute_val(EP, ZB_BOOST_CLUSTER_ID, SERVER, ZB_ATTR_SWING, &s_swing, false);
+                esp_zb_zcl_set_manufacturer_attribute_val(EP, ZB_BOOST_CLUSTER_ID, SERVER, ZB_BOOST_MANUF_CODE, ZB_ATTR_SWING,
+                                                          &s_swing, false);
             }
             s_swing = (uint16_t)sw;
             if (s_cbs.on_swing) s_cbs.on_swing(sw);
@@ -509,6 +511,26 @@ void zb_thermostat_publish(const zb_thermostat_state_t *st)
         {ZB_BOOST_ATTR_LAST_RESULT, (void *)&st->boost_last_result,
          !have_last || st->boost_last_result != last.boost_last_result},
     };
+    /* Settings changed on the device itself: update the attribute store and report.
+     * Compare with what the app published last time (not with the attribute),
+     * so a stale snapshot can never undo a write that just arrived from HA. */
+    bool sp_ch = have_last && st->boost_sp != last.boost_sp && st->boost_sp != s_boost_sp;
+    bool min_ch = have_last && st->boost_minutes != last.boost_minutes && st->boost_minutes != s_boost_min;
+    bool sw_ch = have_last && st->swing != last.swing && (uint16_t)st->swing != s_swing;
+    if (sp_ch) s_boost_sp = st->boost_sp;
+    if (min_ch) s_boost_min = st->boost_minutes;
+    if (sw_ch) s_swing = (uint16_t)st->swing;
+    struct { uint16_t id; void *v; uint8_t was_changed; } sattrs[] = {
+        {ZB_BOOST_ATTR_SETPOINT, &s_boost_sp, sp_ch},
+        {ZB_BOOST_ATTR_DURATION, &s_boost_min, min_ch},
+        {ZB_ATTR_SWING, &s_swing, sw_ch},
+    };
+    for (size_t i = 0; i < sizeof sattrs / sizeof sattrs[0]; i++) {
+        if (!sattrs[i].was_changed) continue;
+        esp_zb_zcl_set_manufacturer_attribute_val(EP, ZB_BOOST_CLUSTER_ID, SERVER, ZB_BOOST_MANUF_CODE, sattrs[i].id,
+                                                  sattrs[i].v, false);
+        if (s_link == LINK_JOINED) report_boost_attr(sattrs[i].id);
+    }
     for (size_t i = 0; i < sizeof battrs / sizeof battrs[0]; i++) {
         if (!battrs[i].was_changed) continue;
         esp_zb_zcl_set_manufacturer_attribute_val(EP, ZB_BOOST_CLUSTER_ID, SERVER, ZB_BOOST_MANUF_CODE, battrs[i].id,

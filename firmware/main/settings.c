@@ -6,7 +6,9 @@
 
 #define NS "tstat"
 #define KEY "cfg"
-#define VERSION 3
+#include "sdkconfig.h"
+
+#define VERSION 4
 
 typedef struct { uint8_t version; persist_t p; } blob_t;
 
@@ -20,6 +22,17 @@ typedef struct {
 } persist_v2_t;
 typedef struct { uint8_t version; persist_v2_t p; } blob_v2_t;
 
+/* v3 layout (before the units setting), laid out exactly as persist_t was. */
+typedef struct {
+    ctrl_settings_t s;
+    int8_t calib_tenths;
+    int16_t boost_sp;
+    uint16_t boost_minutes;
+    uint8_t boost_dir;
+    int16_t swing;
+} persist_v3_t;
+typedef struct { uint8_t version; persist_v3_t p; } blob_v3_t;
+
 static void defaults(persist_t *p)
 {
     memset(p, 0, sizeof *p);
@@ -28,6 +41,7 @@ static void defaults(persist_t *p)
     p->boost_minutes = 30;
     p->boost_dir = BOOST_DIR_AUTO;
     p->swing = CTRL_SWING_DEFAULT;
+    p->fahrenheit = CONFIG_THERMO_DISPLAY_FAHRENHEIT ? 1 : 0;
 }
 
 void settings_load(persist_t *p)
@@ -35,11 +49,18 @@ void settings_load(persist_t *p)
     defaults(p);
     nvs_handle_t h;
     if (nvs_open(NS, NVS_READONLY, &h) != ESP_OK) return;
-    union { blob_t v3; blob_v2_t v2; } b;
+    union { blob_t v4; blob_v3_t v3; blob_v2_t v2; } b;
     size_t n = sizeof b;
     if (nvs_get_blob(h, KEY, &b, &n) == ESP_OK) {
-        if (n == sizeof b.v3 && b.v3.version == VERSION) {
-            *p = b.v3.p;
+        if (n == sizeof b.v4 && b.v4.version == VERSION) {
+            *p = b.v4.p;
+        } else if (n == sizeof b.v3 && b.v3.version == 3) {   /* keep settings, add default units */
+            p->s = b.v3.p.s;
+            p->calib_tenths = b.v3.p.calib_tenths;
+            p->boost_sp = b.v3.p.boost_sp;
+            p->boost_minutes = b.v3.p.boost_minutes;
+            p->boost_dir = b.v3.p.boost_dir;
+            p->swing = b.v3.p.swing;
         } else if (n == sizeof b.v2 && b.v2.version == 2) {   /* keep settings, add default swing */
             p->s = b.v2.p.s;
             p->calib_tenths = b.v2.p.calib_tenths;
@@ -55,6 +76,7 @@ void settings_load(persist_t *p)
     if (p->boost_sp < prm.min_sp || p->boost_sp > prm.max_sp) p->boost_sp = 2200;
     if (p->boost_minutes < BOOST_TIMED_MIN_MIN || p->boost_minutes > BOOST_TIMED_MAX_MIN) p->boost_minutes = 30;
     if (p->boost_dir > BOOST_DIR_COOL) p->boost_dir = BOOST_DIR_AUTO;
+    if (p->fahrenheit > 1) p->fahrenheit = CONFIG_THERMO_DISPLAY_FAHRENHEIT ? 1 : 0;
     if (p->swing < CTRL_SWING_MIN || p->swing > CTRL_SWING_MAX) p->swing = CTRL_SWING_DEFAULT;
 }
 
