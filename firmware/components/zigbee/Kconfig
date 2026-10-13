@@ -1,0 +1,21 @@
+menu "Thermostat Zigbee"
+    config THERMO_ZB_LONG_POLL_MS
+        int "End-device long poll interval (ms)"
+        default 3000
+        help
+            How often the rx-off-when-idle end device polls its parent for
+            buffered messages. This is the worst-case latency for a setpoint
+            change from Home Assistant to land. Lower = more radio on-time.
+    config THERMO_OTA_MANUFACTURER
+        hex "OTA manufacturer code"
+        default 0x131B
+    config THERMO_OTA_IMAGE_TYPE
+        hex "OTA image type"
+        default 0x0301
+    config THERMO_OTA_FILE_VERSION
+        hex "Running firmware file version (bump for every OTA image)"
+        default 0x00000001
+    config THERMO_HW_VERSION
+        int "Hardware version"
+        default 3
+endmenu

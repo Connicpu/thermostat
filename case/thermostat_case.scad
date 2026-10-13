@@ -10,7 +10,7 @@ W = 146; H = 70;            // outer footprint (drywall-anchor version)
 wall = 2.4;                 // shell side walls (>=2 mm)
 clr = 0.3;                  // fit clearance
 plate_t = 3.0;              // backplate thickness
-standoff_h = 4.0;           // backplate face -> PCB back
+standoff_h = 12.0;          // backplate face -> PCB back (rear right-angle 15EDGRC header + 15EDGK plug, ~10.5 mm tall)
 pcb_t = 1.6;
 panel_gap = 5.0;            // PCB top -> panel back (allowed 4.6..5.2, FPC fold)
 panel_t = 1.2;
@@ -29,7 +29,7 @@ function cy(y) = H - OYT - y;
 
 // board features (board coords)
 holes = [[6.4,6.4],[133.6,6.4],[6.4,57.6],[133.6,57.6]];
-term = [9,31];                       // rear HVAC header/plug centre
+term = [70,58];                      // rear RA header J1 pin row centre (pins along x, mating face toward -y)
 panel = [29.46,26.24,108.46,62.94];  // GDEY029T94 outline (x0,y0,x1,y1)
 aa    = [32.46,30.06,99.36,59.12];   // active area (3.0/3.82 mm margins, FPC end on right)
 win_m = 0.5;                         // window margin around active area
@@ -40,7 +40,7 @@ usb_x = 121;                         // USB-C centre x (mouth faces board bottom
 island = [121,25,135,39];            // SHT40 thermal island
 anchors = [[40,12],[106,12],[40,58],[106,58]]; // case XY of 4 drywall-anchor screws
 anchor_d = 4.2;  anchor_head_d = 8.2; anchor_head_h = 1.6;   // #6 / M3.5 pan head into plastic anchor
-wire_open = [18,29];                 // plug 7x19.2 + wire slack
+wire_open = [25,20];                 // centred drywall wire hole
 inlay_d = 0.6;                       // 3 layers @0.2 mm, flush inlays on the face-down surface
 include <cat_logo.scad>
 cat_xy = [18.5,35]; cat_s = 0.8;     // orange cat inlay left of the window
@@ -65,8 +65,8 @@ module backplate(){
       // PCB standoffs with locating pins
       for(h=holes) translate([cx(h[0]),cy(h[1]),0]){ cylinder(d=8,h=Z_pcb_b); cylinder(d=3.9,h=Z_pcb_b+pcb_t-0.2); }
     }
-    // wire pass-through aligned with rear terminal/plug (plug pokes into wall box)
-    translate([cx(term[0]),cy(term[1]),-1]) linear_extrude(lip_h+2) offset(2) square([wire_open[0]-4,wire_open[1]-4],center=true);
+    // centred drywall wire hole; wires bend into the rear right-angle plug
+    translate([W/2,H/2,-1]) linear_extrude(plate_t+2) offset(3) square([wire_open[0]-6,wire_open[1]-6],center=true);
     // 4 drywall anchor screw holes with pan-head recesses
     for(p=anchors) translate([p[0],p[1],-1]){ cylinder(d=anchor_d,h=plate_t+2); translate([0,0,plate_t+1-anchor_head_h]) cylinder(d=anchor_head_d,h=anchor_head_h+0.01); }
     // vents under the SHT40 island (chimney inlet)
@@ -147,8 +147,9 @@ module cap(){ cylinder(d=7.4,h=Z_in-0.3-sw_top); cylinder(d=4.6,h=Z_out+0.8-sw_t
 module pcb(){ color("darkgreen") translate([OX,cy(BH),Z_pcb_b]) difference(){ cube([BW,BH,pcb_t]); for(h=holes) translate([h[0],BH-h[1],-1]) cylinder(d=4.3,h=5);} 
   color("silver") translate([cx(66),cy(25.5),Z_pcb_t]) cube([18,25.5,3.1]);                 // ESP32-C6
   color("black") for(b=btn) translate([cx(b[0])-3,cy(b[1])-3,Z_pcb_t]) cube([6,6,1.5]);
-  color("green") translate([cx(term[0])-3.75,cy(term[1])-9.2,Z_pcb_b-9]) cube([7.5,18.4,9]);  // rear header
-  color("limegreen") translate([cx(term[0])-3.5,cy(term[1])-9.6,Z_pcb_b-9-14]) cube([7,19.2,14]); // 15EDGK plug
+  color("green") translate([cx(term[0])-9.2,cy(term[1])-1.2,Z_pcb_b-9.5]) cube([18.4,9.2,9.5]);           // rear RA header
+  color("limegreen") translate([cx(term[0])-9.6,cy(term[1])+8,Z_pcb_b-10.5]) cube([19.2,11.5,10.0]);      // 15EDGK plug (wire entry faces the hole)
+  color("darkred") for(i=[0:4]) hull(){ translate([cx(term[0])-7+i*3.5,cy(term[1])+19.5,Z_pcb_b-6]) sphere(d=1.2); translate([W/2-8+i*4,H/2,-2]) sphere(d=1.2);} // wires
   color("gray") translate([cx(usb_x)-4.5,cy(BH)+0.5,Z_pcb_t]) cube([9,7,3.2]);
   color("orange") translate([cx(127),cy(32.7),Z_pcb_t]) cube([1.5,1.5,0.5]);                 // SHT40
 }

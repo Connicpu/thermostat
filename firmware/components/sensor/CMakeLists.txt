@@ -1,0 +1,1 @@
+idf_component_register(SRCS "sht40_parse.c" "sensor.c" INCLUDE_DIRS "include" REQUIRES esp_driver_i2c board)

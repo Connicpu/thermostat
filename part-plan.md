@@ -125,3 +125,9 @@ Source: GD GDEY029T94 datasheet p.7 (mechanical drawing), p.6 (79.0x36.7x1.2, AA
 - C1 (22uF/50V e-cap) and C2 (2.2uF/50V) -> 4x 4.7uF 100V X7R 1210 (C381466 FS32X475K101EGG, ~153k stock) as C1,C41,C42 (bulk, left of panel) + C2 (at LMR16006 input). ~3.3 uF each at 34 V DC bias -> ~13 uF; ripple at 15 mA: 0.015/(120 Hz*13 uF) ~ 9.6 V p-p, Vmin ~24 V nominal (~18 V at 20 VAC low line), above LMR16006 4.3 V min. 2.5 mm tall. No basic 63 V+ part exists in this range.
 - Case: drywall anchors only, 146 x 70 x 16.8 mm; no USB opening; RESET pinhole only (BOOT needs USB anyway).
 - Multi-colour: white shell/backplate, black inlay text, orange cat inlay + button caps, translucent pink LED light pipe; 3MF with per-part filament slots 1-4.
+
+## Rev 7 – centred wire hole, rear right-angle terminal (2026-10-13 PT)
+- J1 -> 15EDGRC-3.5-05P-14-00A(H) right-angle header (C7603439, ~1.2k stock) on the BACK at board (70,58), pins along x (pin1 R at x=63 ... pin5 G at x=77), mating face toward -y (toward the centred wire hole). Plug 15EDGK-3.5-05P-14-00A(H) (C7603433). Wire the plug with the backplate on the wall, then plug the board in. Back silk labels R C W Y G under each pin.
+- Schematic nets / GPIO map unchanged (firmware pin map above still valid).
+- 24VAC nets (HVAC_*, R_FUSED, SNUB_*) are >= 43 mm from the SHT40 island; island crossings still only +3V3/GND/SDA/SCL (0.2 mm).
+- Case: standoffs 4 -> 12 mm (header+plug ~10.5 mm), depth 16.8 -> 24.8 mm; centred 25x20 mm wire hole; 146 x 70 mm unchanged; anchors clear.

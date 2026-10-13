@@ -1,0 +1,21 @@
+menu "Thermostat V3"
+    config THERMO_DISPLAY_FAHRENHEIT
+        bool "Show temperatures in Fahrenheit"
+        default y
+    config THERMO_SELF_HEAT_OFFSET_C100
+        int "Fixed sensor offset in 0.01 C (self-heating compensation)"
+        default 0
+        range -500 500
+        help
+            Added to every SHT40 reading on top of the user-adjustable
+            LocalTemperatureCalibration attribute. Measure against a reference
+            thermometer once the board is in its case, then set this.
+    config THERMO_SENSOR_PERIOD_MS
+        int "Sensor read period (ms)"
+        default 2000
+    config THERMO_HW_WDT_ENABLE
+        bool "Arm the STWD100 external watchdog"
+        default y
+        help
+            Disable only for JTAG debugging; a breakpoint would otherwise reset the chip.
+endmenu

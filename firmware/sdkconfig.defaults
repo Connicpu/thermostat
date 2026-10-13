@@ -1,0 +1,31 @@
+CONFIG_IDF_TARGET="esp32c6"
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# Zigbee end device (see README "Why an end device")
+CONFIG_ZB_ENABLED=y
+CONFIG_ZB_ZED=y
+CONFIG_ZB_RADIO_NATIVE=y
+
+# mbedTLS bits required by ZBOSS
+CONFIG_MBEDTLS_CMAC_C=y
+
+# Auto light sleep between radio polls (lower self-heating). Tick 1 kHz for
+# fine-grained tickless idle.
+CONFIG_PM_ENABLE=y
+CONFIG_FREERTOS_USE_TICKLESS_IDLE=y
+CONFIG_IEEE802154_SLEEP_ENABLE=y
+CONFIG_FREERTOS_HZ=1000
+
+# Console on the native USB-Serial-JTAG (GPIO12/13); UART0 pins are NC.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# Rollback: a new OTA image must mark itself valid after a healthy start.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# Internal task watchdog as a second layer under the STWD100.
+CONFIG_ESP_TASK_WDT_EN=y
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=5
+CONFIG_ESP_TASK_WDT_PANIC=y
+CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT=y
