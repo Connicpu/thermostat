@@ -14,7 +14,8 @@ for f in b.GetFootprints():
         a=math.radians(f.GetOrientationDegrees()); dx,dy=0,-1.575
         gx=dx*math.cos(a)+dy*math.sin(a); gy=-dx*math.sin(a)+dy*math.cos(a)
         p=pcbnew.VECTOR2I(p.x+pcbnew.FromMM(gx),p.y+pcbnew.FromMM(gy)); print('J2 corrected',gx,gy)
-    cpl.append([ref,f'{pcbnew.ToMM(p.x)-ox:.3f}mm',f'{oy-pcbnew.ToMM(p.y):.3f}mm','Top',f'{f.GetOrientationDegrees()%360:.0f}'])
+    ROT_FIX={'C283473':180}  # T405-600B: JLC model is 180deg vs KiCad TO-252-2 (verified in JLC placement preview)
+    cpl.append([ref,f'{pcbnew.ToMM(p.x)-ox:.3f}mm',f'{oy-pcbnew.ToMM(p.y):.3f}mm','Top',f'{(f.GetOrientationDegrees()+ROT_FIX.get(l,0))%360:.0f}'])
 import re
 k=lambda r:(re.sub(r'\d','',r),int(re.sub(r'\D','',r) or 0))
 with open('../fab/thermostat-v3-BOM-JLC.csv','w',newline='') as fh:
