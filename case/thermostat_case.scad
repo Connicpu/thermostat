@@ -6,18 +6,18 @@ explode = 0;         // used by "exploded"
 $fn = 48;
 
 // ---------------- parameters ----------------
-W = 146; H = 70;            // outer footprint (drywall-anchor version)
+W = 147; H = 71;            // outer footprint (drywall-anchor version); 1.1 mm board-edge gap all round
 wall = 2.4;                 // shell side walls (>=2 mm)
 clr = 0.3;                  // fit clearance
 plate_t = 3.0;              // backplate thickness
 standoff_h = 12.0;          // backplate face -> PCB back (rear right-angle 15EDGRC header + 15EDGK plug, ~10.5 mm tall)
 pcb_t = 1.6;
-panel_gap = 5.0;            // PCB top -> panel back (allowed 4.6..5.2, FPC fold)
+panel_gap = 5.2;            // PCB top -> panel back (allowed 4.6..5.2, FPC fold); max, for L1 SWPA6045 (4.5) under panel
 panel_t = 1.2;
 front_t = 2.0;              // front face thickness
 BW = 140; BH = 64;          // PCB
-OX = 3;                     // board left edge in case X
-OYT = 3;                    // board top edge distance from case top
+OX = 3.5;                   // board left edge in case X
+OYT = 3.5;                  // board top edge distance from case top
 // derived Z
 Z_pcb_b = plate_t + standoff_h;
 Z_pcb_t = Z_pcb_b + pcb_t;
@@ -30,6 +30,10 @@ function cy(y) = H - OYT - y;
 // board features (board coords)
 holes = [[6.4,6.4],[133.6,6.4],[6.4,57.6],[133.6,57.6]];
 bulk = [53.25,58]; bulk_h = 9.5;          // rear C43 8x9 mm electrolytic (+0.5 lead standoff)
+lip_notch_z = 4.0;                   // lip lowered to 4 mm under C43
+plug_w = 18.3; plug_h = 11.1;        // Degson 15EDGK-3.5-05P: (N-1)*3.5+4.3 wide, 11.1 high, 15.6 deep
+plug_y0 = 40.45; plug_y1 = 56.05;    // board-y extent of the mated plug (wire entry at y0, toward the hole)
+plug_pocket = 1.2;                   // backplate pocket depth under the plug
 term = [70,58];                      // rear RA header J1 pin row centre (pins along x, mating face toward -y)
 panel = [29.46,26.24,108.46,62.94];  // GDEY029T94 outline (x0,y0,x1,y1)
 aa    = [32.46,30.06,99.36,59.12];   // active area (3.0/3.82 mm margins, FPC end on right)
@@ -62,9 +66,13 @@ lip_h = 6; lip_t = 2;
 module backplate(){
   difference(){
     union(){
-      translate([po,po,0]) rbox(pw,ph,plate_t,3);
+      // plate, with a pocket under the mated 15EDGK plug (11.1 mm tall) -> >=1.9 mm under it
+      difference(){ translate([po,po,0]) rbox(pw,ph,plate_t,3);
+        translate([cx(term[0])-plug_w/2-1,cy(plug_y1)-1,plate_t-plug_pocket]) cube([plug_w+2,plug_y1-plug_y0+2,plug_pocket+1]); }
       // perimeter lip that the shell slides over
-      translate([po,po,0]) difference(){ rbox(pw,ph,lip_h,3); translate([lip_t,lip_t,-1]) rbox(pw-2*lip_t,ph-2*lip_t,lip_h+2,1.5); }
+      // (lowered to lip_notch_z under C43, the rear 8 mm electrolytic overhangs the lip)
+      difference(){ translate([po,po,0]) difference(){ rbox(pw,ph,lip_h,3); translate([lip_t,lip_t,-1]) rbox(pw-2*lip_t,ph-2*lip_t,lip_h+2,1.5); }
+        translate([cx(bulk[0])-6,po-1,lip_notch_z]) cube([12,lip_t+2,lip_h]); }
       // snap bumps (45 deg both sides, print without supports)
       for(s=[[W/2-35,po,0],[W/2+35,po,0],[W/2-35,H-po,180],[W/2+35,H-po,180]])
         translate([s[0],s[1],3.2]) rotate([0,0,s[2]]) rotate([0,90,0]) linear_extrude(10,center=true) polygon([[0.9,0],[0,-0.8],[-0.9,0]]);
@@ -78,7 +86,7 @@ module backplate(){
     // vents under the SHT40 island (chimney inlet)
     for(i=[0:4]) translate([cx(island[0]+1.5+i*2.75),cy((island[1]+island[3])/2),-1]) linear_extrude(plate_t+2) square([1.6,12],center=true);
     // label recess
-    translate([W/2,H/2-2,plate_t-0.6]) linear_extrude(1) text("TOP ^  V3",size=4,halign="center");
+    translate([W/2-37,H/2,plate_t-0.6]) linear_extrude(1) text("TOP ^  V3",size=4,halign="center",valign="center");   // left of the wire hole (was inside it)
   }
 }
 
@@ -88,7 +96,7 @@ module shell(pk=true){   // pk=false: preview only, pockets left solid (inlays s
     union(){
       difference(){
         rbox(W,H,Z_out,4);
-        translate([wall,wall,-1]) rbox(W-2*wall,H-2*wall,Z_in+1,2);
+        translate([wall,wall,-1]) rbox(W-2*wall,H-2*wall,Z_in+1,1.2);   // r1.2: square PCB corners keep >=1 mm
       }
       // PCB clamp posts at mounting holes
       for(h=holes) translate([cx(h[0]),cy(h[1]),Z_pcb_t+0.1]) cylinder(d=6,h=Z_in-Z_pcb_t);
@@ -172,9 +180,9 @@ module cap(){ cylinder(d=7.4,h=Z_in-0.3-sw_top); cylinder(d=4.6,h=Z_out+0.8-sw_t
 module pcb(){ color("darkgreen") translate([OX,cy(BH),Z_pcb_b]) difference(){ cube([BW,BH,pcb_t]); for(h=holes) translate([h[0],BH-h[1],-1]) cylinder(d=4.3,h=5);} 
   color("silver") translate([cx(66),cy(25.5),Z_pcb_t]) cube([18,25.5,3.1]);                 // ESP32-C6
   color("black") for(b=btn) translate([cx(b[0])-3,cy(b[1])-3,Z_pcb_t]) cube([6,6,1.5]);
-  color("green") translate([cx(term[0])-9.2,cy(term[1])-1.2,Z_pcb_b-9.5]) cube([18.4,9.2,9.5]);           // rear RA header
-  color("limegreen") translate([cx(term[0])-9.6,cy(term[1])+8,Z_pcb_b-10.5]) cube([19.2,11.5,10.0]);      // 15EDGK plug (wire entry faces the hole)
-  color("darkred") for(i=[0:4]) hull(){ translate([cx(term[0])-7+i*3.5,cy(term[1])+19.5,Z_pcb_b-6]) sphere(d=1.2); translate([W/2-8+i*4,H/2,-2]) sphere(d=1.2);} // wires
+  color("green") translate([cx(term[0])-9.15,cy(term[1])-1.2,Z_pcb_b-7.6]) cube([18.3,9.2,7.6]);           // rear RA header 15EDGRC
+  color("limegreen") translate([cx(term[0])-plug_w/2,cy(plug_y1),Z_pcb_b-plug_h]) cube([plug_w,plug_y1-plug_y0,plug_h]);      // 15EDGK plug (wire entry faces the hole)
+  color("darkred") for(i=[0:4]) hull(){ translate([cx(term[0])-7+i*3.5,cy(plug_y0)+3,Z_pcb_b-5.5]) sphere(d=1.2); translate([W/2-8+i*4,H/2,-2]) sphere(d=1.2);} // wires
   color("gray") translate([cx(usb_x)-4.5,cy(BH),Z_pcb_t]) cube([9,7.3,3.2]);                    // USB-C flush with board edge
   color("royalblue") translate([cx(bulk[0]),cy(bulk[1]),Z_pcb_b-bulk_h]) cylinder(d=8,h=bulk_h);       // C43 47uF/63V THT, back side
   color("orange") translate([cx(127),cy(32.7),Z_pcb_t]) cube([1.5,1.5,0.5]);                 // SHT40
@@ -195,10 +203,12 @@ else if(part=="exploded"){ color("lightgray") backplate(); translate([0,0,25]){ 
 else if(part=="section") difference(){ union(){ color("lightgray") backplate(); pcb(); epd(); color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); for(b=btn) color("orange") translate([cx(b[0]),cy(b[1]),sw_top]) cap(); }
   translate([-1,-1,-30]) cube([W+2, cy(44)+1, 80]); }   // cut at board y=44 (through panel, FPC, DOWN button)
 else if(part=="section_j1") difference(){ union(){ color("lightgray") backplate(); pcb(); epd(); color("white") shell(false); }
-  translate([-1,cy(54),-30]) cube([W+2, H, 80]); }   // cut through J1 header / plug and C43 (board y=54)
+  translate([-1,-1,-30]) cube([W+2, cy(58)+1, 80]); }   // cut along the J1 pin row / C43 centre (board y=58)
+else if(part=="section_j1x") difference(){ union(){ color("lightgray") backplate(); pcb(); epd(); color("white") shell(false); }
+  translate([cx(term[0]),-1,-30]) cube([W, H+2, 80]); }   // cut across J1 + plug + wire bend (board x=70)
 // rear clearance check: tallest rear parts must clear the backplate top (plate_t)
 assert(Z_pcb_b-bulk_h>plate_t+1, "C43 hits backplate");
-assert(Z_pcb_b-10.5>plate_t+1, "J1 plug hits backplate");
+assert(Z_pcb_b-plug_h>plate_t-plug_pocket+1, "J1 plug hits backplate");
 // all parts laid out for a 256x256 bed (Bambu P2S), print orientation, no supports
 if(part=="plate"){
   translate([5,5,0]) translate([0,H,Z_out]) rotate([180,0,0]) shell();
