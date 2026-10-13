@@ -44,6 +44,10 @@ wire_open = [25,20];                 // centred drywall wire hole
 inlay_d = 0.6;                       // 3 layers @0.2 mm, flush inlays on the face-down surface
 include <cat_logo.scad>
 cat_xy = [18.5,35]; cat_s = 0.8;     // orange cat inlay left of the window
+include <swirls.scad>
+swirl_style = "subtle";              // "subtle" | "bold" | "none"
+swirl_w = swirl_style=="bold" ? 1.8 : 1.2;   // line width (>=3 extrusion widths at 0.4 nozzle)
+swirl_margin = 2.0;                  // clearance to window/buttons/holes/lettering/cat
 
 // ---------------- helpers ----------------
 module rrect(w,h,r){ offset(r) square([w-2*r,h-2*r]); }
@@ -123,7 +127,7 @@ module shell(){
     // snap windows matching backplate bumps
     for(x=[W/2-35,W/2+35]) for(y=[-1,H-wall-1]) translate([x-5.5,y,3.2-1.0]) cube([11,wall+2,2.0]);
     // inlay pockets (filled by black text / orange cat bodies)
-    translate([0,0,Z_out-inlay_d]) linear_extrude(inlay_d+1) { marks2d(); cat_place2d(); }
+    translate([0,0,Z_out-inlay_d]) linear_extrude(inlay_d+1) { marks2d(); cat_place2d(); swirls2d(); }
     // LED light pipe bore (filled by pink body)
     translate([cx(led[0]),cy(led[1]),Z_in-2]) cylinder(d=2.0,h=10);
   }
@@ -135,6 +139,24 @@ module marks2d(){
   for(i=[0:2]) translate([cx(btn[i][0])-6.2,cy(btn[i][1])]) text(["+","\u2212","M"][i],size=3.6,halign="center",valign="center",font="Liberation Sans:style=Bold");
 }
 module cat_place2d(){ translate(cat_xy) scale(cat_s) cat2d(); }
+// keep-out zones on the front face (2D, case XY)
+module face_keepout2d(){
+  offset(swirl_margin){
+    translate([cx(aa[0])-win_m-1.6, cy(aa[3])-win_m-1.6]) square([aa[2]-aa[0]+2*win_m+3.2, aa[3]-aa[1]+2*win_m+3.2]);  // window incl. chamfer
+    for(b=btn) translate([cx(b[0]),cy(b[1])]) circle(d=5.0);
+    for(p=pin) translate([cx(p[0]),cy(p[1])]) circle(d=1.6);
+    translate([cx(led[0]),cy(led[1])]) circle(d=2.0);
+    marks2d(); cat_place2d();
+    translate([cx(island[0]+1.5)-1,cy((island[1]+island[3])/2)-6.5]) square([2.75*4+3.6,13]);   // front vents
+  }
+}
+module swirls2d(){
+  if(swirl_style!="none") difference(){
+    intersection(){ swirl_lines(swirl_style,swirl_w); translate([3,2.5]) square([W-6,H-5]); }
+    face_keepout2d();
+  }
+}
+module inlay_pink(){ translate([0,0,Z_out-inlay_d]) linear_extrude(inlay_d) swirls2d(); }
 module inlay_black(){ translate([0,0,Z_out-inlay_d]) linear_extrude(inlay_d) marks2d(); }
 module inlay_orange(){ translate([0,0,Z_out-inlay_d]) linear_extrude(inlay_d) cat_place2d(); }
 module light_pipe(){ translate([cx(led[0]),cy(led[1]),Z_pcb_t+1.0]) cylinder(d=1.95,h=Z_out-Z_pcb_t-1.0); }
@@ -161,12 +183,12 @@ if(part=="backplate") backplate();
 else if(part=="shell_white") flipP() shell();
 else if(part=="shell_black") flipP() inlay_black();
 else if(part=="shell_orange") flipP() inlay_orange();
-else if(part=="shell_pink") flipP() light_pipe();
+else if(part=="shell_pink") flipP() { light_pipe(); inlay_pink(); }
 else if(part=="shell") translate([0,H,Z_out]) rotate([180,0,0]) shell();   // print face-down
 else if(part=="caps") for(i=[0:2]) translate([i*10,0,0]) cap();
-else if(part=="assembly"){ color("lightgray") backplate(); pcb(); epd(); color("white") shell(); color("black") inlay_black(); color("orange") inlay_orange(); color("hotpink") light_pipe(); for(b=btn) color("orange") translate([cx(b[0]),cy(b[1]),sw_top]) cap(); }
-else if(part=="exploded"){ color("lightgray") backplate(); translate([0,0,25]){ pcb(); } translate([0,0,40]) epd(); translate([0,0,75]){ color("white") shell(); color("black") inlay_black(); color("orange") inlay_orange(); color("hotpink") light_pipe(); } color("black") inlay_black(); color("orange") inlay_orange(); color("hotpink") light_pipe(); for(b=btn) color("orange") translate([cx(b[0]),cy(b[1]),sw_top+60]) cap(); }
-else if(part=="section") difference(){ union(){ color("lightgray") backplate(); pcb(); epd(); color("white") shell(); color("black") inlay_black(); color("orange") inlay_orange(); color("hotpink") light_pipe(); for(b=btn) color("orange") translate([cx(b[0]),cy(b[1]),sw_top]) cap(); }
+else if(part=="assembly"){ color("lightgray") backplate(); pcb(); epd(); color("white") shell(); color("black") inlay_black(); color("orange") inlay_orange(); color("hotpink") light_pipe(); color("hotpink") inlay_pink(); for(b=btn) color("orange") translate([cx(b[0]),cy(b[1]),sw_top]) cap(); }
+else if(part=="exploded"){ color("lightgray") backplate(); translate([0,0,25]){ pcb(); } translate([0,0,40]) epd(); translate([0,0,75]){ color("white") shell(); color("black") inlay_black(); color("orange") inlay_orange(); color("hotpink") light_pipe(); color("hotpink") inlay_pink(); } color("black") inlay_black(); color("orange") inlay_orange(); color("hotpink") light_pipe(); color("hotpink") inlay_pink(); for(b=btn) color("orange") translate([cx(b[0]),cy(b[1]),sw_top+60]) cap(); }
+else if(part=="section") difference(){ union(){ color("lightgray") backplate(); pcb(); epd(); color("white") shell(); color("black") inlay_black(); color("orange") inlay_orange(); color("hotpink") light_pipe(); color("hotpink") inlay_pink(); for(b=btn) color("orange") translate([cx(b[0]),cy(b[1]),sw_top]) cap(); }
   translate([-1,-1,-30]) cube([W+2, cy(44)+1, 80]); }   // cut at board y=44 (through panel, FPC, DOWN button)
 // all parts laid out for a 256x256 bed (Bambu P2S), print orientation, no supports
 if(part=="plate"){
