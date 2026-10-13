@@ -120,3 +120,8 @@ Source: GD GDEY029T94 datasheet p.7 (mechanical drawing), p.6 (79.0x36.7x1.2, AA
 - C1 100uF/63V 10x10 (10.5 mm tall, overlapped panel corner) -> 22uF/50V 6.3x5.4 (C72505), moved to (24.6,56.2) outside panel. Ripple at ~15 mA input ~5 V; TVS standoff 40 V.
 - SHT40 island: rule area ISLAND + kicad_dru rule: only +3V3/GND/I2C_SDA/I2C_SCL tracks (<=0.25 mm) allowed; routing keepout during autoroute. Verified: 8 tracks inside, all sensor nets, 0.2 mm, F.Cu.
 - Case: case/thermostat_case.scad (backplate, front shell, button caps), STLs + Bambu P2S 3MF.
+
+## Rev 6 – drywall case, 100 V bulk caps, multi-colour (2026-10-13 PT)
+- C1 (22uF/50V e-cap) and C2 (2.2uF/50V) -> 4x 4.7uF 100V X7R 1210 (C381466 FS32X475K101EGG, ~153k stock) as C1,C41,C42 (bulk, left of panel) + C2 (at LMR16006 input). ~3.3 uF each at 34 V DC bias -> ~13 uF; ripple at 15 mA: 0.015/(120 Hz*13 uF) ~ 9.6 V p-p, Vmin ~24 V nominal (~18 V at 20 VAC low line), above LMR16006 4.3 V min. 2.5 mm tall. No basic 63 V+ part exists in this range.
+- Case: drywall anchors only, 146 x 70 x 16.8 mm; no USB opening; RESET pinhole only (BOOT needs USB anyway).
+- Multi-colour: white shell/backplate, black inlay text, orange cat inlay + button caps, translucent pink LED light pipe; 3MF with per-part filament slots 1-4.

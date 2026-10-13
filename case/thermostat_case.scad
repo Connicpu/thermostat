@@ -6,7 +6,7 @@ explode = 0;         // used by "exploded"
 $fn = 48;
 
 // ---------------- parameters ----------------
-W = 150; H = 96;            // outer footprint
+W = 146; H = 70;            // outer footprint (drywall-anchor version)
 wall = 2.4;                 // shell side walls (>=2 mm)
 clr = 0.3;                  // fit clearance
 plate_t = 3.0;              // backplate thickness
@@ -16,8 +16,8 @@ panel_gap = 5.0;            // PCB top -> panel back (allowed 4.6..5.2, FPC fold
 panel_t = 1.2;
 front_t = 2.0;              // front face thickness
 BW = 140; BH = 64;          // PCB
-OX = 5;                     // board left edge in case X
-OYT = 17;                   // board top edge distance from case top
+OX = 3;                     // board left edge in case X
+OYT = 3;                    // board top edge distance from case top
 // derived Z
 Z_pcb_b = plate_t + standoff_h;
 Z_pcb_t = Z_pcb_b + pcb_t;
@@ -34,11 +34,16 @@ panel = [29.46,26.24,108.46,62.94];  // GDEY029T94 outline (x0,y0,x1,y1)
 aa    = [32.46,30.06,99.36,59.12];   // active area (3.0/3.82 mm margins, FPC end on right)
 win_m = 0.5;                         // window margin around active area
 btn = [[112,30],[112,40],[112,50]];  // UP DOWN MODE
-pin = [[91,5],[100,5]];              // RESET, BOOT pinholes
+pin = [[91,5]];                      // RESET pinhole only (BOOT is only useful with USB attached)
 led = [63.3,21.2];                   // D5 status LED -> light-pipe hole
 usb_x = 121;                         // USB-C centre x (mouth faces board bottom edge)
 island = [121,25,135,39];            // SHT40 thermal island
-gang = 83.3;                         // single-gang box screw spacing (vertical)
+anchors = [[40,12],[106,12],[40,58],[106,58]]; // case XY of 4 drywall-anchor screws
+anchor_d = 4.2;  anchor_head_d = 8.2; anchor_head_h = 1.6;   // #6 / M3.5 pan head into plastic anchor
+wire_open = [18,29];                 // plug 7x19.2 + wire slack
+inlay_d = 0.6;                       // 3 layers @0.2 mm, flush inlays on the face-down surface
+include <cat_logo.scad>
+cat_xy = [18.5,35]; cat_s = 0.8;     // orange cat inlay left of the window
 
 // ---------------- helpers ----------------
 module rrect(w,h,r){ offset(r) square([w-2*r,h-2*r]); }
@@ -61,17 +66,13 @@ module backplate(){
       for(h=holes) translate([cx(h[0]),cy(h[1]),0]){ cylinder(d=8,h=Z_pcb_b); cylinder(d=3.9,h=Z_pcb_b+pcb_t-0.2); }
     }
     // wire pass-through aligned with rear terminal/plug (plug pokes into wall box)
-    translate([cx(term[0]),cy(term[1]),-1]) linear_extrude(plate_t+2) offset(2) square([14-4,25-4],center=true);
-    // single-gang box screw slots (83.3 mm), centred on wire hole, slotted +-3 mm
-    for(d=[-gang/2,gang/2]) translate([cx(term[0]),cy(term[1])+d,-1]){
-      linear_extrude(plate_t+2) slot2d(10,4.2);
-      translate([0,0,plate_t+1-1.6]) linear_extrude(1.7) slot2d(13,8.4); }  // head recess
-    // drywall anchor holes (#6/#8 screw, 4.5 mm)
-    for(p=[[50,10],[110,10],[80,86],[140,48]]) translate([p[0],p[1],-1]){ cylinder(d=4.5,h=plate_t+2); translate([0,0,plate_t+1-1.6]) cylinder(d=8.4,h=1.7); }
+    translate([cx(term[0]),cy(term[1]),-1]) linear_extrude(lip_h+2) offset(2) square([wire_open[0]-4,wire_open[1]-4],center=true);
+    // 4 drywall anchor screw holes with pan-head recesses
+    for(p=anchors) translate([p[0],p[1],-1]){ cylinder(d=anchor_d,h=plate_t+2); translate([0,0,plate_t+1-anchor_head_h]) cylinder(d=anchor_head_d,h=anchor_head_h+0.01); }
     // vents under the SHT40 island (chimney inlet)
     for(i=[0:4]) translate([cx(island[0]+1.5+i*2.75),cy((island[1]+island[3])/2),-1]) linear_extrude(plate_t+2) square([1.6,12],center=true);
     // label recess
-    translate([W/2,6,plate_t-0.6]) linear_extrude(1) text("TOP ^  V3",size=4,halign="center");
+    translate([W/2,H/2-2,plate_t-0.6]) linear_extrude(1) text("TOP ^  V3",size=4,halign="center");
   }
 }
 
@@ -113,23 +114,30 @@ module shell(){
     translate([cx(panel[2]),cy(panel[3])+1,Z_pcb_t+0.5]) cube([4,panel[3]-panel[1]-2,Z_in-Z_pcb_t-0.5]);
     // buttons
     for(b=btn) translate([cx(b[0]),cy(b[1]),Z_pcb_t]) { cylinder(d=5.0,h=50); cylinder(d=7.9,h=Z_in-Z_pcb_t-0.01); }
-    // RESET / BOOT pinholes, LED light pipe
+    // RESET pinhole, LED light pipe
     for(p=pin) translate([cx(p[0]),cy(p[1]),Z_in-1]) cylinder(d=1.6,h=10);
-    translate([cx(led[0]),cy(led[1]),Z_in-1]) cylinder(d=2.0,h=10);
-    // USB-C bench-flashing opening (bottom wall)
-    translate([cx(usb_x)-6, -1, Z_pcb_t-2.0]) cube([12, wall+2, 7]);
+    // no USB opening: USB-C is only reachable with the board out of the case (ground-loop hazard)
     // vents: front over island (outlet), right side wall, bottom wall below island
     for(i=[0:4]) translate([cx(island[0]+1.5+i*2.75),cy((island[1]+island[3])/2),Z_in-1]) linear_extrude(10) square([1.6,11],center=true);
     for(i=[0:3]) translate([W-wall-1, cy(island[1]+2+i*3.2)-0.8, Z_pcb_t+1]) cube([wall+2,1.6,Z_in-Z_pcb_t-2]);
     // snap windows matching backplate bumps
     for(x=[W/2-35,W/2+35]) for(y=[-1,H-wall-1]) translate([x-5.5,y,3.2-1.0]) cube([11,wall+2,2.0]);
-    // front engraving
-    translate([cx(aa[0]),cy(aa[1])+3.2,Z_out-0.4]) linear_extrude(1) text("Connie's Thermostat",size=3);
-    translate([cx(btn[0][0])-4.5,cy(btn[0][1])-1.5,Z_out-0.4]) linear_extrude(1) text("+",size=3,halign="right");
-    translate([cx(btn[1][0])-4.5,cy(btn[1][1])-1.5,Z_out-0.4]) linear_extrude(1) text("-",size=3,halign="right");
-    translate([cx(btn[2][0])-4.5,cy(btn[2][1])-1.5,Z_out-0.4]) linear_extrude(1) text("M",size=3,halign="right");
+    // inlay pockets (filled by black text / orange cat bodies)
+    translate([0,0,Z_out-inlay_d]) linear_extrude(inlay_d+1) { marks2d(); cat_place2d(); }
+    // LED light pipe bore (filled by pink body)
+    translate([cx(led[0]),cy(led[1]),Z_in-2]) cylinder(d=2.0,h=10);
   }
 }
+
+// ---------------- multi-colour bodies ----------------
+module marks2d(){
+  translate([cx(aa[0]),cy(aa[1])+3.0]) text("Connie's Thermostat",size=3.2,font="Liberation Sans:style=Bold");
+  for(i=[0:2]) translate([cx(btn[i][0])-6.2,cy(btn[i][1])]) text(["+","\u2212","M"][i],size=3.6,halign="center",valign="center",font="Liberation Sans:style=Bold");
+}
+module cat_place2d(){ translate(cat_xy) scale(cat_s) cat2d(); }
+module inlay_black(){ translate([0,0,Z_out-inlay_d]) linear_extrude(inlay_d) marks2d(); }
+module inlay_orange(){ translate([0,0,Z_out-inlay_d]) linear_extrude(inlay_d) cat_place2d(); }
+module light_pipe(){ translate([cx(led[0]),cy(led[1]),Z_pcb_t+1.0]) cylinder(d=1.95,h=Z_out-Z_pcb_t-1.0); }
 
 // ---------------- button caps (print 3, flange down) ----------------
 sw_top = Z_pcb_t + 1.5;   // TS-1187A H1.5 actuator
@@ -147,12 +155,17 @@ module pcb(){ color("darkgreen") translate([OX,cy(BH),Z_pcb_b]) difference(){ cu
 module epd(){ color("white") translate([cx(panel[0]),cy(panel[3]),Z_panel_b]) cube([panel[2]-panel[0],panel[3]-panel[1],panel_t]);
   color([0.2,0.2,0.2]) translate([cx(aa[0]),cy(aa[3]),Z_in-0.05]) cube([aa[2]-aa[0],aa[3]-aa[1],0.1]); }
 
+module flipP(){ translate([0,H,Z_out]) rotate([180,0,0]) children(); }
 if(part=="backplate") backplate();
+else if(part=="shell_white") flipP() shell();
+else if(part=="shell_black") flipP() inlay_black();
+else if(part=="shell_orange") flipP() inlay_orange();
+else if(part=="shell_pink") flipP() light_pipe();
 else if(part=="shell") translate([0,H,Z_out]) rotate([180,0,0]) shell();   // print face-down
 else if(part=="caps") for(i=[0:2]) translate([i*10,0,0]) cap();
-else if(part=="assembly"){ color("lightgray") backplate(); pcb(); epd(); color("white") shell(); for(b=btn) color("lightblue") translate([cx(b[0]),cy(b[1]),sw_top]) cap(); }
-else if(part=="exploded"){ color("lightgray") backplate(); translate([0,0,25]){ pcb(); } translate([0,0,40]) epd(); translate([0,0,75]) color("white") shell(); for(b=btn) color("lightblue") translate([cx(b[0]),cy(b[1]),sw_top+60]) cap(); }
-else if(part=="section") difference(){ union(){ color("lightgray") backplate(); pcb(); epd(); color("white") shell(); for(b=btn) color("lightblue") translate([cx(b[0]),cy(b[1]),sw_top]) cap(); }
+else if(part=="assembly"){ color("lightgray") backplate(); pcb(); epd(); color("white") shell(); color("black") inlay_black(); color("orange") inlay_orange(); color("hotpink") light_pipe(); for(b=btn) color("orange") translate([cx(b[0]),cy(b[1]),sw_top]) cap(); }
+else if(part=="exploded"){ color("lightgray") backplate(); translate([0,0,25]){ pcb(); } translate([0,0,40]) epd(); translate([0,0,75]){ color("white") shell(); color("black") inlay_black(); color("orange") inlay_orange(); color("hotpink") light_pipe(); } color("black") inlay_black(); color("orange") inlay_orange(); color("hotpink") light_pipe(); for(b=btn) color("orange") translate([cx(b[0]),cy(b[1]),sw_top+60]) cap(); }
+else if(part=="section") difference(){ union(){ color("lightgray") backplate(); pcb(); epd(); color("white") shell(); color("black") inlay_black(); color("orange") inlay_orange(); color("hotpink") light_pipe(); for(b=btn) color("orange") translate([cx(b[0]),cy(b[1]),sw_top]) cap(); }
   translate([-1,-1,-30]) cube([W+2, cy(44)+1, 80]); }   // cut at board y=44 (through panel, FPC, DOWN button)
 // all parts laid out for a 256x256 bed (Bambu P2S), print orientation, no supports
 if(part=="plate"){
