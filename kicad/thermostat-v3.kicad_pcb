@@ -22721,8 +22721,8 @@
 		)
 	)
 	(gr_line
-		(start 209 125)
-		(end 209 161.7)
+		(start 208.46 126.24)
+		(end 208.46 162.94)
 		(stroke
 			(width 0.15)
 			(type default)
@@ -22731,8 +22731,8 @@
 		(uuid "334aba41-28a5-462e-afac-abb90ab6fb50")
 	)
 	(gr_line
-		(start 209 161.7)
-		(end 130 161.7)
+		(start 208.46 162.94)
+		(end 129.46 162.94)
 		(stroke
 			(width 0.15)
 			(type default)
@@ -22741,8 +22741,8 @@
 		(uuid "c4db49e6-3ddb-4d36-8f15-fb1ba96b8125")
 	)
 	(gr_line
-		(start 130 125)
-		(end 209 125)
+		(start 129.46 126.24)
+		(end 208.46 126.24)
 		(stroke
 			(width 0.15)
 			(type default)
@@ -22751,8 +22751,8 @@
 		(uuid "c692449b-708c-4928-8080-292839911f97")
 	)
 	(gr_line
-		(start 130 161.7)
-		(end 130 125)
+		(start 129.46 162.94)
+		(end 129.46 126.24)
 		(stroke
 			(width 0.15)
 			(type default)
@@ -23013,8 +23013,8 @@
 			)
 		)
 	)
-	(gr_text "2.9in EPD panel outline (FPC exits right edge, folded under, contacts down)"
-		(at 169.5 126.5 0)
+	(gr_text "2.9in EPD outline, 5mm above PCB (FPC exits right edge, folded under, contacts down) - see fab/display-fit.png"
+		(at 169 127.7 0)
 		(layer "Cmts.User")
 		(uuid "44859fde-df27-401b-82bd-951be854d5e1")
 		(effects

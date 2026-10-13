@@ -99,3 +99,11 @@ Verified:
 - CPL rotations: EasyEDA footprints = JLC orientation (0 offset); KiCad USB-C HRO position corrected by local y -1.575 mm (EasyEDA pad comparison); KiCad passives/switch/SHT4x 0.
 Results: ERC 0; DRC 0 errors, 0 unconnected, schematic parity clean (104 cosmetic silk warnings + 1 lib_footprint_mismatch warning on U3).
 Cost (5 boards): parts $50.59 + 18 extended x $3 = $54 + PCB/assembly setup ~ $22 + shipping ~$30 + terminals ~$6 + panels ~$23 => ~$186.
+
+## Display fit check (2026-10-13 PT)
+Source: GD GDEY029T94 datasheet p.7 (mechanical drawing), p.6 (79.0x36.7x1.2, AA 66.896x29.056).
+- FPC tail: 12.50 wide, 14.40 free length beyond outline, 24 contacts at 0.5 pitch (span 11.50), contact length 3.66 with stiffener, 0.3 thick; contacts on display-face side. Tail edge is 11.50 mm from the outline edge nearest pin 24; pin 1 is 23.5 mm from that edge.
+- Board: J4 at (100,44) rot 90, mouth faces +x at x~103.8, pad 1 y=49.74, pad 24 y=38.24.
+- Panel placement (face up, FPC on right edge, 180 deg fold under): outline x 29.46..108.46, y 26.24..62.94, panel bottom 5.0 mm above PCB (M2.5x5 standoffs or case ledge). Bend r~2.15 mm, ~6.8 mm of tail in the bend, ~3.0 mm inserted. Pin 1 / pad 1 y match exactly (49.74). Contacts face down -> bottom-contact AFC07 correct.
+- Panel standoff height must be >= ~4.5 mm (MOC3063S optos ~4 mm under panel). Every +1 mm of height pulls the tail ~1.6 mm out of the connector; keep 4.6-5.2 mm.
+- No copper change; only the Cmts.User panel outline moved (-0.54, +1.24). Image: fab/display-fit.png
