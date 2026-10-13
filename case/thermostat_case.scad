@@ -29,7 +29,7 @@ function cy(y) = H - OYT - y;
 
 // board features (board coords)
 holes = [[6.4,6.4],[133.6,6.4],[6.4,57.6],[133.6,57.6]];
-bulk = [55,58]; bulk_h = 9.5;          // rear C43 8x9 mm electrolytic (+0.5 lead standoff)
+bulk = [53.25,58]; bulk_h = 9.5;          // rear C43 8x9 mm electrolytic (+0.5 lead standoff)
 term = [70,58];                      // rear RA header J1 pin row centre (pins along x, mating face toward -y)
 panel = [29.46,26.24,108.46,62.94];  // GDEY029T94 outline (x0,y0,x1,y1)
 aa    = [32.46,30.06,99.36,59.12];   // active area (3.0/3.82 mm margins, FPC end on right)

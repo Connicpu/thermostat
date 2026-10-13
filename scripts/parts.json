@@ -39,7 +39,7 @@
 "fp": "tstat:MBS_MB10S",
 "lcsc": "C2488",
 "pins": {
-"1": "VIN_HV",
+"1": "VIN_RECT",
 "2": "GND",
 "3": "R_FUSED",
 "4": "HVAC_C"
@@ -48,6 +48,21 @@
 "bom": true,
 "mpn": "",
 "uuid": "49308ffa-40f2-48fa-b33b-0a1f39e56bc1"
+},
+{
+"ref": "R51",
+"sym": "Device:R",
+"value": "3.3R 0.75W pulse",
+"fp": "Resistor_SMD:R_1206_3216Metric",
+"lcsc": "C844038",
+"pins": {
+"1": "VIN_RECT",
+"2": "VIN_HV"
+},
+"dnp": false,
+"bom": true,
+"mpn": "CRCW12063R30FKEAHP (Vishay pulse-proof, 750 mW)",
+"uuid": "3c567d17-07d4-4258-b024-8347c921ae5c"
 },
 {
 "ref": "D2",
@@ -222,15 +237,15 @@
 "ref": "L1",
 "sym": "Device:L",
 "value": "22uH",
-"fp": "tstat:L_4030_SWPA",
-"lcsc": "C83472",
+"fp": "Inductor_SMD:L_Sunlord_SWPA6045S",
+"lcsc": "C83454",
 "pins": {
 "1": "BUCK_SW",
 "2": "+3V3"
 },
 "dnp": false,
 "bom": true,
-"mpn": "",
+"mpn": "SWPA6045S220MT 22uH Isat 2.2A 89mOhm (was SWPA4030 1.0A)",
 "uuid": "882245b4-60d6-4cda-8871-963a1739b083"
 },
 {

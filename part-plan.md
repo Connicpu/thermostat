@@ -3,7 +3,7 @@ Stock, prices and basic/extended status come from the JLCPCB parts API, checked 
 Previous revision: part-plan-v1.md
 
 ## Architecture (as implemented in kicad/thermostat-v3.kicad_sch)
-- **24VAC input:** 24VAC R/C goes through a 0.5 A PTC (F1), an MB10S bridge (D1), an SMBJ40A TVS (D2) and a 100 µF/63 V bulk cap (C1) to VIN_HV.
+- **24VAC input:** 24VAC R/C goes through a 0.5 A 60 V PTC (F1), an MB10S bridge (D1) and a 3.3 Ω pulse resistor (R51) to VIN_HV, which has the SMBJ40A TVS (D2), 4× 4.7 µF 100 V ceramics and the 47 µF/63 V rear electrolytic (C43).
 - **3.3 V supply:** an **LMR16006X buck (60 V max, 0.6 A, 700 kHz)** with a 22 µH inductor and SS210 catch diode makes +3V3.
   - The X (700 kHz) version was chosen over the Y (2.1 MHz) version because the minimum on-time at ~40 V in → 3.3 V out is too short at 2.1 MHz.
 - **USB:** USB-C VBUS goes through a B5819W into VIN_HV (diode-OR; the bridge itself is the other "diode"). USB D+/D- go straight to the C6's native USB, with USBLC6 ESD protection.
@@ -26,7 +26,8 @@ Previous revision: part-plan-v1.md
 | Item | Decision | LCSC | Type | Stock | Unit $ |
 |---|---|---|---|---|---|
 | Buck | **LMR16006XDDCR** (4–60 V in, 0.6 A, async) | C87080 | ext | 33,642 | 0.57 |
-| Buck inductor | SWPA4030S220MT 22 µH | C83472 | ext | 40,683 | 0.06 |
+| Buck inductor | SWPA6045S220MT 22 µH, Isat 2.2 A, 89 mΩ, 6×6×4.5 (rev 9; was SWPA4030S220MT C83472) | C83454 | ext | 40,752 | ~0.10 |
+| Surge resistor R51 | CRCW12063R30FKEAHP 3.3 Ω 1206 0.75 W pulse-proof (rev 9) | C844038 | ext | 27,862 | ~0.03 |
 | Catch diode | SS210 (100 V 2 A) | C14996 | basic | 708,928 | 0.03 |
 | Input bulk cap | **100 µF 63 V** 10×10.5 SMD (RVT63V100M10X10) | C51953411 | ext | 26,682 | 0.18 |
 | Input ceramic | 2.2 µF 100 V 1206 | C170101 | ext | 166,291 | 0.13 |
@@ -147,4 +148,11 @@ See `review/pcb-review.md` (the review) and `review/rev8-response.md` (the fixes
 - **GND pour:** custom DRC rule keeps the pour >= 1.0 mm from all 24 VAC/triac/opto-output nets.
 - **Test pads (back side, no BOM):** TP1 VIN_HV, TP2 GND, TP3 +3V3, TP4 VBUS.
 - **Firmware pins:** unchanged; board.h untouched.
-- **Known, accepted:** SMBJ40A clamp at a full 9.3 A (64.5 V) vs the LMR 65 V abs max; L1 Isat 1.0 A (only on a hard short); buck hot loop about 7 mm (not re-laid out).
+- **Known, accepted:** buck hot loop about 7 mm (not re-laid out). (SMBJ40A clamp and L1 Isat were fixed in rev 9.)
+
+## Rev 9 - supply margin fixes (2026-10-13)
+See `review/rev9-notes.md` for calculations and the final review.
+- **R51 3.3 Ω 1206 pulse-proof (CRCW12063R30FKEAHP, C844038, extended)** in series from the bridge + (new net VIN_RECT) to VIN_HV (bulk caps, TVS, buck). The TVS now sits behind R51, so a surge that used to push 9.3 A / 64.5 V into it now gives ~5 A / ~58 V at U1 VIN (under the 60 V recommended).
+- **L1 -> SWPA6045S220MT (C83454)**, 22 µH, Isat 2.2 A (Irms 1.8 A), 89 mΩ, footprint Inductor_SMD:L_Sunlord_SWPA6045S. Above the LMR16006X 1.2 A typ peak current limit, so a shorted output no longer saturates it. C4/C5 moved 1.3 mm right to make room.
+- R50 rotated 180° (EN pad toward U1) so the EN net routes cleanly.
+- No basic-part 1206 low-ohm resistor exists at JLC; +1 extended fee (~$3).

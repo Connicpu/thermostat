@@ -1,55 +1,52 @@
 ** Drc report for thermostat-v3.kicad_pcb **
-** Created on 2026-10-13T11:15:35-0700 **
+** Created on 2026-10-13T11:28:54-0700 **
 
-** Found 18 DRC violations **
-[lib_footprint_mismatch]: Footprint 'SOT-23_AO3400A' does not match copy in library 'tstat'.
-    Local override; warning
-    @(191.0000 mm, 154.5000 mm): Footprint Q1
-[lib_footprint_mismatch]: Footprint 'LED_0603_KT' does not match copy in library 'tstat'.
-    Local override; warning
-    @(163.3000 mm, 121.2000 mm): Footprint D5
-[lib_footprint_mismatch]: Footprint 'USB_C_Receptacle_HRO_TYPE-C-31-M-12' does not match copy in library 'Connector_USB'.
-    Local override; warning
-    @(221.0000 mm, 160.3500 mm): Footprint J2
-[lib_footprint_mismatch]: Footprint 'L_4030_SWPA' does not match copy in library 'tstat'.
-    Local override; warning
-    @(145.0000 mm, 157.5000 mm): Footprint L1
-[lib_footprint_mismatch]: Footprint 'FPC24_AFC07' does not match copy in library 'tstat'.
-    Local override; warning
-    @(200.0000 mm, 144.0000 mm): Footprint J4
+** Found 17 DRC violations **
 [lib_footprint_mismatch]: Footprint 'TO-252_BT136S' does not match copy in library 'tstat'.
     Local override; warning
     @(121.0000 mm, 140.0000 mm): Footprint Q4
-[lib_footprint_mismatch]: Footprint 'SOT-23-6_LMR16006' does not match copy in library 'tstat'.
-    Local override; warning
-    @(139.0000 mm, 152.0000 mm): Footprint U1
-[lib_footprint_mismatch]: Footprint 'TO-252_BT136S' does not match copy in library 'tstat'.
-    Local override; warning
-    @(121.0000 mm, 125.0000 mm): Footprint Q3
-[lib_footprint_mismatch]: Footprint 'SOT-23-5_STWD100' does not match copy in library 'tstat'.
-    Local override; warning
-    @(159.0000 mm, 117.0000 mm): Footprint U4
 [lib_footprint_mismatch]: Footprint 'SOT-23-6_USBLC6' does not match copy in library 'tstat'.
     Local override; warning
     @(221.0000 mm, 151.0000 mm): Footprint U2
+[lib_footprint_mismatch]: Footprint 'SOT-23-5_STWD100' does not match copy in library 'tstat'.
+    Local override; warning
+    @(159.0000 mm, 117.0000 mm): Footprint U4
+[lib_footprint_mismatch]: Footprint 'F1812_PTC' does not match copy in library 'tstat'.
+    Local override; warning
+    @(113.5000 mm, 146.0000 mm): Footprint F1
+[lib_footprint_mismatch]: Footprint 'TO-252_BT136S' does not match copy in library 'tstat'.
+    Local override; warning
+    @(121.0000 mm, 110.0000 mm): Footprint Q2
+[lib_footprint_mismatch]: Footprint 'SOT-23_AO3400A' does not match copy in library 'tstat'.
+    Local override; warning
+    @(191.0000 mm, 154.5000 mm): Footprint Q1
 [lib_footprint_mismatch]: Footprint 'ESP32-C6-WROOM-1' does not match copy in library 'tstat'.
     Local override; warning
     @(175.0000 mm, 115.7400 mm): Footprint U3
 [lib_footprint_mismatch]: Footprint 'TO-252_BT136S' does not match copy in library 'tstat'.
     Local override; warning
-    @(121.0000 mm, 110.0000 mm): Footprint Q2
-[lib_footprint_mismatch]: Footprint 'F1812_PTC' does not match copy in library 'tstat'.
+    @(121.0000 mm, 125.0000 mm): Footprint Q3
+[lib_footprint_mismatch]: Footprint 'SOT-23-6_LMR16006' does not match copy in library 'tstat'.
     Local override; warning
-    @(113.5000 mm, 146.0000 mm): Footprint F1
+    @(139.0000 mm, 152.0000 mm): Footprint U1
+[lib_footprint_mismatch]: Footprint 'LED_0603_KT' does not match copy in library 'tstat'.
+    Local override; warning
+    @(163.3000 mm, 121.2000 mm): Footprint D5
+[lib_footprint_mismatch]: Footprint 'FPC24_AFC07' does not match copy in library 'tstat'.
+    Local override; warning
+    @(200.0000 mm, 144.0000 mm): Footprint J4
+[lib_footprint_mismatch]: Footprint 'USB_C_Receptacle_HRO_TYPE-C-31-M-12' does not match copy in library 'Connector_USB'.
+    Local override; warning
+    @(221.0000 mm, 160.3500 mm): Footprint J2
 [lib_footprint_mismatch]: Footprint 'TestPoint_Pad_D1.5mm' does not match copy in library 'TestPoint'.
     Local override; warning
     @(214.5000 mm, 146.5000 mm): Footprint TP4
-[lib_footprint_mismatch]: Footprint 'TestPoint_Pad_D1.5mm' does not match copy in library 'TestPoint'.
-    Local override; warning
-    @(147.0000 mm, 162.2000 mm): Footprint TP3
 [lib_footprint_mismatch]: Footprint 'CP_Radial_D8.0mm_P3.50mm' does not match copy in library 'Capacitor_THT'.
     Local override; warning
     @(155.0000 mm, 158.0000 mm): Footprint C43
+[lib_footprint_mismatch]: Footprint 'TestPoint_Pad_D1.5mm' does not match copy in library 'TestPoint'.
+    Local override; warning
+    @(147.0000 mm, 162.2000 mm): Footprint TP3
 [lib_footprint_mismatch]: Footprint 'TestPoint_Pad_D1.5mm' does not match copy in library 'TestPoint'.
     Local override; warning
     @(133.5000 mm, 161.5000 mm): Footprint TP2

@@ -49,7 +49,7 @@ for p in parts:
 # library file for custom symbols
 open('kicad/tstat.kicad_sym','w').write('(kicad_symbol_lib (version 20241209) (generator "gen") (generator_version "9.0") '+' '.join(mk_custom(n) for n in CUST)+')')
 import re
-BLOCKS=[('24VAC INPUT, PROTECTION & 3.3V BUCK',['J1','F1','D1','D2','C1','C43','C41','C42','C2','U1','R50','C3','D4','L1','R1','R2','C4','C5','TP1','TP2','TP3','TP4'],(15,15,280,115)),
+BLOCKS=[('24VAC INPUT, PROTECTION & 3.3V BUCK',['J1','F1','D1','R51','D2','C1','C43','C41','C42','C2','U1','R50','C3','D4','L1','R1','R2','C4','C5','TP1','TP2','TP3','TP4'],(15,15,280,115)),
 ('USB-C (FLASHING ONLY) & POWER-PATH  -  do not connect USB to an earthed PC while 24VAC is wired',['J2','R3','R4','U2','C6','D3'],(300,15,280,115)),
 ('ESP32-C6 MCU, RESET/BOOT, WATCHDOG, STATUS LED',['U3','C7','C8','R5','C9','SW1','SW2','R6','U4','R12','C10','R10','D5','R11'],(15,138,280,118)),
 ('HVAC OUTPUTS W / Y / G  (zero-cross opto + triac, snubbers DNP)',[r for r in [p['ref'] for p in parts] if re.match(r'^(R[234]\d|U[678]|Q[234]|C2[012])$',r)],(300,138,280,118)),
