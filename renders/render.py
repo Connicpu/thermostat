@@ -225,23 +225,27 @@ cyl(ccx, ccy, pz - 9.5, pz - 0.5, 8.0, M['cap'])
 cyl(ccx, ccy, pz - 9.6, pz - 9.4, 7.0, M['metal'])
 box(ccx - 4.1, ccy - 1.2, pz - 9.0, ccx - 3.6, ccy + 1.2, pz - 1.0, M['white'], 'C43stripe')
 
-# ---- EPD panel
+# ---- EPD panel (GDEY029T94: outline 79.0x36.7, AA 66.896x29.056 per datasheet)
 panel = (29.46, 26.24, 108.46, 62.94)
-aa = (32.46, 30.06, 99.36, 59.12)
+aa = (32.46, 30.06, 99.36, 59.12)  # board coords; AA 66.9 x 29.06 mm
 ezb = Zpb + PT + 5.0 + (E_EPD - E_PCB) + E_PCB
 box(cx(panel[0]), cy(panel[3]), ezb, cx(panel[2]), cy(panel[1]), ezb + 1.2, M['epd'], 'EPD')
-# Active-area screen plane with firmware preview image (assembled / closed views)
+# Active-area screen: firmware preview is full-bleed 296x128 (docs PNG is 2x)
+# Blender 4.x plane size=N is NxN (NOT 2x2); scale must be the full AA extents.
 sx0, sx1 = cx(aa[0]), cx(aa[2])
 sy0, sy1 = cy(aa[3]), cy(aa[1])  # cy flips board-y
-sz = ezb + 1.28
+aa_w, aa_h = abs(sx1 - sx0), abs(sy1 - sy0)  # ~66.9 x 29.06
+sz = ezb + 1.28  # just above panel front (panel_t=1.2)
 bpy.ops.mesh.primitive_plane_add(
     size=1, location=((sx0 + sx1) / 2, (sy0 + sy1) / 2, sz)
 )
 screen = bpy.context.object
 screen.name = 'EPDscreen'
-screen.scale = (abs(sx1 - sx0) / 2, abs(sy1 - sy0) / 2, 1)  # plane is 2x2 by default at size=1? size=1 => 1x1
-# Blender plane size=1 is 2x2 units from -1..1; use scale half-extents:
-screen.scale = (abs(sx1 - sx0) / 2, abs(sy1 - sy0) / 2, 1)
+screen.scale = (aa_w, aa_h, 1)
+# Bake non-uniform scale into the mesh so UVs span the real AA (avoids 4.x size=1 half-scale bug class)
+bpy.context.view_layer.objects.active = screen
+bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+print(f'EPD AA plane mm: {screen.dimensions.x:.2f} x {screen.dimensions.y:.2f} (expect ~66.90 x 29.06)')
 
 # E-paper: sRGB preview as emission (crisp, lighting-independent) + slight diffuse paper
 em = bpy.data.materials.new('epd_img')
@@ -257,6 +261,7 @@ tex = nt.nodes.new('ShaderNodeTexImage')
 if os.path.isfile(EPD_IMG):
     tex.image = bpy.data.images.load(EPD_IMG)
     tex.image.colorspace_settings.name = 'sRGB'
+    tex.extension = 'CLIP'
 else:
     tex.image = None
 bsdf.inputs['Roughness'].default_value = 0.7
