@@ -82,7 +82,7 @@ module backplate(){
 }
 
 // ---------------- front shell ----------------
-module shell(){
+module shell(pk=true){   // pk=false: preview only, pockets left solid (inlays sit 0.01 proud) to avoid OpenCSG specks
   difference(){
     union(){
       difference(){
@@ -93,7 +93,7 @@ module shell(){
       for(h=holes) translate([cx(h[0]),cy(h[1]),Z_pcb_t+0.1]) cylinder(d=6,h=Z_in-Z_pcb_t);
       // panel locating ribs (3 sides; FPC side open)
       translate([cx(panel[0])-1.2-clr,cy(panel[3])-clr,Z_in-1]) cube([1.2,panel[3]-panel[1]+2*clr,1.01]);
-      for(y=[panel[1]-clr-1.2,panel[3]+clr]) translate([cx(panel[0])-clr, cy(y)-1.2+(y>panel[3]?0:0), Z_in-1]) cube([panel[2]-panel[0]-2,1.2,1.01]);
+      for(y=[panel[1]-clr-1.2,panel[3]+clr]) translate([cx(panel[0])-clr-0.6, cy(y)-1.2, Z_in-1]) cube([panel[2]-panel[0]-2+0.6,1.2,1.01]);  // overlaps end rib (no edge-only contact)
       // panel retaining hooks (2 per long edge) - flex 1.2 mm beams, 0.7 mm lip
       for(x=[50,88]) for(e=[0,1]) {
         yy = e==0 ? panel[1]-clr : panel[3]+clr;
@@ -128,13 +128,14 @@ module shell(){
     // snap windows matching backplate bumps
     for(x=[W/2-35,W/2+35]) for(y=[-1,H-wall-1]) translate([x-5.5,y,3.2-1.0]) cube([11,wall+2,2.0]);
     // inlay pockets (filled by black text / orange cat bodies)
-    translate([0,0,Z_out-inlay_d]) linear_extrude(inlay_d+1) { marks2d(); cat_place2d(); swirls2d(); }
+    if(pk) translate([0,0,Z_out-inlay_d]) linear_extrude(inlay_d+1) { marks2d(); cat_place2d(); swirls2d(); }
     // LED light pipe bore (filled by pink body)
     translate([cx(led[0]),cy(led[1]),Z_in-2]) cylinder(d=2.0,h=10);
   }
 }
 
 // ---------------- multi-colour bodies ----------------
+pv_e = 0.01;   // preview-only: inlays grow 0.01 mm (up + sideways) to avoid z-fighting; STL exports use 0
 module marks2d(){
   if(show_title) translate([cx(aa[0]),cy(aa[1])+3.0]) text("Connie's Thermostat",size=3.2,font="Liberation Sans:style=Bold");
   for(i=[0:2]) translate([cx(btn[i][0])-6.2,cy(btn[i][1])]) text(["+","\u2212","M"][i],size=3.6,halign="center",valign="center",font="Liberation Sans:style=Bold");
@@ -157,9 +158,9 @@ module swirls2d(){
     face_keepout2d();
   }
 }
-module inlay_pink(){ translate([0,0,Z_out-inlay_d]) linear_extrude(inlay_d) swirls2d(); }
-module inlay_black(){ translate([0,0,Z_out-inlay_d]) linear_extrude(inlay_d) marks2d(); }
-module inlay_orange(){ translate([0,0,Z_out-inlay_d]) linear_extrude(inlay_d) cat_place2d(); }
+module inlay_pink(e=0){ translate([0,0,Z_out-inlay_d]) linear_extrude(inlay_d+e) offset(delta=e) swirls2d(); }
+module inlay_black(e=0){ translate([0,0,Z_out-inlay_d]) linear_extrude(inlay_d+e) offset(delta=e) marks2d(); }
+module inlay_orange(e=0){ translate([0,0,Z_out-inlay_d]) linear_extrude(inlay_d+e) offset(delta=e) cat_place2d(); }
 module light_pipe(){ translate([cx(led[0]),cy(led[1]),Z_pcb_t+1.0]) cylinder(d=1.95,h=Z_out-Z_pcb_t-1.0); }
 
 // ---------------- button caps (print 3, flange down) ----------------
@@ -187,9 +188,9 @@ else if(part=="shell_orange") flipP() inlay_orange();
 else if(part=="shell_pink") flipP() { light_pipe(); inlay_pink(); }
 else if(part=="shell") translate([0,H,Z_out]) rotate([180,0,0]) shell();   // print face-down
 else if(part=="caps") for(i=[0:2]) translate([i*10,0,0]) cap();
-else if(part=="assembly"){ color("lightgray") backplate(); pcb(); epd(); color("white") shell(); color("black") inlay_black(); color("orange") inlay_orange(); color("hotpink") light_pipe(); color("hotpink") inlay_pink(); for(b=btn) color("orange") translate([cx(b[0]),cy(b[1]),sw_top]) cap(); }
-else if(part=="exploded"){ color("lightgray") backplate(); translate([0,0,25]){ pcb(); } translate([0,0,40]) epd(); translate([0,0,75]){ color("white") shell(); color("black") inlay_black(); color("orange") inlay_orange(); color("hotpink") light_pipe(); color("hotpink") inlay_pink(); } color("black") inlay_black(); color("orange") inlay_orange(); color("hotpink") light_pipe(); color("hotpink") inlay_pink(); for(b=btn) color("orange") translate([cx(b[0]),cy(b[1]),sw_top+60]) cap(); }
-else if(part=="section") difference(){ union(){ color("lightgray") backplate(); pcb(); epd(); color("white") shell(); color("black") inlay_black(); color("orange") inlay_orange(); color("hotpink") light_pipe(); color("hotpink") inlay_pink(); for(b=btn) color("orange") translate([cx(b[0]),cy(b[1]),sw_top]) cap(); }
+else if(part=="assembly"){ color("lightgray") backplate(); pcb(); epd(); color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); for(b=btn) color("orange") translate([cx(b[0]),cy(b[1]),sw_top]) cap(); }
+else if(part=="exploded"){ color("lightgray") backplate(); translate([0,0,25]){ pcb(); } translate([0,0,40]) epd(); translate([0,0,75]){ color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); } for(b=btn) color("orange") translate([cx(b[0]),cy(b[1]),sw_top+60]) cap(); }
+else if(part=="section") difference(){ union(){ color("lightgray") backplate(); pcb(); epd(); color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); for(b=btn) color("orange") translate([cx(b[0]),cy(b[1]),sw_top]) cap(); }
   translate([-1,-1,-30]) cube([W+2, cy(44)+1, 80]); }   // cut at board y=44 (through panel, FPC, DOWN button)
 // all parts laid out for a 256x256 bed (Bambu P2S), print orientation, no supports
 if(part=="plate"){
