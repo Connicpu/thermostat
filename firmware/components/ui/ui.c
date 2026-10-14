@@ -1,6 +1,7 @@
 #include "ui.h"
 #include "board.h"
 #include "esp_timer.h"
+#include <assert.h>
 
 static Btn s_btn[3];
 static UiEventCb s_cb;
@@ -16,15 +17,14 @@ static void Tick(void *pArg)
     for (int i = 0; i < 3; i++)
     {
         BtnEvent ev = BtnTick(&s_btn[i], gpio_get_level(kPin[i]) == 0);
-        if (ev != kBtnEvNone && s_cb)
+        if (ev != kBtnEvNone)
             s_cb((UiButton)i, ev);
     }
     bool up = s_btn[kUiBtnUp].stable, down = s_btn[kUiBtnDown].stable;
     if (up && down && !s_combo)
     {
         s_combo = true;
-        if (s_cb)
-            s_cb(kUiBtnCombo, kBtnEvPress);
+        s_cb(kUiBtnCombo, kBtnEvPress);
     }
     else if (!up && !down)
     {
@@ -41,6 +41,7 @@ void UiLed(bool on)
 /** See ui.h. */
 esp_err_t UiInit(UiEventCb cb)
 {
+    assert(cb);
     s_cb = cb;
     gpio_config_t in = {
         .pin_bit_mask = (1ULL << BOARD_GPIO_BTN_UP) | (1ULL << BOARD_GPIO_BTN_DOWN) | (1ULL << BOARD_GPIO_BTN_MODE),
@@ -51,7 +52,6 @@ esp_err_t UiInit(UiEventCb cb)
     gpio_set_level(BOARD_GPIO_LED, 1);
     gpio_config_t led = {.pin_bit_mask = 1ULL << BOARD_GPIO_LED, .mode = GPIO_MODE_OUTPUT};
     gpio_config(&led);
-    gpio_set_level(BOARD_GPIO_LED, 1);
 
     BtnInit(&s_btn[kUiBtnUp], true);
     BtnInit(&s_btn[kUiBtnDown], true);
