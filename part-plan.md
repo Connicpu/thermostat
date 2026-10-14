@@ -1,4 +1,4 @@
-# Thermostat V3 – Part Plan (current: rev 13, 2026-10-13)
+# Thermostat V3 – Part Plan (current: rev 14, 2026-10-13)
 This top section describes the board as it is now. The sections under "Change history" further down are kept for traceability; parts named there (BT136S, T435, SMBJ40A, 100 µF bulk, 68 µH / 3 Ω EPD boost, Si1308) are **superseded**.
 The authoritative BOM is fab/thermostat-v3-BOM-JLC.csv, with prices and stock in fab/bom_prices.json (JLC API).
 
@@ -63,7 +63,7 @@ The authoritative BOM is fab/thermostat-v3-BOM-JLC.csv, with prices and stock in
 ## Layout rules (kicad/thermostat-v3.kicad_dru)
 - `hv_to_lv_clearance`: at least **0.6 mm** between HVAC_*, R_FUSED, VIN_RECT, OPTO_MT2_*, GATE_* and SNUB_* and any other net (IPC-2221B B2, 31-100 V).
 - `hv_pour_clearance`: the GND pour stays at least **1.0 mm** from those nets.
-- `opto_gap_no_lv`: no LV track or via may enter the isolation gap (rule areas OPTO_GAP_U6/U7/U8) between an opto's output pins (4-6) and LED pins (1-3).
+- OPTO_GAP_U6/U7/U8: keepouts on both F.Cu and B.Cu over the isolation gap between each opto's output pins (4-6) and LED pins (1-3), x 132.3-137.1 mm. They block tracks, vias and copper pour, so the gap has 0 mm² of copper. `opto_gap_no_lv` remains as a backstop.
 - Thermal island: only sensor nets, with traces of 0.25 mm max. Antenna keepout under the C6 antenna.
 
 ## Pin map (ESP32-C6-WROOM-1) – matches firmware/main/board.h
@@ -283,3 +283,16 @@ I checked every extended line against JLC's live library: basic, preferred-exten
 - Footprints renamed, with identical geometry: TO-252_BT136S -> TO-252-2_TRIAC_DPAK and SMB_SMBJ40A -> D_SMB_TVS. All board footprints are now in sync with tstat.pretty (0 library-mismatch warnings).
 - D1 has a custom symbol BRIDGE_MB10S with pin labels matching C2488 (1 = +, 2 = −, 3/4 = ~). The pads are unchanged.
 - Added an "! NO USB WITH 24VAC" silk note right beside J2 and the installation notes above (including sealing the wire hole).
+
+## Rev 14 (2026-10-13): Ferdinand re-review of 28d5e9a
+- The opto gaps are now F.Cu and B.Cu keepouts that block tracks, vias and pour, so the gap holds 0 mm² of copper on either layer.
+  - OPTO_MT2_G was moved out of the U8 gap. Its via is now at (131.9, 143.05) and the B.Cu track runs down to the existing via at (133.316, 145.94).
+  - The HVAC_W B.Cu diagonal was routed around the U7 gap through (142, 130) and (124.629, 130).
+  - GND is still a single connected cluster.
+- HV clearances were raised from 0.6 to 0.8 mm:
+  - HVAC_R vs R50 is 0.801 mm, because HVAC_R moved to y = 147.979.
+  - HVAC_C vs VIN_HV is 0.800 mm, because VIN_HV on B.Cu moved to x = 114.45.
+  - VIN_RECT vs D1's GND pad is 0.825 mm, because a jog was added at x = 116.925.
+  - The lowest HV-to-LV clearance left is 0.723 mm (the HVAC_R stub vs C2's GND pad). The rule stays at 0.6 mm.
+- Both silkscreen USB warnings are now 1.0 mm tall with a 0.15 mm stroke. The upper one is split onto two lines.
+- The gerbers were exported again after a zone refill. The BOM and CPL did not change.
