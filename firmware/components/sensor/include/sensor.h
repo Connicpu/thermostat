@@ -18,20 +18,22 @@ typedef struct {
 } SensorReading;
 
 /**
- * Create the I2C0 master bus (SDA/SCL from board.h, external 4.7 kΩ pull-ups, 100 kHz),
- * add the SHT40 at 0x44 and send it a soft reset (then wait 2 ms).
+ * Create the I2C0 master bus (SDA/SCL from board.h, external 4.7 kΩ pull-ups, 100 kHz), add the
+ * SHT40 at 0x44 and send it a soft reset (then wait 2 ms).
  *
- * @return ESP_OK, or the error from bus/device creation (SensorRead() then returns invalid readings)
+ * Returns ESP_OK, or the error from bus/device creation (SensorRead() then returns invalid
+ * readings).
  */
 esp_err_t SensorInit(void);
 
 /**
  * Take one high-repeatability measurement. Blocks ~10 ms (vTaskDelay; tMEAS is 8.3 ms max).
  *
- * On an I2C error the bus is reset and the sensor soft-reset, and valid=false is returned.
- * On a CRC error valid=false is returned (logged at warning level). Call from one task only.
+ * On an I2C error the bus is reset and the sensor soft-reset, and valid=false is returned. On a
+ * CRC error valid=false is returned (logged at warning level). Call from one task only.
  *
- * @param tempOffsetC100  added to the temperature, in 0.01 °C (fixed + user calibration)
- * @return the reading; check .valid
+ * `tempOffsetC100` is added to the temperature, in 0.01 °C (fixed + user calibration).
+ *
+ * Returns the reading; check .valid.
  */
 SensorReading SensorRead(I16 tempOffsetC100);

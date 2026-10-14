@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
-/** @return v / d rounded to nearest, halves away from zero (d > 0). */
+/** Returns v / d rounded to nearest, halves away from zero (d > 0). */
 static I32 RoundDiv(I32 v, I32 d) { return v >= 0 ? (v + d / 2) / d : -((-v + d / 2) / d); }
 
 /** See display_model.h. */
@@ -28,7 +28,7 @@ void FormatTemp(char *pOut, int n, I16 c100, bool f, bool withTenths)
     }
 }
 
-/** @return the mode name shown on the home screen ("HEAT", "COOL", "OFF"). */
+/** Returns the mode name shown on the home screen ("HEAT", "COOL", "OFF"). */
 static const char *ModeStr(CtrlMode m)
 {
     switch (m) {
@@ -38,7 +38,7 @@ static const char *ModeStr(CtrlMode m)
     }
 }
 
-/** @return the bottom-bar text for a Zigbee link state. */
+/** Returns the bottom-bar text for a Zigbee link state. */
 static const char *LinkStr(LinkState l)
 {
     switch (l) {

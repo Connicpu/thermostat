@@ -75,17 +75,18 @@ static QueueHandle_t s_boostQ;      /* U8 kZbBoostCmd* from Zigbee or the UP+DOW
 static U8 s_boostResult;       /* kZbBoostResult* last outcome, reported to HA */
 static bool s_boostActive;          /* mirror for the UI combo */
 
-/** @return monotonic time in ms (esp_timer). */
+/** Returns monotonic time in ms (esp_timer). */
 static U64 NowMs(void) { return (U64)(esp_timer_get_time() / 1000); }
 
 /* ---------------- shared settings ---------------- */
 
 /**
- * Apply new mode/fan/main setpoints to the persisted settings (mutex-protected; any task).
- * A heat or cool setpoint that differs from the current program setpoint is stored in the CURRENT
- * program period (day or night, see schedule.h); with no clock that is the day period. Marks the
- * settings dirty, so they are saved SAVE_DELAY_MS later.
- * @param keepHeat  ignored (kept for API compatibility)
+ * Apply new mode/fan/main setpoints to the persisted settings (mutex-protected; any task). A
+ * heat or cool setpoint that differs from the current program setpoint is stored in the CURRENT
+ * program period (day or night, see schedule.h); with no clock that is the day period. Marks
+ * the settings dirty, so they are saved SAVE_DELAY_MS later.
+ *
+ * `keepHeat` is ignored (kept for API compatibility).
  */
 static void SettingsUpdate(const CtrlSettings *pS, bool keepHeat)
 {
@@ -108,8 +109,8 @@ static void SettingsUpdate(const CtrlSettings *pS, bool keepHeat)
 }
 
 /**
- * @return a snapshot of the persisted settings (mutex-protected; any task), with s.heatSp / s.coolSp
- * replaced by the current program setpoints (without the morning boost).
+ * Returns a snapshot of the persisted settings (mutex-protected; any task), with s.heatSp /
+ * s.coolSp replaced by the current program setpoints (without the morning boost).
  */
 static Persist SettingsGet(void)
 {
@@ -208,7 +209,7 @@ static void ZbOnSched(const SchedCfg *pC)
  */
 static void ZbOnBoostCmd(U8 cmd) { xQueueSend(s_boostQ, &cmd, 0); }
 
-/** @return the kZbBoostResult* code reported to HA for why a boost ended. */
+/** Returns the kZbBoostResult* code reported to HA for why a boost ended. */
 static U8 EndToResult(CtrlBoostEnd e)
 {
     switch (e) {
@@ -222,7 +223,7 @@ static U8 EndToResult(CtrlBoostEnd e)
     }
 }
 
-/** @return the kZbBoostResult* code reported to HA for a CtrlBoostStart() result. */
+/** Returns the kZbBoostResult* code reported to HA for a CtrlBoostStart() result. */
 static U8 StartToResult(CtrlBoostResult r)
 {
     switch (r) {
@@ -289,10 +290,11 @@ static void OnButton(UiButton which, BtnEvent ev)
 }
 
 /**
- * Main-screen key handling. UP/DOWN nudge the active mode's setpoint by one display unit (with the
- * mode Off, a banner explains how to change it). UP+DOWN toggles a timed boost and undoes the nudge
- * that the first of the two presses caused (if within 1.5 s).
- * @return true if the display should refresh promptly
+ * Main-screen key handling. UP/DOWN nudge the active mode's setpoint by one display unit (with
+ * the mode Off, a banner explains how to change it). UP+DOWN toggles a timed boost and undoes
+ * the nudge that the first of the two presses caused (if within 1.5 s).
+ *
+ * Returns true if the display should refresh promptly.
  */
 static bool HandleHomeKey(const BtnMsg *pM)
 {
@@ -374,7 +376,8 @@ static void SetSwing(Persist *pP, I32 v)     { pP->swing = CtrlClampSwing(v); }
 static void SetUnits(Persist *pP, I32 v)     { pP->fahrenheit = v ? 1 : 0; }
 
 /**
- * @return the menu's live data, built from a settings snapshot plus boost, link, firmware, raw sensor and uptime state.
+ * Returns the menu's live data, built from a settings snapshot plus boost, link, firmware, raw
+ * sensor and uptime state.
  */
 static MenuCtx BuildMenuCtx(const Persist *pP, U64 now)
 {
@@ -390,7 +393,8 @@ static MenuCtx BuildMenuCtx(const Persist *pP, U64 now)
 /**
  * Carry out a menu action (app task): settings edits, boost commands (queued), pairing, factory
  * reset. Bumps the full-refresh epoch when the menu asks for one.
- * @return true if the display should refresh promptly
+ *
+ * Returns true if the display should refresh promptly.
  */
 static bool ApplyMenuAction(const MenuAction *pA)
 {
@@ -444,7 +448,8 @@ static bool ApplyMenuAction(const MenuAction *pA)
 /**
  * Route one button event (app task) through the menu; main-screen keys go to HandleHomeKey().
  * While UP+DOWN are held together inside the menu, their single events are ignored.
- * @return true if the display should refresh promptly
+ *
+ * Returns true if the display should refresh promptly.
  */
 static bool HandleButton(const BtnMsg *pM)
 {
@@ -479,15 +484,16 @@ static void LedUpdate(U64 now, const CtrlOutput *pO, LinkState link)
  * Read/modify the boot-loop counter (NVS namespace "boot", key "n").
  *
  * Counts boots that did not reach BOOT_STABLE_MS of uptime. Whatever keeps resetting the chip
- * (watchdog, panic, brown-out), after BOOT_LOOP_LIMIT of them the thermostat stays up in safe mode
- * instead: outputs off, STWD100 not armed, the fault on screen and on Zigbee. Deliberate software
- * restarts (ESP_RST_SW: OTA reboot/rollback, factory reset, safe-mode retry) are not counted.
- * Power-on resets ARE counted, because an STWD100 reset pulls CHIP_EN and reports as
+ * (watchdog, panic, brown-out), after BOOT_LOOP_LIMIT of them the thermostat stays up in safe
+ * mode instead: outputs off, STWD100 not armed, the fault on screen and on Zigbee. Deliberate
+ * software restarts (ESP_RST_SW: OTA reboot/rollback, factory reset, safe-mode retry) are not
+ * counted. Power-on resets ARE counted, because an STWD100 reset pulls CHIP_EN and reports as
  * ESP_RST_POWERON, so 5 quick power cycles also enter safe mode (it ends by itself after
  * SAFE_MODE_RETRY_MS). The counter lives in its own NVS namespace and survives a factory reset.
  *
- * @param op  1 = increment (saturating), 0 = clear, -1 = read only, 0x100|n = set to n
- * @return the counter after the operation; 0 if NVS is unavailable
+ * `op` is 1 = increment (saturating), 0 = clear, -1 = read only, 0x100|n = set to n.
+ *
+ * Returns the counter after the operation; 0 if NVS is unavailable.
  */
 static U8 BootCountRw(int op)
 {

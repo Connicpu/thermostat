@@ -475,7 +475,7 @@ void SimNvsSave(FILE *pF)
     }
 }
 
-/** Index of entry ns/key, creating an empty one when `create` is set. @return -1 when missing or full */
+/** Index of entry ns/key, creating an empty one when `create` is set. Returns -1 when missing or full. */
 static int NvsFind(const char *pNs, const char *pKey, bool create)
 {
     for (int i = 0; i < NVS_MAX; i++) if (s_nvs[i].used && !strcmp(s_nvs[i].ns, pNs) && !strcmp(s_nvs[i].key, pKey)) return i;
@@ -498,7 +498,7 @@ static void NvsPutHex(const char *pNs, const char *pKey, const char *pHex)
     }
 }
 
-/** Restore one `nvs ...` state-file line. @return false if the line is not an NVS entry */
+/** Restore one `nvs ...` state-file line. Returns false if the line is not an NVS entry. */
 bool SimNvsLoadLine(const char *pLine)
 {
     char ns[16], key[16], hex[1100];
@@ -868,8 +868,10 @@ static I64 Num(const char *pS) { return strtoll(pS, NULL, 0); }
 
 /**
  * Run a hardware script command: set <kv> <n>, temp <0.01 °C>, btn <mode|m|up|down>
- * <press|release|bounce ms>, nvs <ns> <key> <hex>, ota pending <other_valid|...>, power cycle, dump, end.
- * @return false for an unknown command
+ * <press|release|bounce ms>, nvs <ns> <key> <hex>, ota pending <other_valid|...>, power cycle,
+ * dump, end.
+ *
+ * Returns false for an unknown command.
  */
 bool SimPeriphCmd(char **pA, int n)
 {

@@ -206,7 +206,10 @@ TickType_t xTaskGetTickCount(void) { return (TickType_t)(s_nowUs / 1000u); }
 TaskHandle_t xTaskGetCurrentTaskHandle(void) { return s_pCur; }
 
 /**
- * Fake ulTaskNotifyTake(): wait up to `wait` ticks for a notification; clear the count or decrement it. @return the count before
+ * Fake ulTaskNotifyTake(): wait up to `wait` ticks for a notification; clear the count or
+ * decrement it.
+ *
+ * Returns the count before.
  */
 U32 ulTaskNotifyTake(BaseType_t clear, TickType_t wait)
 {

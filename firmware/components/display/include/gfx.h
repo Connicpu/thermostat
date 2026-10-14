@@ -24,7 +24,7 @@ void GfxClear(GfxFb *pFb);
 /** Set one landscape pixel (x right, y down) to black or white. Out-of-range pixels are ignored. */
 void GfxPixel(GfxFb *pFb, int x, int y, bool black);
 
-/** @return true if the landscape pixel is black (false outside the canvas). */
+/** Returns true if the landscape pixel is black (false outside the canvas). */
 bool GfxGet(const GfxFb *pFb, int x, int y);
 
 /** Fill a w x h rectangle with its top-left at (x,y), clipped to the canvas. */
@@ -36,14 +36,16 @@ void GfxHline(GfxFb *pFb, int x, int y, int w);
 /** Draw a black vertical line of h pixels starting at (x,y). */
 void GfxVline(GfxFb *pFb, int x, int y, int h);
 
-/** @return the width in pixels of the string in font pF (unknown chars count as '?' or a space). */
+/** Returns the width in pixels of the string in font pF (unknown chars count as '?' or a space). */
 int  GfxTextWidth(const Font *pF, const char *pS);
 
 /**
  * Draw text with its top-left at (x,y), clipped to the canvas. Characters outside 32..127 are
  * drawn as '?', and glyphs missing from the font as a space. Only set pixels are drawn
  * (transparent background).
- * @param black  ink colour
- * @return the x just past the last glyph
+ *
+ * `black` is the ink colour.
+ *
+ * Returns the x just past the last glyph.
  */
 int  GfxText(GfxFb *pFb, const Font *pF, int x, int y, const char *pS, bool black);

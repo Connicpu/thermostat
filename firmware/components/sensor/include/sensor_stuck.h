@@ -29,10 +29,9 @@ typedef struct {
  * A reading that differs in temperature or humidity from the stored one restarts the timer.
  * Pure function: only *pS is modified.
  *
- * @param pS      detector state
- * @param tC100   temperature, 0.01 °C
- * @param rhC100  relative humidity, 0.01 %RH
- * @param nowMs   monotonic time, ms
- * @return true while the identical value has persisted for at least SENSOR_STUCK_MS
+ * `pS` is the detector state; `tC100` is the temperature, 0.01 °C; `rhC100` is the relative humidity, 0.01
+ * %RH; `nowMs` is monotonic time, ms.
+ *
+ * Returns true while the identical value has persisted for at least SENSOR_STUCK_MS.
  */
 bool SensorStuckUpdate(SensorStuck *pS, I16 tC100, U16 rhC100, U64 nowMs);

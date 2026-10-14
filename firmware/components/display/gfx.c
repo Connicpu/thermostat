@@ -12,7 +12,8 @@
 
 /**
  * Map a landscape pixel to native RAM coordinates for the panel mounting given by EPD_ROTATION.
- * @return false if (x,y) is off the canvas
+ *
+ * Returns false if (x,y) is off the canvas.
  */
 static inline bool Map(int x, int y, int *pNx, int *pNy)
 {
@@ -61,7 +62,7 @@ void GfxHline(GfxFb *pFb, int x, int y, int w) { GfxFillRect(pFb, x, y, w, 1, tr
 /** See gfx.h. */
 void GfxVline(GfxFb *pFb, int x, int y, int h) { GfxFillRect(pFb, x, y, 1, h, true); }
 
-/** @return the glyph for c: '?' for chars outside 32..127, the space glyph for chars the font lacks. */
+/** Returns the glyph for c: '?' for chars outside 32..127, the space glyph for chars the font lacks. */
 static const FontGlyph *Glyph(const Font *pF, char c)
 {
     unsigned u = (unsigned char)c;

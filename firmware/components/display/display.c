@@ -33,7 +33,7 @@ static U64 s_urgentAt;
 static volatile U64 s_alive;
 static GfxFb s_fb, s_prev;
 
-/** @return monotonic time in ms (esp_timer). */
+/** Returns monotonic time in ms (esp_timer). */
 static U64 NowMs(void) { return (U64)(esp_timer_get_time() / 1000); }
 
 /** See display.h. */

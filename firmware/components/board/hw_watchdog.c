@@ -34,5 +34,5 @@ void HwWatchdogArm(void)
     s_armed = true;
 }
 
-/** @return whether the watchdog has been armed. See hw_watchdog.h. */
+/** Returns whether the watchdog has been armed. See hw_watchdog.h. */
 bool HwWatchdogArmed(void) { return s_armed; }

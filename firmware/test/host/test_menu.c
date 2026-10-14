@@ -23,16 +23,16 @@ static void Reset(void)
                      .sched = SCHED_CFG_DEFAULT()};
 }
 
-/** Send one key event 300 ms after the previous one. @return the menu action */
+/** Send one key event 300 ms after the previous one. Returns the menu action. */
 static MenuAction Key(MenuKey k, BtnEvent ev) { s_t += 300; return MenuOnKey(&s_m, &s_c, k, ev, s_t); }
 
-/** Short UP press. @return the menu action */
+/** Short UP press. Returns the menu action. */
 static MenuAction Up(void)   { return Key(kMenuKeyUp, kBtnEvPress); }
 
-/** Short DOWN press. @return the menu action */
+/** Short DOWN press. Returns the menu action. */
 static MenuAction Down(void) { return Key(kMenuKeyDown, kBtnEvPress); }
 
-/** Short M press. @return the menu action */
+/** Short M press. Returns the menu action. */
 static MenuAction Sel(void)  { return Key(kMenuKeyM, kBtnEvPress); }
 
 /** Open the menu (from the main screen) and move the cursor down to main-list row i. */
@@ -398,9 +398,10 @@ static void InfoScreen(void)
 }
 
 /**
- * Drive the real button debouncer with MODE held for `ms` (released afterwards if `release`) and
- * feed its events to the menu, counting pair and factory-reset actions.
- * @return the last action that did something or asked for a redraw
+ * Drive the real button debouncer with MODE held for `ms` (released afterwards if `release`)
+ * and feed its events to the menu, counting pair and factory-reset actions.
+ *
+ * Returns the last action that did something or asked for a redraw.
  */
 static MenuAction HoldM(int ms, bool release, int *pNPair, int *pNReset)
 {

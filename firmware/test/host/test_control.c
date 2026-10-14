@@ -306,7 +306,7 @@ static void InterlockRule(void)
  * sensor dropouts. Checks the safety invariants on every step. */
 static U32 s_rng = 12345;
 
-/** @return the next value of a fixed-seed LCG (deterministic soak tests). */
+/** Returns the next value of a fixed-seed LCG (deterministic soak tests). */
 static U32 Rnd(void) { s_rng = s_rng * 1103515245u + 12345u; return s_rng >> 8; }
 
 /**

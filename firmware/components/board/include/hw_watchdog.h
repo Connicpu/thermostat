@@ -26,5 +26,5 @@ void HwWatchdogArm(void);
  */
 void HwWatchdogKick(void);
 
-/** @return true once HwWatchdogArm() has been called. */
+/** Returns true once HwWatchdogArm() has been called. */
 bool HwWatchdogArmed(void);

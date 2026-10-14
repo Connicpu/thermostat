@@ -11,7 +11,8 @@ with only blank lines between the comment and the declaration.
     doc goes on that macro's #define instead;
   * struct definitions, named or typedef'd (structs nested in another struct or local to a
     function body are covered by the comments of the outer one).
-Exit 1 on any missing comment.
+Docs must be prose: Doxygen tags (@brief, @param, @return, @note, ...) are rejected.
+Exit 1 on any missing or tagged comment.
 
 Usage: check_docs.py [--root DIR] [--db compile_commands.json ...]"""
 import argparse, json, os, re, sys
@@ -30,6 +31,19 @@ def preceding_doc(lines, lineno):
     while i >= 0 and "/*" not in lines[i]:
         i -= 1
     return i >= 0 and lines[i][lines[i].rindex("/*"):].startswith("/**")
+
+TAG = re.compile(r"(?<![\w`])[@\\](brief|param|returns?|retval|note|see|sa|details|warning|throws|pre|post|tparam)\b")
+
+def doc_tag(lines, lineno):
+    """Doxygen tag used in the /** */ block preceding line `lineno` (prose only), or None."""
+    i = lineno - 2
+    while i >= 0 and not lines[i].strip():
+        i -= 1
+    j = i
+    while i >= 0 and "/*" not in lines[i]:
+        i -= 1
+    m = TAG.search("\n".join(lines[max(i, 0):j + 1]))
+    return m.group(0) if m else None
 
 def decl_line(c):
     """First line of the declaration including `typedef` / storage class (libclang starts struct extents at `struct`)."""
@@ -80,10 +94,12 @@ def main(argv=None):
             elif c.kind == CK.STRUCT_DECL and line >= 2 and ls[line - 1].lstrip().startswith("struct") \
                     and ls[line - 2].rstrip().endswith("typedef"):
                 line -= 1
+            kind = "struct" if c.kind == CK.STRUCT_DECL else "function"
+            name = c.spelling or c.type.spelling
             if not preceding_doc(ls, line):
-                kind = "struct" if c.kind == CK.STRUCT_DECL else "function"
-                name = c.spelling or c.type.spelling
-                missing.setdefault((f, line), (f[len(cn.ROOT) + 1:], line, kind, name))
+                missing.setdefault((f, line), (f[len(cn.ROOT) + 1:], line, kind, name, None))
+            elif doc_tag(ls, line):
+                missing.setdefault((f, line), (f[len(cn.ROOT) + 1:], line, kind, name, doc_tag(ls, line)))
 
     for db in dbs:
         for e in json.loads(cn.rd(db)):
@@ -100,9 +116,12 @@ def main(argv=None):
         args = sibling.get(os.path.dirname(f)) or sibling.get(os.path.dirname(os.path.dirname(f))) or sibling[None]
         visit(idx.parse(f, (["-x", "c"] if f.endswith(".h") else []) + args + ["-I" + os.path.dirname(f)],
                         options=ci.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD))
-    for f, line, kind, name in sorted(missing.values()):
-        print(f"{f}:{line}: {kind} '{name}' has no preceding /** ... */ doc comment")
-    print(f"check_docs: {len(missing)} missing doc comment(s)")
+    for f, line, kind, name, tag in sorted(missing.values(), key=lambda v: v[:4]):
+        if tag:
+            print(f"{f}:{line}: {kind} '{name}' doc uses the Doxygen tag '{tag}'; write prose instead")
+        else:
+            print(f"{f}:{line}: {kind} '{name}' has no preceding /** ... */ doc comment")
+    print(f"check_docs: {len(missing)} missing or tagged doc comment(s)")
     return 1 if missing else 0
 
 if __name__ == "__main__":

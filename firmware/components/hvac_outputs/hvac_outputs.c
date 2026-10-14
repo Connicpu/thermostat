@@ -23,8 +23,9 @@ static const gpio_num_t kPins[3] = {BOARD_GPIO_DRV_W, BOARD_GPIO_DRV_Y, BOARD_GP
 /**
  * Set the three pins to s: lowered pins first, then raised in the order G, W, Y, and Y is never
  * raised if G failed (no compressor without the blower). Caller holds s_lock.
- * @return bitmask (bit0 W, bit1 Y, bit2 G) of pins whose gpio_set_level() failed. An error code is
- * authoritative, so there is no debounce.
+ *
+ * Returns bitmask (bit0 W, bit1 Y, bit2 G) of pins whose gpio_set_level() failed. An error code
+ * is authoritative, so there is no debounce.
  */
 static U8 Drive(HvacState s)
 {
@@ -45,14 +46,14 @@ static U8 Drive(HvacState s)
     return bad;
 }
 
-/** @return the pad levels read back through the input buffer (the pins are INPUT_OUTPUT). */
+/** Returns the pad levels read back through the input buffer (the pins are INPUT_OUTPUT). */
 static HvacState Readback(void)
 {
     return (HvacState){.w = gpio_get_level(BOARD_GPIO_DRV_W) != 0, .y = gpio_get_level(BOARD_GPIO_DRV_Y) != 0,
                           .g = gpio_get_level(BOARD_GPIO_DRV_G) != 0};
 }
 
-/** @return bitmask (bit0 W, bit1 Y, bit2 G) of outputs that differ between a and b. */
+/** Returns bitmask (bit0 W, bit1 Y, bit2 G) of outputs that differ between a and b. */
 static U8 Diff(HvacState a, HvacState b)
 {
     return (U8)((a.w != b.w) | ((a.y != b.y) << 1) | ((a.g != b.g) << 2));
@@ -91,11 +92,10 @@ esp_err_t HvacOutputsInit(void)
 /**
  * Latch an output fault for the pins in `bad`: logs an EVT line once per newly faulted pin and
  * records the time of the first latch (start of the HVAC_RETEST_MS wait).
- * @param bad   bitmask of faulted pins (bit0 W, bit1 Y, bit2 G)
- * @param pad   pad levels seen (for the log)
- * @param cmd   what was commanded (for the log)
- * @param pWhy  short reason for the log
- * @param now   esp_timer time, µs
+ *
+ * `bad` is the bitmask of faulted pins (bit0 W, bit1 Y, bit2 G); pad levels seen (for the log);
+ * `cmd` is what was commanded (for the log); `pWhy` is a short reason for the log; `now` is
+ * esp_timer time, µs.
  */
 static void Latch(U8 bad, HvacState pad, HvacState cmd, const char *pWhy, I64 now)
 {

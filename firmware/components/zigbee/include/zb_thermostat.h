@@ -79,14 +79,15 @@ typedef struct {
 } ZbThermostatState;
 
 /**
- * Start Zigbee: copy the callbacks and initial values, configure the native radio and create the
- * Zigbee task (6 KB stack, priority 5). That task builds the endpoint, starts the stack as a sleepy
- * end device, rejoins or starts pairing (network steering) and runs the stack main loop.
- * Failures never reboot: the thermostat keeps working locally and ZbThermostatLink() reports
- * kLinkFault.
- * @param pCbs   callbacks (copied)
- * @param pInit  initial attribute values (copied)
- * @return ESP_OK, or the platform-config / task-creation error (radio fault)
+ * Start Zigbee: copy the callbacks and initial values, configure the native radio and create
+ * the Zigbee task (6 KB stack, priority 5). That task builds the endpoint, starts the stack as
+ * a sleepy end device, rejoins or starts pairing (network steering) and runs the stack main
+ * loop. Failures never reboot: the thermostat keeps working locally and ZbThermostatLink()
+ * reports kLinkFault.
+ *
+ * `pCbs` is callbacks (copied); `pInit` is the initial attribute values (copied).
+ *
+ * Returns ESP_OK, or the platform-config / task-creation error (radio fault).
  */
 esp_err_t    ZbThermostatStart(const ZbThermostatCbs *pCbs, const ZbThermostatInit *pInit);
 
@@ -103,8 +104,9 @@ esp_err_t    ZbThermostatStart(const ZbThermostatCbs *pCbs, const ZbThermostatIn
 void         ZbThermostatPublish(const ZbThermostatState *pSt);
 
 /**
- * @return the link state for display and HA: kLinkFault if the stack failed to start or the Zigbee
- * task has not run for ZB_RETRY_STALL_MS, else offline / pairing / joined / lost. Safe from any task.
+ * Returns the link state for display and HA: kLinkFault if the stack failed to start or the
+ * Zigbee task has not run for ZB_RETRY_STALL_MS, else offline / pairing / joined / lost. Safe
+ * from any task.
  */
 LinkState ZbThermostatLink(void);
 
@@ -123,9 +125,11 @@ void         ZbThermostatPair(void);
 void         ZbThermostatFactoryReset(void);
 
 /**
- * Local time of day from the last Zigbee Time sync, extrapolated with the monotonic clock.
- * Safe from any task (spinlock).
- * @param pMinute  out: minutes after local midnight, 0..1439 (untouched when false is returned)
- * @return false until the first successful sync after boot
+ * Local time of day from the last Zigbee Time sync, extrapolated with the monotonic clock. Safe
+ * from any task (spinlock).
+ *
+ * `pMinute` receives minutes after local midnight, 0..1439 (untouched when false is returned).
+ *
+ * Returns false until the first successful sync after boot.
  */
 bool         ZbThermostatLocalMinute(U16 *pMinute);

@@ -29,29 +29,33 @@ typedef struct {
 /**
  * Factory defaults: Off, fan Auto, heat 20.0 °C / cool 24.5 °C, boost 22.0 °C / 30 min / Auto,
  * default swing and schedule, no calibration.
- * @param fahrenheit  default display unit (from Kconfig)
+ *
+ * `fahrenheit` is the default display unit (from Kconfig).
  */
 void   SettingsDefaults(Persist *pP, bool fahrenheit);
 
 /**
- * Decode an NVS blob. Accepts the same or a newer layout (version >= SETTINGS_VERSION and at least
- * our size): the known prefix is copied and appended fields are ignored. Values are not range
- * checked; call SettingsSanitize() afterwards.
- * @return false (and *pP untouched) for an older/unknown version or a too-short blob
+ * Decode an NVS blob. Accepts the same or a newer layout (version >= SETTINGS_VERSION and at
+ * least our size): the known prefix is copied and appended fields are ignored. Values are not
+ * range checked; call SettingsSanitize() afterwards.
+ *
+ * Returns false (and *pP untouched) for an older/unknown version or a too-short blob.
  */
 bool   SettingsDecode(const void *pData, size_t n, Persist *pP);
 
 /**
  * Bring every field back into range: mode/fan/setpoints and the schedule are clamped, and other
- * out-of-range values (calibration beyond ±2.5 °C, boost setpoint/minutes/direction, units, swing)
- * are reset to their defaults.
- * @param fahrenheitDefault  units used when the stored flag is invalid
+ * out-of-range values (calibration beyond ±2.5 °C, boost setpoint/minutes/direction, units,
+ * swing) are reset to their defaults.
+ *
+ * `fahrenheitDefault` is the units used when the stored flag is invalid.
  */
 void   SettingsSanitize(Persist *pP, bool fahrenheitDefault);
 
 /**
  * Encode settings as a blob of the current version (padding zeroed).
- * @return the blob size, or 0 if n is too small
+ *
+ * Returns the blob size, or 0 if n is too small.
  */
 size_t SettingsEncode(const Persist *pP, void *pBuf, size_t n);
 
@@ -63,8 +67,10 @@ size_t SettingsEncode(const Persist *pP, void *pBuf, size_t n);
 void SettingsLoad(Persist *pP);
 
 /**
- * Encode and write the settings blob, then commit. Uses the same static buffer as SettingsLoad().
- * @return true on success (failures are logged)
+ * Encode and write the settings blob, then commit. Uses the same static buffer as
+ * SettingsLoad().
+ *
+ * Returns true on success (failures are logged).
  */
 bool SettingsSave(const Persist *pP);
 

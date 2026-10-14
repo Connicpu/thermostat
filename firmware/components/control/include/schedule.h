@@ -75,15 +75,10 @@ typedef enum {
 } SchedItem;
 typedef enum { kSchedKindTime, kSchedKindTemp, kSchedKindMinutes, kSchedKindDelta } SchedKind;
 
-/**
- * @return how a schedule item is displayed and stepped (time of day, temperature, minutes, temperature delta).
- */
+/** Returns how a schedule item is displayed and stepped (time of day, temperature, minutes, temperature delta). */
 SchedKind SchedItemKind(SchedItem it);
 
-/**
- * @return the raw value of one schedule item (minutes or 0.01 °C, by SchedItemKind()); 0 for an
- * unknown item.
- */
+/** Returns the raw value of one schedule item (minutes or 0.01 °C, by SchedItemKind()); 0 for an unknown item. */
 I32      SchedGet(const SchedCfg *pC, SchedItem it);
 
 /**
@@ -101,25 +96,27 @@ void SchedSanitize(const CtrlParams *pP, SchedCfg *pC);
 /**
  * Which period `minute` falls in for one start-time pair. DAY is [dayStart, nightStart) and
  * either period may cross midnight; equal starts mean the program is disabled (always DAY).
- * @param minute  minutes after midnight (taken modulo 1440)
+ *
+ * Minutes after midnight (taken modulo 1440).
  */
 SchedPeriod SchedPeriodAt(U16 dayStart, U16 nightStart, U16 minute);
 
 /**
- * @return the effective morning boost length in minutes: boostMin, cut short at nightHeatStart;
+ * Returns the effective morning boost length in minutes: boostMin, cut short at nightHeatStart;
  * 0 if boostMin or boostOffset is 0 or the heating program is disabled (equal starts).
  */
 U16 SchedBoostLength(const SchedCfg *pC);
 
 /**
- * @param minute  minutes after midnight
- * @return true if `minute` is inside the morning boost window that starts at dayHeatStart
+ * Minutes after midnight.
+ *
+ * Returns true if `minute` is inside the morning boost window that starts at dayHeatStart
  * (ignores the system mode and whether the time is known).
  */
 bool SchedBoostWindow(const SchedCfg *pC, U16 minute);
 
 /**
- * @return the current period for a mode: HEAT uses the heating program, every other mode the
+ * Returns the current period for a mode: HEAT uses the heating program, every other mode the
  * cooling program; kSchedDay when the time is unknown.
  */
 SchedPeriod SchedCurrent(const SchedCfg *pC, CtrlMode mode, bool timeKnown, U16 minute);
@@ -128,8 +125,8 @@ SchedPeriod SchedCurrent(const SchedCfg *pC, CtrlMode mode, bool timeKnown, U16 
  * The program setpoints for the current periods, without the morning boost: what the user sees
  * and edits as "the" setpoint. The heat setpoint follows the heating program and the cool
  * setpoint the cooling program, independently.
- * @param pHeat  out: heating setpoint, 0.01 °C
- * @param pCool  out: cooling setpoint, 0.01 °C
+ *
+ * `pHeat` receives heating setpoint, 0.01 °C; `pCool` receives cooling setpoint, 0.01 °C.
  */
 void SchedProgramSp(const SchedCfg *pC, bool timeKnown, U16 minute, I16 *pHeat, I16 *pCool);
 
@@ -137,8 +134,9 @@ void SchedProgramSp(const SchedCfg *pC, bool timeKnown, U16 minute, I16 *pHeat, 
  * Fill pS->heatSp / pS->coolSp with the setpoints the controller should use: the program
  * setpoints, plus boostOffset on the heat setpoint (clamped to maxSp) in HEAT mode inside the
  * morning window when the time is known. Only the setpoints in *pS are written.
- * @return the state to report: kSchedStateTimeUnknown, kSchedStateDayBoost, or the period of the
- * cooling program in COOL mode and of the heating program in HEAT and OFF.
+ *
+ * Returns the state to report: kSchedStateTimeUnknown, kSchedStateDayBoost, or the period of
+ * the cooling program in COOL mode and of the heating program in HEAT and OFF.
  */
 SchedState SchedApply(const CtrlParams *pP, const SchedCfg *pC, bool timeKnown, U16 minute,
                           CtrlSettings *pS);
@@ -146,7 +144,8 @@ SchedState SchedApply(const CtrlParams *pP, const SchedCfg *pC, bool timeKnown, 
 /**
  * The user moved the main setpoint: store it (clamped) in the CURRENT period of the heating
  * (`heat` true) or cooling program; DAY when the time is unknown.
- * @return true if the stored value changed
+ *
+ * Returns true if the stored value changed.
  */
 bool SchedEditCurrent(const CtrlParams *pP, SchedCfg *pC, bool heat, bool timeKnown, U16 minute,
                         I16 sp);

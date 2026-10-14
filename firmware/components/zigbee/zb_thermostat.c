@@ -58,11 +58,11 @@ static U32 s_timeLocalS;               /* ZCL UTCTime-style seconds (local) at s
 static U64 s_timeAtMs;
 static portMUX_TYPE s_timeMux = portMUX_INITIALIZER_UNLOCKED;
 
-/** @return monotonic time in ms (esp_timer). */
+/** Returns monotonic time in ms (esp_timer). */
 static U64 MonoMs(void) { return (U64)(esp_timer_get_time() / 1000); }
 
 /**
- * @return a pointer to the SchedCfg field backing a schedule attribute id (I16 or U16, see
+ * Returns a pointer to the SchedCfg field backing a schedule attribute id (I16 or U16, see
  * SchedAttrSigned()), or NULL if id is not a schedule attribute.
  */
 static void *SchedField(SchedCfg *pC, U16 id)
@@ -82,7 +82,7 @@ static void *SchedField(SchedCfg *pC, U16 id)
     }
 }
 
-/** @return true if the schedule attribute is a signed temperature (S16), false for U16 times/minutes. */
+/** Returns true if the schedule attribute is a signed temperature (S16), false for U16 times/minutes. */
 static bool SchedAttrSigned(U16 id)
 {
     return id == kZbAttrDayCoolTemp || id == kZbAttrNightCoolTemp || id == kZbAttrDayHeatTemp ||
@@ -206,8 +206,10 @@ static void CommissioningCb(U8 mode)
 }
 
 /**
- * Schedule the next (re)join attempt after delayMs. At most one is outstanding (s_steerPending).
- * @param pWhy  reason, for the EVT log line
+ * Schedule the next (re)join attempt after delayMs. At most one is outstanding
+ * (s_steerPending).
+ *
+ * `pWhy` is the reason, for the EVT log line.
  */
 static void ScheduleSteering(U32 delayMs, const char *pWhy)
 {
@@ -340,12 +342,13 @@ void ZbThermostatFactoryReset(void)
 /* ------------------------------------------------------------------ */
 
 /**
- * Handle a remote attribute write (Zigbee task, stack lock held).
- * Thermostat setpoints/mode and fan mode go to onSettings. An unsupported system mode is refused
- * and the real one republished. Calibration and identify are passed on. Boost cluster: parameters
- * are clamped and passed to onBoostParams; the command goes to onBoostCommand; swing and schedule
- * writes are clamped, written back so a read-back shows the stored value, and passed on.
- * @return ESP_OK, or ESP_ERR_INVALID_ARG for a failed message
+ * Handle a remote attribute write (Zigbee task, stack lock held). Thermostat setpoints/mode and
+ * fan mode go to onSettings. An unsupported system mode is refused and the real one
+ * republished. Calibration and identify are passed on. Boost cluster: parameters are clamped
+ * and passed to onBoostParams; the command goes to onBoostCommand; swing and schedule writes
+ * are clamped, written back so a read-back shows the stored value, and passed on.
+ *
+ * Returns ESP_OK, or ESP_ERR_INVALID_ARG for a failed message.
  */
 static esp_err_t OnSetAttr(const esp_zb_zcl_set_attr_value_message_t *pM)
 {
@@ -458,14 +461,14 @@ static bool s_otaTagSeen;
 static U32 s_otaOff, s_otaTotal;
 
 /**
- * Strip the 6-byte OTA element header (tag + length) from the first chunk of the image, checking
- * that it is an upgrade image whose length matches the total. Later chunks pass through unchanged.
- * @param total    total image size from the OTA header
- * @param pP       chunk
- * @param n        chunk length
- * @param pOut     out: start of the payload to write
- * @param pOutlen  out: payload length
- * @return ESP_OK, ESP_ERR_INVALID_ARG (bad tag/element) or ESP_ERR_INVALID_SIZE
+ * Strip the 6-byte OTA element header (tag + length) from the first chunk of the image,
+ * checking that it is an upgrade image whose length matches the total. Later chunks pass
+ * through unchanged.
+ *
+ * `total` is the image size from the OTA header; `pP`/`n` are the chunk; `pOut`/`pOutlen`
+ * receive the start and length of the payload to write.
+ *
+ * Returns ESP_OK, ESP_ERR_INVALID_ARG (bad tag/element) or ESP_ERR_INVALID_SIZE.
  */
 static esp_err_t OtaElement(U32 total, const U8 *pP, U16 n, const U8 **pOut, U16 *pOutlen)
 {
@@ -590,12 +593,14 @@ static esp_err_t ActionHandler(esp_zb_core_action_callback_id_t id, const void *
 #define TRY(x) do { esp_err_t _e = (x); if (_e != ESP_OK) { ESP_LOGE(kTag, "%s: %s", #x, esp_err_to_name(_e)); return NULL; } } while (0)
 
 /**
- * Build endpoint 1: Basic, Identify, Thermostat, Fan Control, Temperature and Humidity Measurement,
- * the manufacturer Boost cluster (boost, swing and schedule attributes backed by this file's statics)
- * and the Time and OTA clients.
- * @param pInit  initial mode, fan and setpoints
- * @param calib  LocalTemperatureCalibration, 0.1 °C
- * @return the endpoint list, or NULL if any cluster could not be added (treated as a radio fault)
+ * Build endpoint 1: Basic, Identify, Thermostat, Fan Control, Temperature and Humidity
+ * Measurement, the manufacturer Boost cluster (boost, swing and schedule attributes backed by
+ * this file's statics) and the Time and OTA clients.
+ *
+ * `pInit` is the initial mode, fan and setpoints; `calib` is the LocalTemperatureCalibration, 0.1 °C.
+ *
+ * Returns the endpoint list, or NULL if any cluster could not be added (treated as a radio
+ * fault).
  */
 static esp_zb_ep_list_t *BuildEndpoint(const CtrlSettings *pInit, I8 calib)
 {

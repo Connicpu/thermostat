@@ -6,9 +6,10 @@
 #include "display_model.h"
 
 /**
- * Bring up the SPI bus and panel GPIOs (Ssd1680BusInit()), create the model mutex, and start the
- * display task (4 KB stack, priority 3). The first refresh after boot is a full one.
- * @return ESP_OK, or the bus init error (no task is started; DisplayRunning() stays false)
+ * Bring up the SPI bus and panel GPIOs (Ssd1680BusInit()), create the model mutex, and start
+ * the display task (4 KB stack, priority 3). The first refresh after boot is a full one.
+ *
+ * Returns ESP_OK, or the bus init error (no task is started; DisplayRunning() stays false).
  */
 esp_err_t DisplayInit(void);
 
@@ -25,9 +26,10 @@ esp_err_t DisplayInit(void);
 void DisplayPost(const DisplayModel *pM, bool urgent);
 
 /**
- * @return the monotonic time (ms since boot) at which the display task last ran its loop (every ≤200 ms); used by the health check to detect a stalled panel task.
+ * Returns the monotonic time (ms since boot) at which the display task last ran its loop (every
+ * ≤200 ms); used by the health check to detect a stalled panel task.
  */
 U64 DisplayLastAliveMs(void);
 
-/** @return true if the display task was started (DisplayInit() succeeded). */
+/** Returns true if the display task was started (DisplayInit() succeeded). */
 bool     DisplayRunning(void);

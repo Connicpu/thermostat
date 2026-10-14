@@ -14,17 +14,16 @@ typedef void (*UiEventCb)(UiButton which, BtnEvent ev);
 
 /**
  * Configure the three buttons (active low, external 10 kΩ pull-ups) and the status LED (off),
- * then start a periodic 10 ms esp_timer that debounces the buttons and calls cb.
- * In addition to the per-button events, cb(kUiBtnCombo, kBtnEvPress) fires once when UP and DOWN
- * are both held.
- * @return the esp_timer create/start error, or ESP_OK
+ * then start a periodic 10 ms esp_timer that debounces the buttons and calls cb. In addition to
+ * the per-button events, cb(kUiBtnCombo, kBtnEvPress) fires once when UP and DOWN are both
+ * held.
+ *
+ * Returns the esp_timer create/start error, or ESP_OK.
  */
 esp_err_t UiInit(UiEventCb cb);
 
 /** Switch the status LED (active-low on IO8). */
 void UiLed(bool on);
 
-/**
- * @return true while an UP+DOWN combo is being held (UP/DOWN events should then be ignored). Safe from any task.
- */
+/** Returns true while an UP+DOWN combo is being held (UP/DOWN events should then be ignored). Safe from any task. */
 bool UiComboActive(void);

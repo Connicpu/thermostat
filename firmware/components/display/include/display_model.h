@@ -68,10 +68,11 @@ typedef struct {
 
 /**
  * Convert 0.01 °C to the display unit, rounded to tenths (half away from zero).
- * @param c100        temperature, 0.01 °C
- * @param fahrenheit  convert to °F
- * @param pTenths     out (optional): the tenths digit, 0..9, of the absolute value
- * @return the integer part (truncated toward zero after rounding)
+ *
+ * `c100` is the temperature, 0.01 °C; `fahrenheit` selects °F; `pTenths`, if non-NULL,
+ * receives the tenths digit, 0..9, of the absolute value.
+ *
+ * Returns the integer part (truncated toward zero after rounding).
  */
 int  TempToDisplay(I16 c100, bool fahrenheit, int *pTenths);
 

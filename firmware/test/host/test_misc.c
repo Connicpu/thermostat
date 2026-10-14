@@ -34,8 +34,10 @@ static void Sht40ParseValues(void)
 }
 
 /**
- * Feed one raw level to the button for `ms` (in BTN_TICK_MS ticks), collecting up to `max` events.
- * @return the number of events stored in pEvs
+ * Feed one raw level to the button for `ms` (in BTN_TICK_MS ticks), collecting up to `max`
+ * events.
+ *
+ * Returns the number of events stored in pEvs.
  */
 static int Feed(Btn *pB, bool level, int ms, BtnEvent *pEvs, int max)
 {

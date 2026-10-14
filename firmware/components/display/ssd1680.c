@@ -49,10 +49,12 @@ static void CmdData(U8 c, const U8 *pD, size_t n) { Cmd(c); Data(pD, n); }
 #define CMD(c, ...) do { static const U8 _d[] = {__VA_ARGS__}; CmdData((c), _d, sizeof _d); } while (0)
 
 /**
- * Wait for the panel's BUSY line to go low, polling every 10 ms with vTaskDelay (other tasks keep
- * running).
- * @param timeoutMs  give up after this long
- * @return ESP_OK, or ESP_ERR_TIMEOUT (logged)
+ * Wait for the panel's BUSY line to go low, polling every 10 ms with vTaskDelay (other tasks
+ * keep running).
+ *
+ * `timeoutMs` is how long to wait before giving up.
+ *
+ * Returns ESP_OK, or ESP_ERR_TIMEOUT (logged).
  */
 static esp_err_t WaitBusy(int timeoutMs)
 {
@@ -101,7 +103,8 @@ esp_err_t Ssd1680BusInit(void)
 /**
  * Hardware-reset the panel (wakes it from deep sleep), SW-reset it, and program the RAM window
  * (128 x 296, X+/Y+), border waveform, update control and internal temperature sensor.
- * @return ESP_ERR_TIMEOUT if BUSY never clears, else ESP_OK
+ *
+ * Returns ESP_ERR_TIMEOUT if BUSY never clears, else ESP_OK.
  */
 static esp_err_t PanelInit(void)
 {

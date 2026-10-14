@@ -69,7 +69,7 @@ void    SimKvSet(const char *pK, I64 v);
 /* periph.c */
 /** Power-on state of all fake hardware, including the bootloader's OTA slot choice. */
 void SimPeriphBoot(void);                               /* power-on state of all fake hardware */
-/** Run a hardware script command. @return false for an unknown command */
+/** Run a hardware script command. Returns false for an unknown command. */
 bool SimPeriphCmd(char **pArgv, int argc);               /* script command; false = unknown */
 /** Next virtual time (us) at which a watchdog model could fire; UINT64_MAX if none is armed. */
 U64 SimPeriphNextDeadlineUs(void);               /* watchdogs */
@@ -79,9 +79,9 @@ void SimPeriphCheck(void);
 /** Append the fake NVS contents to the state file. */
 void SimNvsSave(FILE *pF);
 
-/** Restore one NVS line from the state file. @return false if the line is not an NVS entry */
+/** Restore one NVS line from the state file. Returns false if the line is not an NVS entry. */
 bool SimNvsLoadLine(const char *pLine);
 
 /* esp_zb_fake.c */
-/** Run a `zb ...` script command (without the "zb" word). @return false for an unknown command */
+/** Run a `zb ...` script command (without the "zb" word). Returns false for an unknown command. */
 bool SimZbCmd(char **pArgv, int argc);

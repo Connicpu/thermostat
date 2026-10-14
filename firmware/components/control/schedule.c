@@ -3,10 +3,10 @@
 #include "schedule.h"
 #include <stddef.h>
 
-/** @return v clamped into lo..hi. */
+/** Returns v clamped into lo..hi. */
 static I16 Clamp16(I32 v, I16 lo, I16 hi) { return v < lo ? lo : (v > hi ? hi : (I16)v); }
 
-/** @return a minute-of-day clamped to 0..1439. */
+/** Returns a minute-of-day clamped to 0..1439. */
 static U16 ClampMin(U16 m) { return m >= SCHED_MIN_PER_DAY ? SCHED_MIN_PER_DAY - 1 : m; }
 
 /** See schedule.h. */
@@ -109,7 +109,7 @@ SchedKind SchedItemKind(SchedItem it)
 }
 
 /**
- * @return a pointer to the SchedCfg field behind a menu item (U16 for times/minutes, I16
+ * Returns a pointer to the SchedCfg field behind a menu item (U16 for times/minutes, I16
  * otherwise), or NULL for an unknown item. Casts away const: SchedGet() only reads through it.
  */
 static void *ItemPtr(const SchedCfg *pC, SchedItem it)
@@ -130,7 +130,7 @@ static void *ItemPtr(const SchedCfg *pC, SchedItem it)
     }
 }
 
-/** @return true if the item's field is a U16 (times and minutes), false for I16 temperatures. */
+/** Returns true if the item's field is a U16 (times and minutes), false for I16 temperatures. */
 static bool ItemUnsigned(SchedItem it)
 {
     SchedKind k = SchedItemKind(it);

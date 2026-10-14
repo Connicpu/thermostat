@@ -115,40 +115,42 @@ void          MenuInit(Menu *pM);
  *
  * Main screen (and the hold banners): UP/DOWN/combo are returned as kMaHomeKey for the caller.
  * M follows the hold sequence described at the top of this file. In the menu: UP/DOWN (press or
- * repeat) move or change, a short M press selects or saves, and M hold on the Zigbee screen pairs.
- * After a hold action, M events are swallowed until M is released. Every handled key restarts
- * the idle timeout.
+ * repeat) move or change, a short M press selects or saves, and M hold on the Zigbee screen
+ * pairs. After a hold action, M events are swallowed until M is released. Every handled key
+ * restarts the idle timeout.
  *
- * @param pC     current live data (for opening editors and boost list contents)
- * @param k      which key
- * @param ev     the button event (buttons.h)
- * @param nowMs  monotonic time, ms
- * @return the action to perform (kMaNone with redraw set if only the screen changed)
+ * `pC` is the current live data (for opening editors and boost list contents); `k` is the key;
+ * `ev` is the button event (buttons.h); `nowMs` is monotonic time, ms.
+ *
+ * Returns the action to perform (kMaNone with redraw set if only the screen changed).
  */
 MenuAction MenuOnKey(Menu *pM, const MenuCtx *pC, MenuKey k, BtnEvent ev, U64 nowMs);
 
 /**
  * Idle timeout: MENU_TIMEOUT_MS with no key anywhere in the menu returns to the main screen
  * without saving (full refresh). Call periodically.
- * @return the action (kMaNone; redraw/fullRefresh set when it timed out)
+ *
+ * Returns the action (kMaNone; redraw/fullRefresh set when it timed out).
  */
 MenuAction MenuTick(Menu *pM, U64 nowMs);
 
-/** @return true while the main screen is showing, including the pair/reset hold banners. */
+/** Returns true while the main screen is showing, including the pair/reset hold banners. */
 bool          MenuIsHome(const Menu *pM);
 
 /**
- * Describe what should be on screen for the current state (pure). kViewHome on the main
- * screen; otherwise title, rows or the big value, and a hint line.
- * @param pV  out: fully overwritten
+ * Describe what should be on screen for the current state (pure). kViewHome on the main screen;
+ * otherwise title, rows or the big value, and a hint line.
+ *
+ * `pV` is fully overwritten.
  */
 void          MenuGetView(const Menu *pM, const MenuCtx *pC, MenuView *pV);
 
 /**
  * Step a temperature by one display unit, snapping to that unit's grid: 0.5 °C, or 1 °F
  * (converted back to the nearest 0.01 °C). dir = 0 just snaps.
- * @param c100  temperature, 0.01 °C
- * @param dir   +1, -1 or 0
- * @return the new temperature, 0.01 °C (not range-clamped)
+ *
+ * `c100` is the temperature, 0.01 °C; `dir` is +1, -1 or 0.
+ *
+ * Returns the new temperature, 0.01 °C (not range-clamped).
  */
 I16 MenuStepTemp(I16 c100, int dir, bool fahrenheit);

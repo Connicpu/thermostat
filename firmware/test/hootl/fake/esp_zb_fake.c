@@ -254,7 +254,8 @@ static struct { U16 cl, id; U8 size; I64 v; bool set; } s_attr[NATTR];
 
 /**
  * Find the slot for (cl, id), creating it (2 bytes wide) when it doesn't exist.
- * @return the slot index; 0 when the table is full (that slot is then shared)
+ *
+ * Returns the slot index; 0 when the table is full (that slot is then shared).
  */
 static int AttrIdx(U16 cl, U16 id)
 {
@@ -359,7 +360,7 @@ static void JTimeResp(I64 a, I64 b)
     s_action(ESP_ZB_CORE_CMD_READ_ATTR_RESP_CB_ID, &m);
 }
 
-/** Fake read request: logs it; a Time cluster read gets JTimeResp() 500 ms later. @return 0 (TSN) */
+/** Fake read request: logs it; a Time cluster read gets JTimeResp() 500 ms later. Returns 0 (TSN). */
 U8 esp_zb_zcl_read_attr_cmd_req(esp_zb_zcl_read_attr_cmd_t *pR)
 {
     SimEmit("ZB read 0x%04x (%d attrs)", pR->clusterID, pR->attr_number);
@@ -375,7 +376,9 @@ U8 esp_zb_zcl_read_attr_cmd_req(esp_zb_zcl_read_attr_cmd_t *pR)
 static struct { bool on; U32 size, off; int block, abortAt, stallAt; bool bad, badtag; } s_ota;
 
 /**
- * Send one OTA upgrade-value message (status, optional payload) to the firmware. @return the callback's result
+ * Send one OTA upgrade-value message (status, optional payload) to the firmware.
+ *
+ * Returns the callback's result.
  */
 static esp_err_t OtaMsg(esp_zb_zcl_ota_upgrade_status_t st, const U8 *pP, U16 n)
 {
@@ -522,10 +525,11 @@ static I64 Opt(char **pA, int n, const char *pK, I64 d)
 }
 
 /**
- * Run a `zb ...` script command (the "zb" word already stripped): coord up|down, joined N, lost,
- * leave, stall, die, heal, fail <what> [N], write <cl> <attr> <u8|s8|u16|s16> <val>,
- * time off | time <utc-at-t0> [status=] [tz=] [dst=] [local=], ota none | ota <size> [options].
- * @return false for an unknown command or wrong argument count
+ * Run a `zb ...` script command (the "zb" word already stripped): coord up|down, joined N,
+ * lost, leave, stall, die, heal, fail <what> [N], write <cl> <attr> <u8|s8|u16|s16> <val>, time
+ * off | time <utc-at-t0> [status=] [tz=] [dst=] [local=], ota none | ota <size> [options].
+ *
+ * Returns false for an unknown command or wrong argument count.
  */
 bool SimZbCmd(char **pA, int n)
 {

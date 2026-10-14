@@ -49,22 +49,25 @@ typedef struct {
 } Btn;
 
 /**
- * Reset a button. It stays silent until it has been seen released (debounced), so a key held
- * or shorted at boot never fires.
- * @param autorepeat  true for UP/DOWN (press + repeat events), false for MODE (hold stages)
+ * Reset a button. It stays silent until it has been seen released (debounced), so a key held or
+ * shorted at boot never fires.
+ *
+ * `autorepeat` is true for UP/DOWN (press + repeat events), false for MODE (hold stages).
  */
 void        BtnInit(Btn *pB, bool autorepeat);
 
 /**
- * Advance the state machine by one BTN_TICK_MS sample. Pure; returns at most one event per tick.
+ * Advance the state machine by one BTN_TICK_MS sample. Pure; returns at most one event per
+ * tick.
  *
- * A level change is accepted after BTN_DEBOUNCE_MS of stable raw samples.
- * Auto-repeat buttons: kBtnEvPress on press, then kBtnEvRepeat after BTN_REPEAT_DELAY and every
- * BTN_REPEAT_EVERY, stopping once held for BTN_STUCK_MS.
- * Other buttons: while held, kBtnEvHold, kBtnEvLong, kBtnEvWarn and kBtnEvVlong fire once each
- * at their thresholds. On release: kBtnEvPress if released before BTN_HOLD_MS, else kBtnEvRelease.
+ * A level change is accepted after BTN_DEBOUNCE_MS of stable raw samples. Auto-repeat buttons:
+ * kBtnEvPress on press, then kBtnEvRepeat after BTN_REPEAT_DELAY and every BTN_REPEAT_EVERY,
+ * stopping once held for BTN_STUCK_MS. Other buttons: while held, kBtnEvHold, kBtnEvLong,
+ * kBtnEvWarn and kBtnEvVlong fire once each at their thresholds. On release: kBtnEvPress if
+ * released before BTN_HOLD_MS, else kBtnEvRelease.
  *
- * @param rawPressed  raw (undebounced) level, true = pressed
- * @return the event, or kBtnEvNone
+ * `rawPressed` is the raw (undebounced) level, true = pressed.
+ *
+ * Returns the event, or kBtnEvNone.
  */
 BtnEvent BtnTick(Btn *pB, bool rawPressed);

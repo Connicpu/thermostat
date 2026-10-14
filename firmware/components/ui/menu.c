@@ -10,7 +10,7 @@
 static const CtrlMode kModes[] = {kCtrlModeOff, kCtrlModeHeat, kCtrlModeCool};
 #define N_MODES ((int)(sizeof kModes / sizeof kModes[0]))
 
-/** @return v clamped into lo..hi. */
+/** Returns v clamped into lo..hi. */
 static I32 Clamp32(I32 v, I32 lo, I32 hi) { return v < lo ? lo : v > hi ? hi : v; }
 
 /** Snap to the °F or 0.5 °C grid, then step. See menu.h. */
@@ -31,23 +31,23 @@ void MenuInit(Menu *pM) { memset(pM, 0, sizeof *pM); }
 /** See menu.h. */
 bool MenuIsHome(const Menu *pM) { return pM->st <= kMsHoldReset; }
 
-/** @return the number of rows in the boost list (Cancel is only shown while a boost runs). */
+/** Returns the number of rows in the boost list (Cancel is only shown while a boost runs). */
 static U8 BoostCount(const MenuCtx *pC) { return pC->boostActive ? 4 : 3; }
 
-/** @return the boost-list item at visible row i (rows past Timed are Back when no boost runs). */
+/** Returns the boost-list item at visible row i (rows past Timed are Back when no boost runs). */
 static MenuBoostItem BoostItem(const MenuCtx *pC, U8 i)
 {
     if (!pC->boostActive && i >= kMbCancel) return kMbBack;
     return (MenuBoostItem)i;
 }
 
-/** @return an action of kind k with value v that also asks for a redraw. */
+/** Returns an action of kind k with value v that also asks for a redraw. */
 static MenuAction Act(MenuActionKind k, I32 v) { return (MenuAction){.kind = k, .value = v, .redraw = true}; }
 
-/** @return a redraw-only action. */
+/** Returns a redraw-only action. */
 static MenuAction Redraw(void) { return Act(kMaNone, 0); }
 
-/** Return to the main screen. @return action k/v with redraw and a full refresh (clears menu ghosting). */
+/** Return to the main screen. Returns action k/v with redraw and a full refresh (clears menu ghosting). */
 static MenuAction GoHome(Menu *pM, MenuActionKind k, I32 v)
 {
     pM->st = kMsHome;
@@ -56,7 +56,7 @@ static MenuAction GoHome(Menu *pM, MenuActionKind k, I32 v)
     return a;
 }
 
-/** @return the index of md in kModes (0 = Off if unknown). */
+/** Returns the index of md in kModes (0 = Off if unknown). */
 static int ModeIndex(CtrlMode md)
 {
     for (int i = 0; i < N_MODES; i++) if (kModes[i] == md) return i;
@@ -95,7 +95,7 @@ static const char *const kSchedTitle[kSchedItCount] = {
 };
 
 /**
- * @return the editor start value for a schedule item, snapped to its step: times to 15 min
+ * Returns the editor start value for a schedule item, snapped to its step: times to 15 min
  * (below midnight), boost minutes to 15, offsets to 0.1 °C, temperatures to the display grid
  * within SP_MIN..SP_MAX.
  */
@@ -112,8 +112,8 @@ static I32 SchedEditStart(const MenuCtx *pC, SchedItem it)
 }
 
 /**
- * @return v stepped by one unit in direction dir: times wrap around midnight, minutes and offsets
- * are clamped, and a temperature that would leave SP_MIN..SP_MAX keeps its old value.
+ * Returns v stepped by one unit in direction dir: times wrap around midnight, minutes and
+ * offsets are clamped, and a temperature that would leave SP_MIN..SP_MAX keeps its old value.
  */
 static I32 SchedEditStep(const MenuCtx *pC, SchedItem it, I32 v, int dir)
 {
@@ -299,7 +299,7 @@ static void FmtSwing(char *pO, int n, I32 sw, bool f)
     snprintf(pO, n, "%d.%d", d / 10, d % 10);
 }
 
-/** @return the mode name used in the menu ("Heat", "Cool", "Off"). */
+/** Returns the mode name used in the menu ("Heat", "Cool", "Off"). */
 static const char *ModeName(CtrlMode md)
 {
     switch (md) {
@@ -309,7 +309,7 @@ static const char *ModeName(CtrlMode md)
     }
 }
 
-/** @return the Zigbee link state as shown in the menu. */
+/** Returns the Zigbee link state as shown in the menu. */
 static const char *LinkName(LinkState l)
 {
     switch (l) {

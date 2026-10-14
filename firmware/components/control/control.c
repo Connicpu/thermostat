@@ -3,13 +3,13 @@
 #include "control.h"
 #include <string.h>
 
-/** @return v clamped into lo..hi. */
+/** Returns v clamped into lo..hi. */
 static I16 Clamp16(I32 v, I16 lo, I16 hi)
 {
     return v < lo ? lo : (v > hi ? hi : (I16)v);
 }
 
-/** @return true if at least dur ms have passed since `since` (false if `since` is in the future). */
+/** Returns true if at least dur ms have passed since `since` (false if `since` is in the future). */
 static bool Elapsed(U64 now, U64 since, U32 dur)
 {
     return now >= since && (now - since) >= dur;
