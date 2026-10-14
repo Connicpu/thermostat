@@ -72,6 +72,13 @@ attaches `dist/connie-thermostat-card.js` to that tag's GitHub release, creating
 The workflow has only `contents: write`, and every action is pinned by SHA. Bump `CARD_VERSION`
 (`src/connie-thermostat-card.js`) and `package.json` first. Firmware tags don't trigger it.
 
+**HACS installs from the newest GitHub release in this repo, whatever kind it is.** If a release without
+`connie-thermostat-card.js` (e.g. a firmware release) becomes the latest, HACS can't install or update the card.
+There is no firmware release workflow today, so this is enforced by hand: every release in this repo must have
+`connie-thermostat-card.js` attached. For a manual firmware release, upload `dist/connie-thermostat-card.js`
+too (`gh release upload <tag> firmware/ha/lovelace-card/dist/connie-thermostat-card.js`). Any future
+firmware release workflow should attach it the same way `card-release.yml` does.
+
 ## Develop
 
 ```sh
