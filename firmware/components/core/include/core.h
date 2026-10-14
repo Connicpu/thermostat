@@ -29,7 +29,11 @@ static inline I16 Clamp16(I32 v, I16 lo, I16 hi)
 }
 
 #if __has_include("esp_timer.h")
-/** Returns monotonic time since boot in ms, from esp_timer. */
+/**
+ * Returns monotonic time since boot in ms, from esp_timer. A component that calls NowMs() must
+ * list esp_timer in its REQUIRES; otherwise esp_timer.h is not on its include path and NowMs()
+ * is not declared.
+ */
 static inline U64 NowMs(void)
 {
     return (U64)(esp_timer_get_time() / 1000);

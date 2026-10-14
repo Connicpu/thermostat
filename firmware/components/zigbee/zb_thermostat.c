@@ -945,9 +945,15 @@ static void ZbTask(void *pArg)
 /** See zb_thermostat.h. */
 esp_err_t ZbThermostatStart(const ZbThermostatCbs *pCbs, const ZbThermostatInit *pInit)
 {
-    assert(
-        pCbs->onSettings && pCbs->onCalibration && pCbs->onIdentify && pCbs->onOtaProgress && pCbs->beforeOtaReboot &&
-        pCbs->onBoostParams && pCbs->onBoostCommand && pCbs->onSwing && pCbs->onSched);
+    assert(pCbs->onSettings);
+    assert(pCbs->onCalibration);
+    assert(pCbs->onIdentify);
+    assert(pCbs->onOtaProgress);
+    assert(pCbs->beforeOtaReboot);
+    assert(pCbs->onBoostParams);
+    assert(pCbs->onBoostCommand);
+    assert(pCbs->onSwing);
+    assert(pCbs->onSched);
     s_cbs = *pCbs;
     s_settings = s_init = pInit->s;
     s_initCalib = pInit->calib;

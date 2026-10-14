@@ -1,5 +1,5 @@
 /* HOOTL simulation config. Mirrors sdkconfig.defaults + main/Kconfig defaults.
- * tools/hootl_check_config.py verifies the THERMO_* values match the production sdkconfig. */
+ * The THERMO_* values are kept in sync with the production sdkconfig by hand. */
 #pragma once
 #define CONFIG_IDF_TARGET_ESP32C6           1
 #define CONFIG_FREERTOS_HZ                  1000
