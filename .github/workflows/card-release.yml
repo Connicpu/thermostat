@@ -1,0 +1,38 @@
+name: card-release
+
+# Push a tag like card-v1.0.0 to publish the Lovelace card: rebuilds the bundle, checks it
+# matches the committed dist/, and attaches dist/connie-thermostat-card.js to that tag's
+# GitHub release (created if missing). HACS installs the card from this release asset.
+on:
+  push:
+    tags: ["card-v*"]
+
+permissions: {}
+
+jobs:
+  release:
+    name: Attach card bundle to the release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release / upload the asset; nothing else
+    defaults: { run: { working-directory: firmware/ha/lovelace-card } }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: "20.19.2" }
+      - run: npm ci
+      - run: npm test
+      - name: Committed dist/ matches a fresh build
+        run: npm run build && git diff --exit-code -- dist/
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/connie-thermostat-card.js --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" dist/connie-thermostat-card.js --repo "$GITHUB_REPOSITORY" \
+              --verify-tag --title "Lovelace card ${TAG#card-}" --notes "Connie Thermostat V3 Lovelace card. Install: see firmware/ha/lovelace-card/README.md."
+          fi

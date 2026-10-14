@@ -46,8 +46,8 @@ makes no network requests.
 
 **HACS (custom repository)**
 1. HACS → ⋮ → Custom repositories → `https://github.com/Connicpu/thermostat`, type *Dashboard*.
-2. HACS installs `connie-thermostat-card.js` from the **GitHub release asset** (see the root `hacs.json`), so a
-   release needs `dist/connie-thermostat-card.js` attached. This repo keeps the card in a subfolder, and HACS
+2. HACS installs `connie-thermostat-card.js` from the **GitHub release asset** (see the root `hacs.json`).
+   The release workflow attaches it (see *Releasing*). This repo keeps the card in a subfolder, and HACS
    only looks in the repo root, its `dist/`, or release assets.
 
 ## Configure
@@ -64,6 +64,13 @@ YAML options are in [`example.yaml`](example.yaml):
 | `show_schedule`, `show_morning_boost`, `show_manual_boost`, `show_status` | `true` | Show or hide a section |
 | `collapsed` | `[boost, status]` | Sections that start closed (`schedule`, `morning`, `boost`, `status`); they can still be opened by tapping. Listing a section here only adds to the defaults |
 | `entities` | auto | Override any discovered entity (keys as in `src/model.js` `ENTITY_KEYS`) |
+
+## Releasing
+Push a tag named `card-vX.Y.Z` (e.g. `git tag card-v1.0.0 && git push origin card-v1.0.0`).
+`.github/workflows/card-release.yml` runs the tests, checks that `dist/` matches a fresh build, then
+attaches `dist/connie-thermostat-card.js` to that tag's GitHub release, creating the release if needed.
+The workflow has only `contents: write`, and every action is pinned by SHA. Bump `CARD_VERSION`
+(`src/connie-thermostat-card.js`) and `package.json` first. Firmware tags don't trigger it.
 
 ## Develop
 
