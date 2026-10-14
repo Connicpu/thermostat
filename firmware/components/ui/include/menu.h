@@ -19,22 +19,26 @@
 #include <stdint.h>
 #include "buttons.h"
 #include "display_model.h"
+#include "schedule.h"
 
 #define MENU_TIMEOUT_MS   10000
 #define MENU_BOOST_MIN_STEP 15
 #define MENU_BOOST_MIN_MIN  15
 #define MENU_BOOST_MIN_MAX  120
+#define MENU_SCHED_TIME_STEP 15     /* schedule start times: 15 min steps, wrap at midnight */
+#define MENU_SCHED_BOOST_STEP 15    /* morning boost duration: 0..240 min */
+#define MENU_SCHED_OFS_STEP  10     /* morning boost offset: 0.1 °C steps, 0..3.0 °C */
 
 typedef enum { MENU_KEY_UP, MENU_KEY_DOWN, MENU_KEY_M, MENU_KEY_COMBO } menu_key_t;
 
 typedef enum {
     MS_HOME = 0, MS_HOLD_PAIR, MS_HOLD_RESET,
     MS_LIST, MS_EDIT_MODE, MS_EDIT_FAN, MS_BOOST, MS_EDIT_BOOST_SP, MS_EDIT_BOOST_MIN,
-    MS_EDIT_SWING, MS_EDIT_UNITS, MS_ZIGBEE, MS_INFO,
+    MS_SCHED, MS_EDIT_SCHED, MS_EDIT_SWING, MS_EDIT_UNITS, MS_ZIGBEE, MS_INFO,
 } menu_state_t;
 
 /* Main-list items (in order). */
-typedef enum { MI_MODE, MI_FAN, MI_BOOST, MI_SWING, MI_UNITS, MI_ZIGBEE, MI_INFO, MI_BACK, MI_COUNT } menu_item_t;
+typedef enum { MI_MODE, MI_FAN, MI_BOOST, MI_SCHED, MI_SWING, MI_UNITS, MI_ZIGBEE, MI_INFO, MI_BACK, MI_COUNT } menu_item_t;
 /* Boost-list items; MB_CANCEL is only present while a boost runs. */
 typedef enum { MB_TARGET, MB_TIMED, MB_CANCEL, MB_BACK } menu_boost_item_t;
 
@@ -46,6 +50,7 @@ typedef struct {
     int16_t      boost_sp;        /* c°C */
     uint16_t     boost_minutes;
     int16_t      swing;           /* c°C */
+    sched_cfg_t  sched;           /* program schedule (Schedule submenu) */
     bool         fahrenheit;
     link_state_t link;
     const char  *fw_version;
@@ -64,6 +69,7 @@ typedef enum {
     MA_BOOST_TIMED,    /* value = minutes */
     MA_BOOST_CANCEL,
     MA_SET_SWING,      /* value = c°C */
+    MA_SET_SCHED,      /* item = sched_item_t, value = new raw value (already clamped) */
     MA_SET_UNITS,      /* value = 1 for °F */
     MA_PAIR,
     MA_FACTORY_RESET,
@@ -72,6 +78,7 @@ typedef enum {
 typedef struct {
     menu_action_kind_t kind;
     int32_t value;
+    uint8_t item;        /* MA_SET_SCHED: sched_item_t */
     bool redraw;         /* screen changed: refresh promptly */
     bool full_refresh;   /* leaving the menu / warning: full refresh to clear ghosting */
 } menu_action_t;
@@ -80,6 +87,7 @@ typedef struct {
     menu_state_t st;
     uint8_t  cursor;          /* main list */
     uint8_t  bcursor;         /* boost list (index into visible items) */
+    uint8_t  scursor;         /* schedule list: sched_item_t, SCHED_IT_COUNT = Back */
     int32_t  edit;            /* value being edited */
     uint64_t last_key_ms;
     bool     swallow_m;       /* ignore M events until the current hold is released */

@@ -304,7 +304,7 @@ static menu_ctx_t menu_ctx(const persist_t *p, uint64_t now)
 {
     return (menu_ctx_t){
         .mode = p->s.mode, .fan = p->s.fan, .boost_active = s_boost_active, .boost_sp = p->boost_sp,
-        .boost_minutes = p->boost_minutes, .swing = p->swing, .fahrenheit = p->fahrenheit,
+        .boost_minutes = p->boost_minutes, .swing = p->swing, .sched = p->sched, .fahrenheit = p->fahrenheit,
         .link = zb_thermostat_link(), .fw_version = FW_VERSION,
         .raw_valid = s_raw.valid, .raw_temp = s_raw.temp_c100, .raw_rh = s_raw.rh_c100,
         .uptime_s = (uint32_t)(now / 1000),
@@ -336,6 +336,16 @@ static bool apply_menu_action(const menu_action_t *a)
         cmd = ZB_BOOST_CMD_CANCEL; xQueueSend(s_boost_q, &cmd, 0);
         break;
     case MA_SET_SWING: persist_edit(set_swing, a->value); break;
+    case MA_SET_SCHED: {   /* persisted like any setting; zb_thermostat_publish() reports the change to HA */
+        ctrl_params_t prm = CTRL_PARAMS_DEFAULT();
+        xSemaphoreTake(s_mtx, portMAX_DELAY);
+        sched_set(&s_persist.sched, (sched_item_t)a->item, a->value);
+        sched_sanitize(&prm, &s_persist.sched);
+        s_dirty = true;
+        s_dirty_at = now_ms();
+        xSemaphoreGive(s_mtx);
+        break;
+    }
     case MA_SET_UNITS: persist_edit(set_units, a->value); break;
     case MA_PAIR:
         banner(zb_thermostat_link() == LINK_JOINED ? "Already paired (reset to re-pair)" : "Pairing...");

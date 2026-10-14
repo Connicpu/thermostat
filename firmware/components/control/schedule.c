@@ -1,5 +1,6 @@
 /* schedule.c - see schedule.h. Pure C99. */
 #include "schedule.h"
+#include <stddef.h>
 
 static int16_t clamp16(int32_t v, int16_t lo, int16_t hi) { return v < lo ? lo : (v > hi ? hi : (int16_t)v); }
 static uint16_t clamp_min(uint16_t m) { return m >= SCHED_MIN_PER_DAY ? SCHED_MIN_PER_DAY - 1 : m; }
@@ -70,4 +71,54 @@ bool sched_edit_current(const ctrl_params_t *p, sched_cfg_t *c, bool heat, bool 
     if (*dst == sp) return false;
     *dst = sp;
     return true;
+}
+
+sched_kind_t sched_item_kind(sched_item_t it)
+{
+    switch (it) {
+    case SCHED_IT_DAY_HEAT_START: case SCHED_IT_NIGHT_HEAT_START:
+    case SCHED_IT_DAY_COOL_START: case SCHED_IT_NIGHT_COOL_START: return SCHED_KIND_TIME;
+    case SCHED_IT_BOOST_MIN: return SCHED_KIND_MINUTES;
+    case SCHED_IT_BOOST_OFS: return SCHED_KIND_DELTA;
+    default: return SCHED_KIND_TEMP;
+    }
+}
+
+static void *item_ptr(const sched_cfg_t *c, sched_item_t it)
+{
+    sched_cfg_t *m = (sched_cfg_t *)c;
+    switch (it) {
+    case SCHED_IT_DAY_HEAT_START:   return &m->day_heat_start;
+    case SCHED_IT_DAY_HEAT:         return &m->day_heat;
+    case SCHED_IT_NIGHT_HEAT_START: return &m->night_heat_start;
+    case SCHED_IT_NIGHT_HEAT:       return &m->night_heat;
+    case SCHED_IT_BOOST_MIN:        return &m->boost_min;
+    case SCHED_IT_BOOST_OFS:        return &m->boost_offset;
+    case SCHED_IT_DAY_COOL_START:   return &m->day_cool_start;
+    case SCHED_IT_DAY_COOL:         return &m->day_cool;
+    case SCHED_IT_NIGHT_COOL_START: return &m->night_cool_start;
+    case SCHED_IT_NIGHT_COOL:       return &m->night_cool;
+    default:                        return NULL;
+    }
+}
+
+static bool item_unsigned(sched_item_t it)
+{
+    sched_kind_t k = sched_item_kind(it);
+    return k == SCHED_KIND_TIME || k == SCHED_KIND_MINUTES;
+}
+
+int32_t sched_get(const sched_cfg_t *c, sched_item_t it)
+{
+    void *p = item_ptr(c, it);
+    if (!p) return 0;
+    return item_unsigned(it) ? *(uint16_t *)p : *(int16_t *)p;
+}
+
+void sched_set(sched_cfg_t *c, sched_item_t it, int32_t v)
+{
+    void *p = item_ptr(c, it);
+    if (!p) return;
+    if (item_unsigned(it)) *(uint16_t *)p = (uint16_t)(v < 0 ? 0 : v > 0xFFFF ? 0xFFFF : v);
+    else                   *(int16_t *)p = (int16_t)(v < -32768 ? -32768 : v > 32767 ? 32767 : v);
 }

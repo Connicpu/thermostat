@@ -217,9 +217,14 @@ and the usual every-20th-refresh full refresh still applies.
 |---|---|
 | Mode | Off / Heat / Cool |
 | Fan | Auto / On (On runs the blower continuously, even with no heating/cooling) |
+| Schedule | The 10 program knobs (list below), each opens an editor |
 | Boost → To target | Set the target (0.5 °C / 1 °F steps, 10–32 °C), M starts it |
 | Boost → For N minutes | 15–120 min in 15 min steps, M starts it |
 | Boost → Cancel boost | Only listed while a boost runs |
+| Schedule → Heat/Cool day/night start | HH:MM in 15-min steps, wraps around midnight (a stored odd minute from HA snaps to the nearest 15) |
+| Schedule → Heat/Cool day/night temp | 0.5 °C / 1 °F steps, 10–32 °C |
+| Schedule → Morning boost time | 0–240 min in 15-min steps, 0 = off |
+| Schedule → Morning boost + | 0–3.0 °C in 0.1 °C steps (shown as a °F difference in °F) |
 | Swing | ±0.1–1.0 °C in 0.1 °C steps (shown converted when the units are °F) |
 | Units | °C / °F for the display (persisted; Kconfig sets the factory default; display only, HA keeps its own units) |
 | Zigbee | Link status; **hold M (1.5 s)** to start pairing |
@@ -228,7 +233,8 @@ and the usual every-20th-refresh full refresh still applies.
 
 Changes go through the same paths as the buttons and HA: mode via the Thermostat cluster, boost
 target/duration and swing via the 0xFC57 attributes (written locally and reported, so HA sees them),
-boosts through the same command queue as HA's Start/Cancel buttons. The logic is a pure state
+boosts through the same command queue as HA's Start/Cancel buttons; schedule edits go to NVS and are
+reported on 0xFC57/0x0020–0x0029 like the HA-side edits (same clamps as the Zigbee writes). The logic is a pure state
 machine in `components/ui/menu.c`, unit-tested on the host (`test/host/test_menu.c`, including the
 hold timings fed through the real debouncer).
 
@@ -237,6 +243,8 @@ hold timings fed through the real debouncer).
 | ![menu](docs/display_menu_main.png) | ![menu scrolled](docs/display_menu_main_scrolled.png) | ![mode](docs/display_menu_mode.png) |
 | ![boost](docs/display_menu_boost.png) | ![boost to](docs/display_menu_boost_target.png) | ![boost for](docs/display_menu_boost_minutes.png) |
 | ![swing °F](docs/display_menu_swing_f.png) | ![units](docs/display_menu_units.png) | ![zigbee](docs/display_menu_zigbee.png) |
+| ![schedule](docs/display_menu_schedule.png) | ![schedule scrolled](docs/display_menu_schedule_scrolled.png) | ![start time](docs/display_menu_schedule_time.png) |
+| ![night temp](docs/display_menu_schedule_temp.png) | ![boost time](docs/display_menu_schedule_boost.png) | ![boost offset](docs/display_menu_schedule_offset.png) |
 | ![info](docs/display_menu_info.png) | ![hold 5 s](docs/display_menu_hold_pair.png) | ![reset warning](docs/display_menu_reset_warning.png) |
 Display refreshes: a partial refresh ~0.4 s after a button change. Background changes (temperature,
 humidity, running state, link) refresh at most every 3 min, as partials. Every 20th refresh, or every
@@ -298,9 +306,27 @@ later: hold MODE for 10 s (factory reset), or hold it for 3 s if it's already un
 Install the boost quirk first (`ha/zha_quirk/README.md`): add `zha: custom_quirks_path:` and copy
 the file there. Then: Settings → Devices & services → Zigbee Home Automation → *Add device*, then power the thermostat or
 start pairing. ZHA's generic thermostat support should pick up cluster 0x0201 and create a
-`climate` entity (off/heat/cool, both setpoints, HVAC action from running state), plus
+`climate` entity (**with the quirk: hvac_modes off/heat/cool only, fan modes auto/on**; both setpoints, HVAC action from running state), plus
 humidity and temperature sensors and a fan-mode control. No quirk should be needed. If the fan mode or
 running state doesn't show up, a small ZHA quirk v2 can be added later.
+
+#### Climate modes without Auto (ZHA)
+
+ZHA builds the climate entity's `hvac_modes` from the Thermostat cluster's ControlSequenceOfOperation
+(`SEQ_OF_OPERATION` in `zha/application/platforms/climate/const.py`, zha 2.3.1 = current upstream `dev`).
+The standard value the firmware sends, 0x04 *Cooling and Heating*, maps to off/heat_cool/cool/heat, and **no
+standard ZCL value means "heat or cool, but never auto"**. Options considered:
+
+| Route | Verdict |
+|---|---|
+| Firmware sends 0x06 | Works for ZHA, but 0x06 is reserved in ZCL (ZHA labels it "centralite specific"); Z2M and other controllers would misread it. Rejected: keep the wire standard |
+| **Quirk replaces the Thermostat cluster (chosen)** | `ConnieThermostatCluster` answers ZHA's cached read of ControlSequenceOfOperation with 0x06 → ZHA's own table yields exactly `[cool, heat, off]`. Also refuses a `system_mode = Auto` write locally. Uses only supported quirks v2 API (`.replaces()`), keeps ZHA's stock climate entity (setpoints, running state, fan modes), needs no extra install beyond the quirk Connie already uses. Tradeoff: depends on ZHA keeping its 0x06 table entry (pinned by `test_quirk.py`) |
+| Custom ZHA climate entity class | ZHA entities are registered inside the `zha` library (`@register_entity` with `ClusterMatch`), not from custom quirks paths; would mean patching/forking the library. Rejected |
+| HA custom integration / template climate wrapping the ZHA entity | Works, but duplicates the entity, its state handling and services; more moving parts. Rejected |
+| Dashboard card `hvac_modes: [off, heat, cool]` | **Complementary UI tweak only** (already in `ha/dashboard-card.yaml`): hides the button on that card, but the entity, voice assistants, automations and other cards would still offer heat_cool |
+
+Fan modes need nothing extra: ZHA's climate entity exposes `fan_modes` `[auto, on]` whenever the Fan Control
+cluster is present. The firmware refuses Auto too, so a stale ZHA (no quirk) still can't put it in Auto.
 
 ### Zigbee2MQTT (secondary)
 The converter includes the boost cluster: `boost_setpoint`, `boost_duration`, `boost_mode`,
@@ -354,12 +380,9 @@ The converter is written against the standard `fz.thermostat` / `tz.thermostat_*
   it can lag by up to 3 minutes (HA gets it every minute). Boost options can only be edited from HA
   (locally only start/cancel). The quirk is tested with mocks against zha 2.3.1 / zha-quirks 2.3.0,
   not in a live HA instance.
-- ZHA derives the climate entity's HVAC modes from ControlSequenceOfOperation; 4 ("cooling and heating")
-  makes it also offer *Heat/Cool*. There is no standard value for "heat or cool, no auto". Selecting it in HA is
-  refused by the device and the mode snaps back. Hiding it would need a quirk that overrides the Thermostat
-  cluster / climate entity (not done yet).
-- The program schedule is only editable from HA (no on-device editor yet; the main setpoint edits the current period).
-  One program for every day of the week (no weekday/weekend split).
+- One program for every day of the week (no weekday/weekend split).
+- The no-Auto climate modes in ZHA rely on ZHA's (non-standard, "centralite specific") 0x06 entry in its
+  ControlSequenceOfOperation table; the quirk test pins that, so a ZHA change would show up there first.
 - Occupancy and the setpoint raise/lower command are not implemented.
 - The Z2M converter and ZHA behaviour are untested. The OTA flow is untested end to end.
 - No feedback that a triac actually switched, and no 24 VAC presence or C-wire detection (the hardware has none).

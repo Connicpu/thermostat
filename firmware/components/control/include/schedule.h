@@ -58,6 +58,18 @@ typedef enum {
     SCHED_STATE_DAY_BOOST = 3,      /* day + morning heat boost active */
 } sched_state_t;
 
+/* The 10 user knobs, in on-device menu order. */
+typedef enum {
+    SCHED_IT_DAY_HEAT_START = 0, SCHED_IT_DAY_HEAT, SCHED_IT_NIGHT_HEAT_START, SCHED_IT_NIGHT_HEAT,
+    SCHED_IT_BOOST_MIN, SCHED_IT_BOOST_OFS,
+    SCHED_IT_DAY_COOL_START, SCHED_IT_DAY_COOL, SCHED_IT_NIGHT_COOL_START, SCHED_IT_NIGHT_COOL,
+    SCHED_IT_COUNT,
+} sched_item_t;
+typedef enum { SCHED_KIND_TIME, SCHED_KIND_TEMP, SCHED_KIND_MINUTES, SCHED_KIND_DELTA } sched_kind_t;
+sched_kind_t sched_item_kind(sched_item_t it);
+int32_t      sched_get(const sched_cfg_t *c, sched_item_t it);
+void         sched_set(sched_cfg_t *c, sched_item_t it, int32_t v);   /* raw store; call sched_sanitize after */
+
 /* Clamp everything into range (times 0..1439, temps min_sp..max_sp, boost limits). */
 void sched_sanitize(const ctrl_params_t *p, sched_cfg_t *c);
 

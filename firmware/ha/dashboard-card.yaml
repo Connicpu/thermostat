@@ -7,7 +7,7 @@ cards:
     entity: climate.connie_thermostat_v3
     features:
       - type: climate-hvac-modes
-        hvac_modes: [off, heat, cool, heat_cool]
+        hvac_modes: [off, heat, cool]
       - type: climate-fan-modes
         style: icons
   # Temperature swing (hysteresis). HA's thermostat card has no swing/hysteresis

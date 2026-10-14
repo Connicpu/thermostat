@@ -41,8 +41,9 @@ def test_matches_and_adds_cluster():
     ep = dev.endpoints[1]
     assert q.BOOST_CLUSTER_ID in ep.in_clusters
     assert isinstance(ep.in_clusters[q.BOOST_CLUSTER_ID], q.ConnieBoostCluster)
-    # standard clusters untouched (ZHA climate entity keeps working)
-    assert Thermostat.cluster_id in ep.in_clusters
+    # Thermostat replaced by the no-Auto variant (still the standard cluster id, so ZHA's climate entity is used)
+    assert isinstance(ep.in_clusters[Thermostat.cluster_id], q.ConnieThermostatCluster)
+    assert Fan.cluster_id in ep.in_clusters
 
 
 def test_entities_declared():
@@ -97,3 +98,44 @@ def test_enum_values_match_firmware_header():
                            ("ZB_ATTR_MORNING_BOOST_MIN", attrs.morning_boost_duration),
                            ("ZB_ATTR_MORNING_BOOST_OFS", attrs.morning_boost_offset), ("ZB_ATTR_SCHED_STATE", attrs.schedule_state)):
         assert val(hdr_name) == attr.id
+
+
+def test_climate_modes_off_heat_cool_only():
+    from zha.application.platforms.climate.const import SEQ_OF_OPERATION, HVACMode
+    dev = apply(make_device())
+    th = dev.endpoints[1].in_clusters[Thermostat.cluster_id]
+    # before any read, and after the device reports the standard 0x04
+    for _ in range(2):
+        seq = th.get(Thermostat.AttributeDefs.ctrl_sequence_of_oper.name, 0xFF)
+        assert sorted(SEQ_OF_OPERATION[seq]) == sorted([HVACMode.OFF, HVACMode.HEAT, HVACMode.COOL])
+        assert HVACMode.HEAT_COOL not in SEQ_OF_OPERATION[seq]
+        th.update_attribute(Thermostat.AttributeDefs.ctrl_sequence_of_oper.id,
+                            Thermostat.ControlSequenceOfOperation.Cooling_and_Heating)
+    # other attributes pass through untouched
+    th.update_attribute(Thermostat.AttributeDefs.system_mode.id, Thermostat.SystemMode.Heat)
+    assert th.get("system_mode") == Thermostat.SystemMode.Heat
+
+
+def test_auto_write_refused_other_writes_pass():
+    dev = apply(make_device())
+    th = dev.endpoints[1].in_clusters[Thermostat.cluster_id]
+    th.request = AsyncMock(return_value=[[]])
+    with pytest.raises(ValueError):
+        asyncio.run(th.write_attributes({"system_mode": Thermostat.SystemMode.Auto}))
+    with pytest.raises(ValueError):
+        asyncio.run(th.write_attributes({Thermostat.AttributeDefs.system_mode.id: 0x01}))
+    th.request.assert_not_called()
+    asyncio.run(th.write_attributes({"system_mode": Thermostat.SystemMode.Cool}))
+    th.request.assert_called()
+
+
+def test_zha_climate_entity_modes():
+    """End to end through ZHA's real climate entity class (zha library)."""
+    from zha.application.platforms.climate import Thermostat as ZhaThermostat
+    from zha.application.platforms.climate.const import HVACMode
+    dev = apply(make_device())
+    th = dev.endpoints[1].in_clusters[Thermostat.cluster_id]
+    th.update_attribute(Thermostat.AttributeDefs.ctrl_sequence_of_oper.id, 0x04)
+    ent = ZhaThermostat.__new__(ZhaThermostat)
+    ent._cluster = th
+    assert set(ZhaThermostat.hvac_modes.fget(ent)) == {HVACMode.OFF, HVACMode.HEAT, HVACMode.COOL}

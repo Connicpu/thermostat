@@ -24,7 +24,13 @@ a slider tile right under the thermostat card. It's a temperature *difference*, 
 temperature device class and always shows in °C (HA would otherwise turn 0.5 °C into 32.9 °F).
 
 The thermostat, fan and humidity entities still come from ZHA's built-in handling of the
-standard clusters.
+standard clusters. The quirk also **replaces the Thermostat cluster** with `ConnieThermostatCluster`, which
+makes ZHA's climate entity offer only **off / heat / cool** (no heat_cool/auto) and refuses an Auto write;
+see the main README (*Climate modes without Auto*) for why and the alternatives. Fan modes are auto/on.
+The program-schedule number entities and the *Schedule period* sensor are listed in `connie_thermostat_v3.py`.
+
+Tests: `python -m pytest test_quirk.py` in a venv with `zha` + `zha-quirks` (tested with zha 2.3.1 /
+zha-quirks 2.3.0); includes a check against ZHA's real climate entity `hvac_modes`.
 
 ## Install
 
@@ -36,7 +42,7 @@ standard clusters.
 2. Copy `connie_thermostat_v3.py` into `/config/custom_zha_quirks/`.
 3. Restart Home Assistant.
 4. Pair the thermostat. If it's already paired: Device page → ⋮ → *Reconfigure*, or remove it and
-   pair again. The device page should list the quirk as "(Connie / thermostat-v3)" and show the
+   pair again (needed after updating the quirk so the replaced Thermostat cluster is used). The device page should list the quirk as "(Connie / thermostat-v3)" and show the
    boost entities.
 5. Optional: add `../dashboard-card.yaml` as a manual card (fix the entity IDs first).
 

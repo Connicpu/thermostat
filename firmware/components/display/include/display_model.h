@@ -19,7 +19,7 @@ typedef enum {
     VIEW_WARNING,       /* full-screen inverted warning */
 } view_kind_t;
 
-#define VIEW_MAX_ROWS 8
+#define VIEW_MAX_ROWS 12
 typedef struct {
     view_kind_t kind;
     char    title[20];

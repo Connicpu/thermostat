@@ -55,11 +55,68 @@ static void open_item(menu_t *m, const menu_ctx_t *c)
     case MI_MODE:   m->st = MS_EDIT_MODE;  m->edit = mode_index(c->mode); break;
     case MI_FAN:    m->st = MS_EDIT_FAN;   m->edit = c->fan == CTRL_FAN_ON; break;
     case MI_BOOST:  m->st = MS_BOOST;      m->bcursor = 0; break;
+    case MI_SCHED:  m->st = MS_SCHED;      m->scursor = 0; break;
     case MI_SWING:  m->st = MS_EDIT_SWING; m->edit = clamp32(c->swing, CTRL_SWING_MIN, CTRL_SWING_MAX); break;
     case MI_UNITS:  m->st = MS_EDIT_UNITS; m->edit = c->fahrenheit; break;
     case MI_ZIGBEE: m->st = MS_ZIGBEE; break;
     case MI_INFO:   m->st = MS_INFO; break;
     default: break;
+    }
+}
+
+/* ---------------- schedule editor ---------------- */
+
+static const char *const SCHED_LABEL[SCHED_IT_COUNT] = {
+    "Heat day start", "Heat day temp", "Heat night start", "Heat night temp",
+    "Morning boost time", "Morning boost +",
+    "Cool day start", "Cool day temp", "Cool night start", "Cool night temp",
+};
+static const char *const SCHED_TITLE[SCHED_IT_COUNT] = {
+    "Heat day from", "Heat day", "Heat night from", "Heat night",
+    "Morning boost", "Morning boost +",
+    "Cool day from", "Cool day", "Cool night from", "Cool night",
+};
+
+static int32_t sched_edit_start(const menu_ctx_t *c, sched_item_t it)
+{
+    int32_t v = sched_get(&c->sched, it);
+    switch (sched_item_kind(it)) {
+    case SCHED_KIND_TIME:    return clamp32((v + MENU_SCHED_TIME_STEP / 2) / MENU_SCHED_TIME_STEP * MENU_SCHED_TIME_STEP % SCHED_MIN_PER_DAY,
+                                            0, SCHED_MIN_PER_DAY - MENU_SCHED_TIME_STEP);
+    case SCHED_KIND_MINUTES: return clamp32((v + MENU_SCHED_BOOST_STEP / 2) / MENU_SCHED_BOOST_STEP * MENU_SCHED_BOOST_STEP, 0, SCHED_BOOST_MAX_MIN);
+    case SCHED_KIND_DELTA:   return clamp32((v + MENU_SCHED_OFS_STEP / 2) / MENU_SCHED_OFS_STEP * MENU_SCHED_OFS_STEP, 0, SCHED_BOOST_OFS_MAX);
+    default:                 return clamp32(menu_step_temp((int16_t)v, 0, c->fahrenheit), SP_MIN, SP_MAX);
+    }
+}
+
+static int32_t sched_edit_step(const menu_ctx_t *c, sched_item_t it, int32_t v, int dir)
+{
+    switch (sched_item_kind(it)) {
+    case SCHED_KIND_TIME:    /* wraps around midnight */
+        return (v + dir * MENU_SCHED_TIME_STEP + SCHED_MIN_PER_DAY) % SCHED_MIN_PER_DAY;
+    case SCHED_KIND_MINUTES: return clamp32(v + dir * MENU_SCHED_BOOST_STEP, 0, SCHED_BOOST_MAX_MIN);
+    case SCHED_KIND_DELTA:   return clamp32(v + dir * MENU_SCHED_OFS_STEP, 0, SCHED_BOOST_OFS_MAX);
+    default: {
+        int32_t n = menu_step_temp((int16_t)v, dir, c->fahrenheit);
+        return (n >= SP_MIN && n <= SP_MAX) ? n : v;
+    }
+    }
+}
+
+static void fmt_hhmm(char *o, int n, int32_t min) { snprintf(o, n, "%02d:%02d", (int)(min / 60 % 24), (int)(min % 60)); }
+
+static void fmt_swing(char *o, int n, int32_t sw, bool f);
+
+/* value text (with unit) for a schedule item */
+static void fmt_sched(char *o, int n, sched_item_t it, int32_t v, bool F)
+{
+    const char *U = F ? "\x7f" "F" : "\x7f" "C";
+    char b[12];
+    switch (sched_item_kind(it)) {
+    case SCHED_KIND_TIME:    fmt_hhmm(o, n, v); break;
+    case SCHED_KIND_MINUTES: if (v) snprintf(o, n, "%ld min", (long)v); else snprintf(o, n, "off"); break;
+    case SCHED_KIND_DELTA:   fmt_swing(b, sizeof b, v, F); snprintf(o, n, "+%s%s", b, U); break;
+    default:                 format_temp(b, sizeof b, (int16_t)v, F, !F); snprintf(o, n, "%s%s", b, U); break;
     }
 }
 
@@ -111,6 +168,26 @@ menu_action_t menu_key(menu_t *m, const menu_ctx_t *c, menu_key_t k, btn_event_t
     case MS_EDIT_MODE:
         if (updown) { m->edit = (m->edit + N_MODES + dir) % N_MODES; return redraw(); }
         if (sel) { m->st = MS_LIST; return act(MA_SET_MODE, MODES[m->edit]); }
+        break;
+    case MS_SCHED: {
+        const uint8_t n = SCHED_IT_COUNT + 1;   /* + Back */
+        if (updown) { m->scursor = (uint8_t)((m->scursor + n - dir) % n); return redraw(); }
+        if (sel) {
+            if (m->scursor >= SCHED_IT_COUNT) { m->st = MS_LIST; return redraw(); }
+            m->st = MS_EDIT_SCHED;
+            m->edit = sched_edit_start(c, (sched_item_t)m->scursor);
+            return redraw();
+        }
+        break;
+    }
+    case MS_EDIT_SCHED:
+        if (updown) { m->edit = sched_edit_step(c, (sched_item_t)m->scursor, m->edit, dir); return redraw(); }
+        if (sel) {
+            m->st = MS_SCHED;
+            menu_action_t a = act(MA_SET_SCHED, m->edit);
+            a.item = m->scursor;
+            return a;
+        }
         break;
     case MS_EDIT_FAN:
         if (updown) { m->edit = !m->edit; return redraw(); }
@@ -236,6 +313,7 @@ void menu_view(const menu_t *m, const menu_ctx_t *c, menu_view_t *v)
         row(v, "Mode", mode_name(c->mode));
         row(v, "Fan", c->fan == CTRL_FAN_ON ? "On" : "Auto");
         row(v, "Boost", c->boost_active ? "running" : "");
+        row(v, "Schedule", "");
         fmt_swing(b, sizeof b, c->swing, F);
         { char s2[32]; snprintf(s2, sizeof s2, "+/-%s%s", b, U); row(v, "Swing", s2); }
         row(v, "Units", U);
@@ -262,6 +340,38 @@ void menu_view(const menu_t *m, const menu_ctx_t *c, menu_view_t *v)
         snprintf(v->title, sizeof v->title, "Mode");
         snprintf(v->big, sizeof v->big, "%s", mode_name(MODES[m->edit]));
         break;
+    case MS_SCHED:
+        v->kind = VIEW_LIST;
+        snprintf(v->title, sizeof v->title, "Schedule");
+        for (int i = 0; i < SCHED_IT_COUNT; i++) {
+            char val[16];
+            fmt_sched(val, sizeof val, (sched_item_t)i, sched_get(&c->sched, (sched_item_t)i), F);
+            row(v, SCHED_LABEL[i], val);
+        }
+        row(v, "Back", "");
+        v->sel = m->scursor;
+        break;
+    case MS_EDIT_SCHED: {
+        sched_item_t it = (sched_item_t)m->scursor;
+        v->kind = VIEW_VALUE;
+        snprintf(v->title, sizeof v->title, "%s", SCHED_TITLE[it]);
+        switch (sched_item_kind(it)) {
+        case SCHED_KIND_TIME: fmt_hhmm(v->big, sizeof v->big, m->edit); v->big_is_text = true; break;  /* big font has no colon */
+        case SCHED_KIND_MINUTES:
+            snprintf(v->big, sizeof v->big, "%ld", (long)m->edit);
+            snprintf(v->big_unit, sizeof v->big_unit, "%s", m->edit ? "min" : "off");
+            break;
+        case SCHED_KIND_DELTA:
+            fmt_swing(v->big, sizeof v->big, m->edit, F);
+            snprintf(v->big_unit, sizeof v->big_unit, "%s", U);
+            break;
+        default:
+            format_temp(v->big, sizeof v->big, (int16_t)m->edit, F, !F);
+            snprintf(v->big_unit, sizeof v->big_unit, "%s", U);
+            break;
+        }
+        break;
+    }
     case MS_EDIT_FAN:
         v->kind = VIEW_VALUE; v->big_is_text = true;
         snprintf(v->title, sizeof v->title, "Fan");

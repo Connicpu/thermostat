@@ -15,7 +15,8 @@ static void reset(void)
     T = 1000;
     C = (menu_ctx_t){.mode = CTRL_MODE_HEAT, .boost_sp = 2200, .boost_minutes = 30, .swing = 50,
                      .fahrenheit = false, .link = LINK_JOINED, .fw_version = "0.2.0",
-                     .raw_valid = true, .raw_temp = 2263, .raw_rh = 4512, .uptime_s = 2 * 86400 + 3 * 3600 + 7 * 60};
+                     .raw_valid = true, .raw_temp = 2263, .raw_rh = 4512, .uptime_s = 2 * 86400 + 3 * 3600 + 7 * 60,
+                     .sched = SCHED_CFG_DEFAULT()};
 }
 static menu_action_t key(menu_key_t k, btn_event_t ev) { T += 300; return menu_key(&M, &C, k, ev, T); }
 static menu_action_t up(void)   { return key(MENU_KEY_UP, BTN_EV_PRESS); }
@@ -110,6 +111,127 @@ static void edit_fan_toggles(void)
     sel();                                  /* cursor still on Fan: reopen, starts at On */
     down();
     CHECK_EQ(sel().value, CTRL_FAN_AUTO);
+}
+
+static void open_sched_item(int it) { goto_item(MI_SCHED); sel(); for (int k = 0; k < it; k++) down(); sel(); }
+
+static void schedule_list_shows_all_knobs(void)
+{
+    reset();
+    goto_item(MI_SCHED); sel();
+    CHECK_EQ(M.st, MS_SCHED);
+    menu_view_t v; menu_view(&M, &C, &v);
+    CHECK_EQ(v.n_rows, SCHED_IT_COUNT + 1);
+    CHECK(strcmp(v.value[SCHED_IT_DAY_HEAT_START], "06:00") == 0);
+    CHECK(strcmp(v.value[SCHED_IT_NIGHT_HEAT_START], "22:00") == 0);
+    CHECK(strcmp(v.value[SCHED_IT_DAY_HEAT], "20.0" "\x7f" "C") == 0);
+    CHECK(strcmp(v.value[SCHED_IT_BOOST_MIN], "120 min") == 0);
+    CHECK(strcmp(v.value[SCHED_IT_BOOST_OFS], "+0.5" "\x7f" "C") == 0);
+    CHECK(strcmp(v.label[SCHED_IT_COUNT], "Back") == 0);
+    up();                                   /* wraps to Back */
+    CHECK_EQ(M.scursor, SCHED_IT_COUNT);
+    sel();
+    CHECK_EQ(M.st, MS_LIST);
+}
+
+static void schedule_time_steps_wrap(void)
+{
+    reset();
+    open_sched_item(SCHED_IT_DAY_HEAT_START);
+    CHECK_EQ(M.st, MS_EDIT_SCHED);
+    CHECK_EQ(M.edit, 360);
+    up();
+    menu_view_t v; menu_view(&M, &C, &v);
+    CHECK(strcmp(v.big, "06:15") == 0);
+    menu_action_t a = sel();
+    CHECK_EQ(a.kind, MA_SET_SCHED);
+    CHECK_EQ(a.item, SCHED_IT_DAY_HEAT_START);
+    CHECK_EQ(a.value, 375);
+    CHECK_EQ(M.st, MS_SCHED);               /* back to the schedule list */
+    /* midnight wrap both ways; odd stored minute snaps to the 15-min grid */
+    reset();
+    C.sched.night_cool_start = 1432;        /* 23:52 -> 23:45 */
+    open_sched_item(SCHED_IT_NIGHT_COOL_START);
+    CHECK_EQ(M.edit, 1425);
+    up();
+    CHECK_EQ(M.edit, 0);
+    menu_view(&M, &C, &v);
+    CHECK(strcmp(v.big, "00:00") == 0);
+    key(MENU_KEY_DOWN, BTN_EV_PRESS);
+    CHECK_EQ(M.edit, 1425);
+}
+
+static void schedule_temp_and_boost_clamps(void)
+{
+    reset();
+    open_sched_item(SCHED_IT_NIGHT_HEAT);
+    CHECK_EQ(M.edit, 1800);
+    down();
+    CHECK_EQ(M.edit, 1750);                 /* 0.5 °C steps */
+    for (int i = 0; i < 40; i++) key(MENU_KEY_DOWN, BTN_EV_REPEAT);
+    CHECK_EQ(M.edit, 1000);                 /* setpoint range like Zigbee */
+    CHECK_EQ(sel().value, 1000);
+    reset();
+    open_sched_item(SCHED_IT_DAY_COOL);
+    for (int i = 0; i < 40; i++) key(MENU_KEY_UP, BTN_EV_REPEAT);
+    CHECK_EQ(M.edit, 3200);
+    reset();
+    open_sched_item(SCHED_IT_BOOST_MIN);
+    for (int i = 0; i < 30; i++) up();
+    CHECK_EQ(M.edit, SCHED_BOOST_MAX_MIN);
+    for (int i = 0; i < 30; i++) down();
+    CHECK_EQ(M.edit, 0);
+    menu_view_t v; menu_view(&M, &C, &v);
+    CHECK(strcmp(v.big_unit, "off") == 0);
+    CHECK_EQ(sel().value, 0);
+    reset();
+    open_sched_item(SCHED_IT_BOOST_OFS);
+    CHECK_EQ(M.edit, 50);
+    up();
+    CHECK_EQ(M.edit, 60);                   /* 0.1 °C steps */
+    for (int i = 0; i < 40; i++) up();
+    CHECK_EQ(M.edit, SCHED_BOOST_OFS_MAX);
+    for (int i = 0; i < 40; i++) down();
+    CHECK_EQ(M.edit, 0);
+    /* °F: temps step 1 °F, offset shown converted */
+    reset();
+    C.fahrenheit = true;
+    open_sched_item(SCHED_IT_DAY_HEAT);
+    up();
+    CHECK_EQ(M.edit, menu_step_temp(2000, 1, true));
+    reset();
+    C.fahrenheit = true;
+    open_sched_item(SCHED_IT_BOOST_OFS);
+    menu_view(&M, &C, &v);
+    CHECK(strcmp(v.big, "0.9") == 0);       /* 0.5 °C = 0.9 °F difference */
+}
+
+static void schedule_edit_timeout_discards(void)
+{
+    reset();
+    open_sched_item(SCHED_IT_DAY_HEAT);
+    up(); up();
+    menu_action_t a = menu_tick(&M, T + MENU_TIMEOUT_MS);
+    CHECK_EQ(a.kind, MA_NONE);
+    CHECK(menu_is_home(&M));
+}
+
+/* menu action applied the way main.c does it: values stay within the Zigbee clamps */
+static void schedule_action_roundtrip(void)
+{
+    ctrl_params_t P = CTRL_PARAMS_DEFAULT();
+    sched_cfg_t c = SCHED_CFG_DEFAULT();
+    for (int it = 0; it < SCHED_IT_COUNT; it++) {
+        reset();
+        open_sched_item(it);
+        for (int i = 0; i < 200; i++) key(MENU_KEY_UP, BTN_EV_REPEAT);
+        menu_action_t a = sel();
+        CHECK_EQ(a.kind, MA_SET_SCHED);
+        sched_set(&c, (sched_item_t)a.item, a.value);
+        sched_cfg_t before = c;
+        sched_sanitize(&P, &c);
+        CHECK(memcmp(&before, &c, sizeof c) == 0);   /* menu never produces an out-of-range value */
+    }
 }
 
 static void edit_swing_clamps(void)
@@ -322,6 +444,13 @@ static void render_menu_previews(void)
     reset(); goto_item(MI_BOOST); sel(); down(); sel(); shot("menu_boost_minutes.pbm");
     reset(); C.fahrenheit = true; goto_item(MI_SWING); sel(); shot("menu_swing_f.pbm");
     reset(); goto_item(MI_UNITS); sel();    shot("menu_units.pbm");
+    reset(); goto_item(MI_SCHED); sel();    shot("menu_schedule.pbm");
+    for (int i = 0; i < 5; i++) down();
+    shot("menu_schedule_scrolled.pbm");
+    reset(); open_sched_item(SCHED_IT_DAY_HEAT_START); shot("menu_schedule_time.pbm");
+    reset(); open_sched_item(SCHED_IT_NIGHT_HEAT); shot("menu_schedule_temp.pbm");
+    reset(); open_sched_item(SCHED_IT_BOOST_MIN); shot("menu_schedule_boost.pbm");
+    reset(); open_sched_item(SCHED_IT_BOOST_OFS); shot("menu_schedule_offset.pbm");
     reset(); goto_item(MI_ZIGBEE); sel();   shot("menu_zigbee.pbm");
     reset(); goto_item(MI_INFO); sel();     shot("menu_info.pbm");
     reset(); M.st = MS_HOLD_PAIR;           shot("menu_hold_pair.pbm");
@@ -339,6 +468,11 @@ int main(void)
     RUN(timeout_discards_edit);
     RUN(edit_mode_saves);
     RUN(edit_fan_toggles);
+    RUN(schedule_list_shows_all_knobs);
+    RUN(schedule_time_steps_wrap);
+    RUN(schedule_temp_and_boost_clamps);
+    RUN(schedule_edit_timeout_discards);
+    RUN(schedule_action_roundtrip);
     RUN(edit_swing_clamps);
     RUN(edit_units);
     RUN(boost_target_and_timed);

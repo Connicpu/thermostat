@@ -16,6 +16,7 @@ try:
 except ImportError:  # older zha-quirks
     from zigpy.quirks import CustomCluster  # type: ignore[no-redef]
 import zigpy.types as t
+from zigpy.zcl.clusters.hvac import Thermostat
 from zigpy.zcl.foundation import BaseAttributeDefs, ZCLAttributeDef
 
 try:  # zha-quirks >= 2.x: canonical location
@@ -86,6 +87,48 @@ class BoostResult(t.enum8):
     Rejected_sensor_fault = 0x11
     Rejected_already_at_target = 0x12
     Rejected_no_direction = 0x13
+
+
+# ZHA builds the climate entity's hvac_modes from ControlSequenceOfOperation
+# (zha/application/platforms/climate/const.py SEQ_OF_OPERATION). The firmware
+# reports the standard 0x04 "Cooling and Heating", which ZHA maps to
+# off/heat_cool/cool/heat. There is no *standard* value meaning "heat or cool,
+# never auto"; ZHA's table maps 0x06 to exactly [cool, heat, off]. The quirk
+# therefore presents 0x06 to ZHA while the device keeps sending the standard value
+# on the wire (Z2M and other controllers are unaffected).
+CTRL_SEQ_HEAT_COOL_NO_AUTO = 0x06
+SYSTEM_MODE_AUTO = Thermostat.SystemMode.Auto
+
+
+class ConnieThermostatCluster(CustomCluster, Thermostat):
+    """Thermostat cluster without Auto/heat_cool."""
+
+    _SEQ_ID = Thermostat.AttributeDefs.ctrl_sequence_of_oper.id
+    _MODE_ID = Thermostat.AttributeDefs.system_mode.id
+
+    def get(self, key, default=None):
+        """ZHA reads ctrl_sequence_of_oper from the cache via get(): always answer 0x06.
+
+        0x06 is not a member of zigpy's ControlSequenceOfOperation enum, so it can't be
+        stored in the typed attribute cache; overriding the cached read is the robust way
+        (works before the first read and whatever the device reports).
+        """
+        try:
+            attr = self.find_attribute(key)
+        except KeyError:
+            return super().get(key, default)
+        if attr.id == self._SEQ_ID:
+            return CTRL_SEQ_HEAT_COOL_NO_AUTO
+        return super().get(key, default)
+
+    async def write_attributes(self, attributes, manufacturer=None, **kwargs):
+        """Refuse Auto locally (the firmware refuses it too) instead of a round trip."""
+        for key, value in attributes.items():
+            name = key if isinstance(key, str) else getattr(key, "name", None)
+            ident = key if isinstance(key, int) else getattr(key, "id", None)
+            if (name == "system_mode" or ident == self._MODE_ID) and value == SYSTEM_MODE_AUTO:
+                raise ValueError("Connie thermostat V3 has no Auto (heat/cool) mode")
+        return await super().write_attributes(attributes, manufacturer=manufacturer, **kwargs)
 
 
 class ScheduleState(t.enum8):
@@ -178,7 +221,7 @@ def _schedule(builder):
 
 
 QUIRK_ENTRY = (
-    _schedule(QuirkBuilder(MANUFACTURER, MODEL).adds(ConnieBoostCluster))
+    _schedule(QuirkBuilder(MANUFACTURER, MODEL).adds(ConnieBoostCluster).replaces(ConnieThermostatCluster))
     # --- settings for the next boost ---
     .number(
         ConnieBoostCluster.AttributeDefs.boost_setpoint.name,
