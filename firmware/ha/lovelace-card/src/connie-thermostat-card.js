@@ -19,7 +19,9 @@ import {
 } from './model.js';
 import './editor.js';
 
-export const CARD_VERSION = '1.0.0';
+export const CARD_VERSION = '1.1.0';
+/** A service call with no answer after this long counts as failed. */
+export const CALL_TIMEOUT_MS = 10000;
 const WRITE_DELAY_MS = 500;
 
 const icon = (path, cls = '') => html`<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true">${svg`<path d=${path}></path>`}</svg>`;
@@ -105,6 +107,8 @@ export class ConnieThermostatCard extends LitElement {
     document.removeEventListener('keydown', this._onDocKey, true);
     for (const t of Object.values(this._timers)) clearTimeout(t);
     this._timers = {};
+    clearTimeout(this._errTimer);
+    this._errTimer = undefined;
   }
 
   // ---------- data ----------
@@ -231,8 +235,25 @@ export class ConnieThermostatCard extends LitElement {
     this._errTimer = setTimeout(() => (this._error = null), 10000);
   }
 
+  /** callService, but a call that gets no answer within CALL_TIMEOUT_MS rejects (counts as failed). */
   _call(domain, service, data) {
-    return this.hass.callService(domain, service, data);
+    let t;
+    const timeout = new Promise((_, reject) => {
+      t = setTimeout(() => reject(new Error(`no answer from Home Assistant after ${CALL_TIMEOUT_MS / 1000} s`)), CALL_TIMEOUT_MS);
+    });
+    let call; // called synchronously, so requests leave in the order they were made
+    try {
+      call = Promise.resolve(this.hass.callService(domain, service, data));
+    } catch (e) {
+      call = Promise.reject(e);
+    }
+    return Promise.race([call, timeout]).finally(() => clearTimeout(t));
+  }
+
+  _dismissError() {
+    clearTimeout(this._errTimer);
+    this._errTimer = undefined;
+    this._error = null;
   }
 
   _setNumber(key, value) {
@@ -244,13 +265,13 @@ export class ConnieThermostatCard extends LitElement {
   }
 
   _setMode(mode) {
-    this._call('climate', 'set_hvac_mode', { entity_id: this._e.climate, hvac_mode: mode });
+    this._call('climate', 'set_hvac_mode', { entity_id: this._e.climate, hvac_mode: mode }).catch((e) => this._fail(null, e, "Couldn't change the mode"));
   }
 
   _toggleFan() {
     const c = this._st('climate');
     const on = c?.attributes?.fan_mode === 'on';
-    this._call('climate', 'set_fan_mode', { entity_id: this._e.climate, fan_mode: on ? 'auto' : 'on' });
+    this._call('climate', 'set_fan_mode', { entity_id: this._e.climate, fan_mode: on ? 'auto' : 'on' }).catch((e) => this._fail(null, e, "Couldn't change the fan"));
   }
 
   get _spStep() {
@@ -431,7 +452,7 @@ export class ConnieThermostatCard extends LitElement {
 
   _renderBanners(unavailable, period) {
     const out = [];
-    if (this._error) out.push(html`<div class="banner error" role="alert">${icon(I.mdiAlertCircleOutline)}<span>${this._error}</span></div>`);
+    if (this._error) out.push(html`<div class="banner error" role="alert">${icon(I.mdiAlertCircleOutline)}<span>${this._error}</span><button class="dismiss" type="button" aria-label="Dismiss error" @click=${() => this._dismissError()}>${icon(I.mdiClose, 'sm')}</button></div>`);
     if (unavailable) out.push(html`<div class="banner error">${icon(I.mdiAlertCircleOutline)}<span>Thermostat is unavailable (not reporting to Zigbee).</span></div>`);
     if (period === 'noclock')
       out.push(html`<div class="banner">${icon(I.mdiClockAlertOutline)}<span>No time from Home Assistant yet: holding the day program.</span></div>`);
@@ -628,7 +649,7 @@ export class ConnieThermostatCard extends LitElement {
     return this._section('boost', 'Boost', meta, () => html`
       <div class="dir-row"><span id="boost-dir-l">Direction</span>${sel
         ? html`<div class="seg mini-seg" role="group" aria-labelledby="boost-dir-l">${(sel.attributes?.options ?? []).map((o) => html`<button
-            aria-pressed=${o === sel.state ? 'true' : 'false'} ?disabled=${offline} @click=${() => this._call('select', 'select_option', { entity_id: this._e.boost_mode, option: o })}>${dirIcon[o.toLowerCase()] ? icon(dirIcon[o.toLowerCase()], 'xs') : nothing}${humanize(o)}</button>`)}</div>`
+            aria-pressed=${o === sel.state ? 'true' : 'false'} ?disabled=${offline} @click=${() => this._call('select', 'select_option', { entity_id: this._e.boost_mode, option: o }).catch((e) => this._fail(null, e, "Couldn't set the boost direction"))}>${dirIcon[o.toLowerCase()] ? icon(dirIcon[o.toLowerCase()], 'xs') : nothing}${humanize(o)}</button>`)}</div>`
         : html`<span class="missing">n/a</span>`}</div>
       ${this._tile('boost-target', {
         title: 'Boost to target', iconPath: I.mdiThermometerChevronUp, cls: kind === 'target' ? 'running' : '', status: runChip('target'),

@@ -4,6 +4,7 @@ export {
   mdiCancel,
   mdiChevronDown,
   mdiClockAlertOutline,
+  mdiClose,
   mdiFan,
   mdiFire,
   mdiInformationOutline,

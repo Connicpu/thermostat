@@ -34,6 +34,11 @@ export const cardStyles = css`
   .banner svg { color: var(--warning-color, #ffa600); }
   .banner.error { background: rgba(var(--rgb-error-color, 219, 68, 55), 0.15); }
   .banner.error svg { color: var(--error-color, #db4437); }
+  .banner .dismiss { margin-left: auto; flex: none; display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; padding: 0; border: none; border-radius: 50%; background: none; color: var(--primary-text-color); cursor: pointer; }
+  .banner .dismiss svg { color: inherit; }
+  .banner .dismiss:hover { background: rgba(127, 127, 127, 0.15); }
+  .banner .dismiss:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
 
   /* header */
   .head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }

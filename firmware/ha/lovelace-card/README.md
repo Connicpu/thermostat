@@ -33,6 +33,9 @@ number tiles with a single card that covers everything the quirk exposes.
 * **Help text** sits behind small (i) buttons, so the card stays quiet. Each opens on hover, focus or tap,
   closes on Esc (consumed only when a tooltip was open) or a click elsewhere, opens above its row (the setpoint one opens in place, on click/tap only, and pushes the value down), and is linked with `aria-describedby`.
 * **Warnings** always stay visible: device unavailable, no clock yet (holding the day program), and failed boosts (rejected, failsafe, limit).
+* **Failed writes:** if Home Assistant rejects a change, or doesn't answer within 10 s, the card drops the
+  unsent value, doesn't start a boost that depended on it, and shows an error banner. The banner closes
+  by itself after 10 s or with its × (Dismiss error) button.
 
 While the thermostat is actively heating or cooling (its `hvac_action`), the top of the card
 gets a soft orange or blue tint, like HA's own thermostat card. Idle, off and fan-only show no tint.
@@ -110,3 +113,11 @@ Serve this folder and open `demo/?theme=dark&scenario=cool-night`. The scenarios
 
 Source: `src/model.js` (discovery, units and schedule maths; no DOM), `src/connie-thermostat-card.js`,
 `src/editor.js`, `src/styles.js` and `src/icons.js`.
+
+## Changelog
+
+* **1.1.0**: boost redesign (each value sits on the control that sets it; Start/Switch/Stop on the same
+  tile); boosts above the schedule; explainers moved into info tooltips; accessible setpoint slider;
+  Start waits for pending writes; 10 s service-call timeout; dismissible error banner; heating/cooling
+  tint on the top of the card.
+* **1.0.0**: first release.

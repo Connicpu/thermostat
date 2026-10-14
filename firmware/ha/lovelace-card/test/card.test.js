@@ -350,6 +350,50 @@ describe('card', () => {
     expect($(el, '.banner.error[role="alert"]')).toBeNull();
   });
 
+  it('a service call with no answer in 10 s counts as failed', async () => {
+    const el = await mount();
+    const calls = [];
+    el.hass.callService = (d, sv, data) => (calls.push(sv), new Promise(() => {})); // never answers
+    const timed = $(el, '.tile[aria-labelledby="tile-boost-timed"]');
+    timed.querySelector('button[aria-label="Increase boost duration"]').click();
+    await el.updateComplete;
+    timed.querySelector('.go').click();
+    await flushAsync();
+    expect(calls).toEqual(['set_value']);
+    vi.advanceTimersByTime(9900);
+    await flushAsync();
+    await el.updateComplete;
+    expect($(el, '.banner.error[role="alert"]')).toBeNull();
+    vi.advanceTimersByTime(200);
+    await flushAsync();
+    await el.updateComplete;
+    expect(calls).toEqual(['set_value']); // never started
+    expect($(el, '.banner.error[role="alert"]').textContent).toContain('no answer from Home Assistant after 10 s');
+    expect($(el, '.tile[aria-labelledby="tile-boost-timed"] .stepper .v').textContent).toBe('30 min');
+  });
+
+  it('the error banner has an accessible dismiss button', async () => {
+    const el = await mount();
+    el._fail(null, new Error('boom'), 'Oops');
+    await el.updateComplete;
+    const b = $(el, '.banner.error[role="alert"] button.dismiss');
+    expect(b.getAttribute('type')).toBe('button');
+    expect(b.getAttribute('aria-label')).toBe('Dismiss error');
+    b.click();
+    await el.updateComplete;
+    expect($(el, '.banner.error[role="alert"]')).toBeNull();
+    expect(el._errTimer).toBeUndefined();
+  });
+
+  it('disconnecting clears the error timer', async () => {
+    const el = await mount();
+    el._fail(null, new Error('boom'), 'Oops');
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+    el.remove();
+    expect(el._errTimer).toBeUndefined();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('tints the top only while actively heating or cooling (hvac_action)', async () => {
     const el = await mount();
     const set = async (state, action) => {
