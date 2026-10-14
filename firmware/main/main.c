@@ -481,7 +481,11 @@ static void app_task(void *arg)
             } else if (now - boot >= OTA_JOIN_TIMEOUT_MS) {
                 ESP_LOGE(TAG, "new image not confirmed within %d s: rolling back", OTA_JOIN_TIMEOUT_MS / 1000);
                 hvac_outputs_all_off();
-                esp_ota_mark_app_invalid_rollback_and_reboot();
+                esp_err_t rb = esp_ota_mark_app_invalid_rollback_and_reboot();
+                /* Only returns on failure (no valid image in the other slot): keep running this one
+                 * instead of retrying every loop and chattering the outputs. */
+                ESP_LOGE(TAG, "rollback failed (%s): keeping current image", esp_err_to_name(rb));
+                ota_marked = true;
             }
         }
 

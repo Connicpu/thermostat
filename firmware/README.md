@@ -263,6 +263,8 @@ The converter is written against the standard `fz.thermostat` / `tz.thermostat_*
 
 ## OTA updates over Zigbee
 
+> A freshly updated image confirms itself only after it has been up 60 s, is healthy, and has rejoined the Zigbee network. If it hasn't rejoined within 10 minutes (including when the coordinator/HA is simply offline), it rolls back to the previous image; the update will be offered again later. If no previous image exists, it logs an error and keeps running.
+
 1. Bump `FW_VERSION_*` in `components/board/include/fw_version.h` (the OTA file version is derived from it) and build.
 2. Wrap `build/thermostat_v3.bin` in a Zigbee OTA file with Espressif's
    `esp-zigbee-sdk/tools/image_builder_tool/image_builder_tool.py`, using manufacturer 0x131B, image type 0x0301 and the new version (e.g. 0.2.1 → 0x00020001).
