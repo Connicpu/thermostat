@@ -3,12 +3,6 @@
 #include "schedule.h"
 #include <stddef.h>
 
-/** Returns v clamped into lo..hi. */
-static I16 Clamp16(I32 v, I16 lo, I16 hi)
-{
-    return v < lo ? lo : (v > hi ? hi : (I16)v);
-}
-
 /** Returns a minute-of-day clamped to 0..1439. */
 static U16 ClampMin(U16 m)
 {

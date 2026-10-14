@@ -18,3 +18,9 @@ typedef float F32;
 typedef double F64;
 
 _Static_assert(sizeof(F32) == 4 && sizeof(F64) == 8, "F32/F64 must be IEEE single/double");
+
+/** Returns v clamped into lo..hi (lo <= hi). */
+static inline I16 Clamp16(I32 v, I16 lo, I16 hi)
+{
+    return v < lo ? lo : (v > hi ? hi : (I16)v);
+}
