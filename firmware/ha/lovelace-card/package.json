@@ -1,6 +1,6 @@
 {
   "name": "connie-thermostat-card",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Lovelace card for Connie's Super Awesome Thermostat V3 (ZHA)",
   "private": true,
   "type": "module",
