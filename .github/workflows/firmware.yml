@@ -17,8 +17,6 @@ jobs:
     defaults: { run: { shell: bash, working-directory: firmware } }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: CONFIG_THERMOSTAT_SIM must be off in sdkconfig.defaults
-        run: "! grep -q '^CONFIG_THERMOSTAT_SIM=y' sdkconfig.defaults"
       - name: idf.py build (warnings are errors)
         run: |
           . $IDF_PATH/export.sh

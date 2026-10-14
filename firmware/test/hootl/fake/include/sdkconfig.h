@@ -1,7 +1,6 @@
-/* HOOTL simulation config. Mirrors sdkconfig.defaults + main/Kconfig defaults, plus SIM=1.
+/* HOOTL simulation config. Mirrors sdkconfig.defaults + main/Kconfig defaults.
  * tools/hootl_check_config.py verifies the THERMO_* values match the production sdkconfig. */
 #pragma once
-#define CONFIG_THERMOSTAT_SIM               1
 #define CONFIG_IDF_TARGET_ESP32C6           1
 #define CONFIG_FREERTOS_HZ                  1000
 #define CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ     160

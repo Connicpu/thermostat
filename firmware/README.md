@@ -360,12 +360,11 @@ time sync, OTA pending-verify and rollback all run the shipping code.
   `cool_cycles_room_model`.
 * **CI** (`.github/workflows/firmware.yml`):
   * a production `idf.py build` that fails on any warning;
-  * `CONFIG_THERMOSTAT_SIM` must be off in `sdkconfig.defaults` and the built config;
   * `tools/check_release.sh` (no `sim_*`/fake symbols or simulator strings in the ELF);
   * host unit tests, ZHA quirk tests, and every HOOTL scenario (JUnit XML).
-* **SIM isolation.** No firmware source has a `CONFIG_THERMOSTAT_SIM` ifdef. The
-  simulator is purely a different build (`test/hootl/CMakeLists.txt`), and the Kconfig
-  option exists only so CI can assert it is off.
+* **SIM isolation.** No firmware source has a simulator ifdef. The simulator is purely
+  a different build (`test/hootl/CMakeLists.txt`), and `tools/check_release.sh` asserts
+  that no simulator code reaches the firmware ELF.
 * **Why not the IDF `linux` target.** In IDF 5.3 the linux target has no GPIO, SPI,
   I2C, OTA, power-management or 802.15.4 drivers (those components build as
   "unsupported"). Its FreeRTOS POSIX port also runs in wall-clock time and is
