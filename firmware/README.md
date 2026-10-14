@@ -585,7 +585,22 @@ Judgment calls:
 - Macro-hygiene temporaries starting with `_` are left alone.
 - A few functions got a verb so they don't clash with a type of the same name: `CtrlGetBoostStatus`, `SchedPeriodAt`, `MenuGetView`, `MenuOnKey`, `BuildMenuCtx`.
 
-`tools/check_naming.py` checks all of this with libclang (`pip install libclang`). It reads the compile databases of the host-test, HOOTL and production builds, so build those first. It exits non-zero on any violation. CI runs it in the host-test job.
+`tools/check_naming.py` checks all of this with libclang (`pip install libclang`). It reads the compile databases of the host-test, HOOTL and production builds, so build those first. It exits non-zero on any violation.
+- Production files are parsed a second time with a variant config: `CONFIG_THERMO_DISPLAY_FAHRENHEIT`, `CONFIG_THERMO_HW_WDT_ENABLE` and `CONFIG_PM_ENABLE` off, and `EPD_ROTATION=3`. That way both sides of our `#if`s get checked.
+- Code that is still inactive (e.g. `#if 0`) is checked word by word. Every identifier there must be a name declared somewhere, or must fit one of the conventions.
+- Our `.c`/`.h` files that no compile database covers are parsed with a neighbouring file's flags.
+- Names starting with `_` are violations. The exceptions are `__` names and the macro-local temporaries listed in `UNDERSCORE_ALLOW`.
+
+`tools/test_check_naming.py` is the checker's own test. It builds a small fixture tree and checks that each kind of bad name is flagged and that good code passes.
+
+CI runs both in the host-test job. The production job also builds the Kconfig variant from `sdkconfig.variant` with `-DEPD_ROTATION=3`, and warnings fail that build too. To run it locally:
+
+```bash
+idf.py -B build-variant -DSDKCONFIG=build-variant/sdkconfig \
+       -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.variant" -DEPD_ROTATION=3 build
+```
+
+Kconfig `bool` options are `#define`d to 1 when on and left undefined when off. Test them with `#if`/`#ifdef`, never inside a C expression.
 
 ## Known gaps / TODO
 - **Not run on hardware.** The SSD1680 init and partial-refresh sequences follow Good Display's

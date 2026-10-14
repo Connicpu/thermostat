@@ -9,7 +9,12 @@
 
 #define NS "tstat"
 #define KEY "cfg3"   /* new key: never collides with 0.2.x's tstat/cfg layout */
-#define FDEF (CONFIG_THERMO_DISPLAY_FAHRENHEIT ? true : false)
+/* Kconfig bools are #defined to 1 when y and left undefined when n, so test with #ifdef. */
+#ifdef CONFIG_THERMO_DISPLAY_FAHRENHEIT
+#define FDEF true
+#else
+#define FDEF false
+#endif
 
 static U8 s_buf[SETTINGS_BLOB_MAX];
 

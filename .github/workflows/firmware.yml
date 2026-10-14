@@ -26,6 +26,12 @@ jobs:
           if grep -E '(^|[^-])warning:' build.log; then echo "::error::compiler warnings"; exit 1; fi
       - name: No simulator code in the release ELF
         run: . $IDF_PATH/export.sh && tools/check_release.sh
+      - name: Kconfig-variant build (Fahrenheit/HW WDT/PM off, EPD_ROTATION=3; warnings are errors)
+        run: |
+          . $IDF_PATH/export.sh
+          idf.py -B build-variant -DSDKCONFIG=build-variant/sdkconfig \
+            -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.variant" -DEPD_ROTATION=3 build 2>&1 | tee variant.log
+          if grep -E '(^|[^-])warning:' variant.log; then echo "::error::compiler warnings (variant)"; exit 1; fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: firmware, path: "firmware/build/*.bin" }
 
@@ -44,8 +50,8 @@ jobs:
         run: CMAKE_GENERATOR=Ninja tools/run_host_tests.sh
       - name: HOOTL scenarios (simulated hardware, virtual time)
         run: tools/run_hootl.sh --junit hootl.xml
-      - name: Naming conventions (libclang; uses the host, HOOTL and production compile DBs)
-        run: . $IDF_PATH/export.sh && pip install libclang==18.1.1 && python tools/check_naming.py
+      - name: Naming conventions (libclang: checker self-test, then host/HOOTL/production DBs + variant config)
+        run: . $IDF_PATH/export.sh && pip install libclang==18.1.1 && python tools/test_check_naming.py && python tools/check_naming.py
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with: { name: hootl-results, path: "firmware/hootl.xml" }

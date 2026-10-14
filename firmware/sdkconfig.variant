@@ -1,0 +1,7 @@
+# Kconfig-variant check (CI "variant" build): every THERMO_* bool and PM flipped off from
+# sdkconfig.defaults. Applied on top of sdkconfig.defaults; never used for release images.
+#   idf.py -B build-variant -DSDKCONFIG=build-variant/sdkconfig \
+#          -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.variant" -DEPD_ROTATION=3 build
+# CONFIG_THERMO_DISPLAY_FAHRENHEIT is not set
+# CONFIG_THERMO_HW_WDT_ENABLE is not set
+# CONFIG_PM_ENABLE is not set

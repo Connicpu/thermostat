@@ -6,3 +6,4 @@ test/host/build/
 *.pbm
 test/hootl/build/
 __pycache__/
+build-variant/
