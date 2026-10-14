@@ -1,0 +1,81 @@
+<!doctype html>
+<!-- Local demo: the built card with a mocked hass and HA's default light/dark theme variables.
+     Serve this folder's parent (npm run screenshots does) and open demo/?theme=dark&scenario=cool-night. -->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Connie thermostat card demo</title>
+<style>
+  html.light {
+    --primary-color: #03a9f4; --primary-background-color: #fafafa; --secondary-background-color: #e5e5e5;
+    --card-background-color: #ffffff; --primary-text-color: #212121; --secondary-text-color: #727272;
+    --divider-color: rgba(0, 0, 0, 0.12); --disabled-color: #bdbdbd; --app-header-background-color: #ffffff;
+    --app-header-text-color: #212121; --ha-card-border-color: #e0e0e0;
+  }
+  html.dark {
+    --primary-color: #03a9f4; --primary-background-color: #111111; --secondary-background-color: #282828;
+    --card-background-color: #1c1c1c; --primary-text-color: #e1e1e1; --secondary-text-color: #9b9b9b;
+    --divider-color: rgba(225, 225, 225, 0.12); --disabled-color: #6f6f6f; --app-header-background-color: #101e24;
+    --app-header-text-color: #e1e1e1; --ha-card-border-color: rgba(225, 225, 225, 0.12);
+    color-scheme: dark;
+  }
+  html { --state-climate-heat-color: #ff8100; --state-climate-cool-color: #2b9af9; --warning-color: #ffa600; --error-color: #db4437; }
+  body { margin: 0; background: var(--primary-background-color); font-family: Roboto, 'Noto Sans', sans-serif; -webkit-font-smoothing: antialiased; }
+  header { height: 56px; display: flex; align-items: center; padding: 0 16px; font-size: 20px; background: var(--app-header-background-color); color: var(--app-header-text-color); border-bottom: 1px solid var(--divider-color); }
+  main { padding: 16px 12px; max-width: 560px; margin: 0 auto; }
+  h2 { font-size: 20px; font-weight: 400; color: var(--primary-text-color); margin: 4px 4px 12px; }
+</style>
+<script type="module">
+  // Minimal stand-in for HA's <ha-card>.
+  class HaCard extends HTMLElement {
+    constructor() {
+      super();
+      this.attachShadow({ mode: 'open' }).innerHTML = `<style>:host{display:block;background:var(--ha-card-background,var(--card-background-color));
+        border-radius:var(--ha-card-border-radius,12px);border:1px solid var(--ha-card-border-color,var(--divider-color));
+        color:var(--primary-text-color);box-shadow:var(--ha-card-box-shadow,none)}</style><slot></slot>`;
+    }
+  }
+  customElements.define('ha-card', HaCard);
+</script>
+</head>
+<body>
+<header>HVAC</header>
+<main><h2>Controls</h2><div id="slot"></div></main>
+<script type="module">
+  import '../dist/connie-thermostat-card.js';
+  import { PREFIX, makeHass } from '../test/mock-hass.js';
+
+  const q = new URLSearchParams(location.search);
+  const theme = q.get('theme') === 'dark' ? 'dark' : 'light';
+  document.documentElement.className = theme;
+  const c = `climate.${PREFIX}`;
+  const scenarios = {
+    'heat-day': { now: 10 * 60, open: ['schedule', 'morning'], patch: {} },
+    'cool-night': {
+      now: 22 * 60 + 40,
+      open: ['schedule', 'boost'],
+      patch: {
+        [c]: { state: 'cool', attributes: { hvac_action: 'cooling', fan_mode: 'on', current_temperature: 75.4, temperature: 72 } },
+        [`sensor.${PREFIX}_schedule_period`]: { state: 'Night' },
+        [`binary_sensor.${PREFIX}_boost_active`]: { state: 'on' },
+        [`sensor.${PREFIX}_boost`]: { state: 'Timed_cool' },
+        [`sensor.${PREFIX}_boost_time_remaining`]: { state: '18' },
+        [`sensor.${PREFIX}_humidity`]: { state: '55' },
+      },
+    },
+    'morning-boost': { now: 6 * 60 + 50, open: ['schedule', 'morning', 'status'], patch: { [`sensor.${PREFIX}_schedule_period`]: { state: 'Day_morning_boost' }, [c]: { attributes: { temperature: 70, current_temperature: 67.1 } } } },
+  };
+  const sc = scenarios[q.get('scenario')] ?? scenarios['heat-day'];
+  const el = document.createElement('connie-thermostat-card');
+  el.setConfig({ type: 'custom:connie-thermostat-card' });
+  el.nowMinutes = sc.now;
+  const hass = makeHass({ patch: sc.patch });
+  hass.themes.darkMode = theme === 'dark';
+  el.hass = hass;
+  el._open = Object.fromEntries(['schedule', 'morning', 'boost', 'status'].map((k) => [k, sc.open.includes(k)]));
+  document.getElementById('slot').appendChild(el);
+  el.updateComplete.then(() => document.body.setAttribute('data-ready', ''));
+</script>
+</body>
+</html>

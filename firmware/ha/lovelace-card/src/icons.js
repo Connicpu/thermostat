@@ -1,0 +1,19 @@
+// Material Design Icons paths (@mdi/js, Apache-2.0), bundled so the card needs no icon CDN.
+export {
+  mdiAlertCircleOutline,
+  mdiCancel,
+  mdiChevronDown,
+  mdiClockAlertOutline,
+  mdiFan,
+  mdiFire,
+  mdiMinus,
+  mdiPlus,
+  mdiPower,
+  mdiSnowflake,
+  mdiThermometerChevronUp,
+  mdiTimerPlayOutline,
+  mdiWaterPercent,
+  mdiWeatherNight,
+  mdiWeatherSunny,
+  mdiWeatherSunsetUp,
+} from '@mdi/js';
