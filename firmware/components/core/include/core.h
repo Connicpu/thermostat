@@ -5,6 +5,9 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#if __has_include("esp_timer.h")
+#include "esp_timer.h" /* NowMs(); absent in the pure-logic host tests */
+#endif
 
 typedef uint8_t U8;
 typedef uint16_t U16;
@@ -24,3 +27,11 @@ static inline I16 Clamp16(I32 v, I16 lo, I16 hi)
 {
     return v < lo ? lo : (v > hi ? hi : (I16)v);
 }
+
+#if __has_include("esp_timer.h")
+/** Returns monotonic time since boot in ms, from esp_timer. */
+static inline U64 NowMs(void)
+{
+    return (U64)(esp_timer_get_time() / 1000);
+}
+#endif

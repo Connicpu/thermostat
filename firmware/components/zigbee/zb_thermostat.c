@@ -6,7 +6,6 @@
 #include "esp_log.h"
 #include "esp_ota_ops.h"
 #include "esp_system.h"
-#include "esp_timer.h"
 #include "esp_zigbee_core.h"
 #include "esp_zigbee_ota.h"
 #include "freertos/FreeRTOS.h"
@@ -61,12 +60,6 @@ static volatile bool s_timeKnown;
 static U32 s_timeLocalS; /* ZCL UTCTime-style seconds (local) at sync */
 static U64 s_timeAtMs;
 static portMUX_TYPE s_timeMux = portMUX_INITIALIZER_UNLOCKED;
-
-/** Returns monotonic time in ms (esp_timer). */
-static U64 MonoMs(void)
-{
-    return (U64)(esp_timer_get_time() / 1000);
-}
 
 /**
  * Returns a pointer to the SchedCfg field backing a schedule attribute id (I16 or U16, see
@@ -204,7 +197,7 @@ static void OnTimeResp(const esp_zb_zcl_cmd_read_attr_resp_message_t *pM)
     s_timeFails = 0;
     portENTER_CRITICAL(&s_timeMux);
     s_timeLocalS = local;
-    s_timeAtMs = MonoMs();
+    s_timeAtMs = NowMs();
     s_timeKnown = true;
     portEXIT_CRITICAL(&s_timeMux);
     ESP_LOGI(
@@ -229,7 +222,7 @@ bool ZbThermostatLocalMinute(U16 *pMinute)
 {
     portENTER_CRITICAL(&s_timeMux);
     bool known = s_timeKnown;
-    U64 secs = (U64)s_timeLocalS + (MonoMs() - s_timeAtMs) / 1000u;
+    U64 secs = (U64)s_timeLocalS + (NowMs() - s_timeAtMs) / 1000u;
     portEXIT_CRITICAL(&s_timeMux);
     if (known)
         *pMinute = (U16)(secs % 86400u / 60u);
@@ -284,7 +277,7 @@ static void ScheduleSteering(U32 delayMs, const char *pWhy)
 static void Heartbeat(U8 unused)
 {
     (void)unused;
-    s_aliveMs = MonoMs();
+    s_aliveMs = NowMs();
     esp_zb_scheduler_alarm(Heartbeat, 0, HEARTBEAT_MS);
 }
 
@@ -326,7 +319,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *pSigS)
         {
             ESP_LOGI(kTag, "rejoined existing network");
             s_link = kLinkJoined;
-            ZbRetryJoined(&s_retry, MonoMs());
+            ZbRetryJoined(&s_retry, NowMs());
             TimeSyncStart();
         }
         break;
@@ -341,7 +334,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *pSigS)
                 esp_zb_get_short_address());
             s_steerPending = false;
             s_link = kLinkJoined;
-            ZbRetryJoined(&s_retry, MonoMs());
+            ZbRetryJoined(&s_retry, NowMs());
             TimeSyncStart();
         }
         else
@@ -357,12 +350,12 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *pSigS)
         /* Removed from the network (e.g. by the coordinator): go back to pairing, slowly. */
         ESP_LOGW(kTag, "left network");
         s_link = kLinkOffline;
-        ScheduleSteering(ZbRetryLost(&s_retry, MonoMs()), "left network");
+        ScheduleSteering(ZbRetryLost(&s_retry, NowMs()), "left network");
         break;
     case ESP_ZB_NWK_SIGNAL_NO_ACTIVE_LINKS_LEFT:
         ESP_LOGW(kTag, "parent lost");
         s_link = kLinkLost;
-        ScheduleSteering(ZbRetryLost(&s_retry, MonoMs()), "parent lost");
+        ScheduleSteering(ZbRetryLost(&s_retry, NowMs()), "parent lost");
         break;
     case ESP_ZB_COMMON_SIGNAL_CAN_SLEEP:
         esp_zb_sleep_now(); /* light sleep until the next poll / timer / GPIO */
@@ -378,7 +371,7 @@ LinkState ZbThermostatLink(void)
 {
     if (s_radioFault)
         return kLinkFault;
-    if (s_started && ZbRetryStalled(s_aliveMs, MonoMs()))
+    if (s_started && ZbRetryStalled(s_aliveMs, NowMs()))
         return kLinkFault; /* task dead or stuck */
     return s_link;
 }
@@ -951,7 +944,7 @@ static void ZbTask(void *pArg)
         vTaskDelete(NULL);
         return;
     }
-    s_aliveMs = MonoMs();
+    s_aliveMs = NowMs();
     esp_zb_scheduler_alarm(Heartbeat, 0, HEARTBEAT_MS);
     s_started = true;
     esp_zb_stack_main_loop();

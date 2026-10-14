@@ -8,7 +8,6 @@
 #include "display.h"
 #include "ssd1680.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -32,12 +31,6 @@ static bool s_dirty, s_urgent;
 static U64 s_urgentAt;
 static volatile U64 s_alive;
 static GfxFb s_fb, s_prev;
-
-/** Returns monotonic time in ms (esp_timer). */
-static U64 NowMs(void)
-{
-    return (U64)(esp_timer_get_time() / 1000);
-}
 
 /** See display.h. */
 U64 DisplayLastAliveMs(void)

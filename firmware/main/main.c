@@ -18,7 +18,6 @@
 #include "esp_pm.h"
 #include "esp_system.h"
 #include "esp_task_wdt.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
@@ -77,12 +76,6 @@ typedef struct
 static QueueHandle_t s_boostQ; /* U8 kZbBoostCmd* from Zigbee or the UP+DOWN combo */
 static U8 s_boostResult;       /* kZbBoostResult* last outcome, reported to HA */
 static bool s_boostActive;     /* mirror for the UI combo */
-
-/** Returns monotonic time in ms (esp_timer). */
-static U64 NowMs(void)
-{
-    return (U64)(esp_timer_get_time() / 1000);
-}
 
 /* ---------------- shared settings ---------------- */
 
