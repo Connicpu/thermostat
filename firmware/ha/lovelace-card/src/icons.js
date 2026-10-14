@@ -13,6 +13,7 @@ export {
   mdiPower,
   mdiSnowflake,
   mdiStop,
+  mdiSwapHorizontal,
   mdiThermometerPlus,
   mdiThermostatAuto,
   mdiThermometerChevronUp,

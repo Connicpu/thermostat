@@ -22,13 +22,16 @@ number tiles with a single card that covers everything the quirk exposes.
 * **Boost** (first, open by default): a Direction switch (Auto / Heat / Cool), then one tile per boost.
   *Boost to target* holds the target stepper and its Start button on one line; *Timed boost* does the same with the
   length. A running boost outlines its tile, shows the time left there, and its button turns into Stop.
+  The other tile's button reads *Switch*, because the firmware replaces a running boost with a new one
+  (`CtrlBoostStart`). Start flushes a not-yet-sent target or length first, so it never starts with a stale
+  value. Start, Stop and Direction are disabled while the thermostat is unavailable.
 * **Morning heating boost:** two tiles, Duration and Offset, each with its own stepper.
 * **Program schedule:** a 24 h timeline for heating and cooling (day solid, night light, morning boost
   hatched, a marker for now). Below it, Day and Night tiles for each mode with the start time and target;
   the tile in use is outlined and tagged NOW.
 * **Tuning & status:** temperature swing, program period, last boost result.
 * **Help text** sits behind small (i) buttons, so the card stays quiet. Each opens on hover, focus or tap,
-  closes on Esc (consumed only when a tooltip was open) or a click elsewhere, opens above its row (the setpoint one opens in place and pushes the value down), and is linked with `aria-describedby`.
+  closes on Esc (consumed only when a tooltip was open) or a click elsewhere, opens above its row (the setpoint one opens in place, on click/tap only, and pushes the value down), and is linked with `aria-describedby`.
 * **Warnings** always stay visible: device unavailable, no clock yet (holding the day program), and failed boosts (rejected, failsafe, limit).
 
 ### Units

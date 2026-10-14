@@ -113,19 +113,27 @@ describe('card', () => {
     const isOpen = () => $(el, '#tip-setpoint').classList.contains('open');
     expect(isOpen()).toBe(false);
 
+    // The in-flow setpoint tip is click/tap only: hover or focus must not shift the −/+ row.
     w.dispatchEvent(new Event('mouseenter'));
-    await el.updateComplete;
-    expect(isOpen()).toBe(true);
-    w.dispatchEvent(new Event('mouseleave'));
+    btn.dispatchEvent(new Event('focus'));
     await el.updateComplete;
     expect(isOpen()).toBe(false);
 
-    btn.dispatchEvent(new Event('focus'));
+    // Floating tips still peek on hover and focus.
+    const fw = $(el, '.info-b[data-tip="tile-mb-offset"]');
+    const fOpen = () => $(el, '#tip-tile-mb-offset').classList.contains('open');
+    fw.dispatchEvent(new Event('mouseenter'));
     await el.updateComplete;
-    expect(isOpen()).toBe(true);
-    btn.dispatchEvent(new Event('blur'));
+    expect(fOpen()).toBe(true);
+    fw.dispatchEvent(new Event('mouseleave'));
     await el.updateComplete;
-    expect(isOpen()).toBe(false);
+    expect(fOpen()).toBe(false);
+    fw.querySelector('button').dispatchEvent(new Event('focus'));
+    await el.updateComplete;
+    expect(fOpen()).toBe(true);
+    fw.querySelector('button').dispatchEvent(new Event('blur'));
+    await el.updateComplete;
+    expect(fOpen()).toBe(false);
 
     btn.click(); // pinned: survives mouseleave
     await el.updateComplete;
@@ -275,6 +283,47 @@ describe('card', () => {
     expect(el.hass.calls).toEqual([{ domain: 'button', service: 'press', data: { entity_id: `button.${PREFIX}_start_boost_to_target` } }]);
   });
 
+  it('Start flushes a debounced value first and its label uses the pending value', async () => {
+    const el = await mount();
+    const timed = $(el, '.tile[aria-labelledby="tile-boost-timed"]');
+    const inc = timed.querySelector('button[aria-label="Increase boost duration"]');
+    inc.click();
+    await el.updateComplete;
+    inc.click();
+    await el.updateComplete;
+    const go = timed.querySelector('.go');
+    expect(go.getAttribute('aria-label')).toBe('Start timed boost for 32 min');
+    go.click(); // well inside the 500 ms debounce
+    await flushAsync();
+    expect(el.hass.calls).toEqual([
+      { domain: 'number', service: 'set_value', data: { entity_id: `number.${PREFIX}_boost_duration`, value: 32 } },
+      { domain: 'button', service: 'press', data: { entity_id: `button.${PREFIX}_start_timed_boost` } },
+    ]);
+    vi.advanceTimersByTime(1000); // the debounce timer was cleared: no second write
+    expect(el.hass.calls).toHaveLength(2);
+  });
+
+  it('Start, Stop and Direction are disabled while the thermostat is unavailable', async () => {
+    const el = await mount({}, { patch: { [`climate.${PREFIX}`]: { state: 'unavailable' }, [`binary_sensor.${PREFIX}_boost_active`]: { state: 'on' }, [`sensor.${PREFIX}_boost`]: { state: 'Timed_heat' } } });
+    const gos = $$(el, '.tile .go');
+    expect(gos).toHaveLength(2);
+    expect(gos.every((b) => b.disabled)).toBe(true);
+    expect(gos.some((b) => b.classList.contains('stop'))).toBe(true);
+    expect($$(el, '.mini-seg button').every((b) => b.disabled)).toBe(true);
+  });
+
+  it('Start/Stop is one persistent button: focus survives and only its name changes', async () => {
+    const el = await mount();
+    const btn = $(el, '.tile[aria-labelledby="tile-boost-timed"] .go');
+    btn.focus();
+    el.hass = makeHass({ patch: { [`binary_sensor.${PREFIX}_boost_active`]: { state: 'on' }, [`sensor.${PREFIX}_boost`]: { state: 'Timed_heat' } } });
+    await el.updateComplete;
+    const after = $(el, '.tile[aria-labelledby="tile-boost-timed"] .go');
+    expect(after).toBe(btn);
+    expect(after.getAttribute('aria-label')).toBe('Stop timed boost');
+    expect(el.shadowRoot.activeElement).toBe(btn);
+  });
+
   it('a running boost turns its own tile button into Stop; direction is a segmented control', async () => {
     const el = await mount({}, { patch: { [`binary_sensor.${PREFIX}_boost_active`]: { state: 'on' }, [`sensor.${PREFIX}_boost`]: { state: 'Timed_heat' }, [`sensor.${PREFIX}_boost_time_remaining`]: { state: '12' } } });
     expect(text(el)).toContain('Timed heat · 12 min left');
@@ -283,7 +332,11 @@ describe('card', () => {
     expect(timed.querySelector('.run-chip').textContent).toContain('12 min left');
     const target = $(el, '.tile[aria-labelledby="tile-boost-target"]');
     expect(target.classList.contains('running')).toBe(false);
-    expect(target.querySelector('.go').textContent.trim()).toBe('Start');
+    // The firmware replaces a running boost (CtrlBoostStart), so the other tile offers a switch.
+    expect(target.querySelector('.go').textContent.trim()).toBe('Switch');
+    expect(target.querySelector('.go').getAttribute('aria-label')).toBe('Switch to boost to 72°F');
+    expect(target.querySelector('.go').disabled).toBe(false);
+    expect(timed.querySelector('.go').getAttribute('aria-label')).toBe('Stop timed boost');
     timed.querySelector('.go.stop').click();
     const dir = $$(el, '.mini-seg button');
     expect(dir.map((b) => b.textContent.trim())).toEqual(['Auto', 'Heat', 'Cool']);

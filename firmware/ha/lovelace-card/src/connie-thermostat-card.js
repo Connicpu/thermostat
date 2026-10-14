@@ -64,6 +64,7 @@ export class ConnieThermostatCard extends LitElement {
     };
     this._pending = {};
     this._timers = {};
+    this._sends = {};
     /** Overridable clock (minutes after local midnight), for tests and the demo. */
     this.nowMinutes = null;
   }
@@ -162,9 +163,11 @@ export class ConnieThermostatCard extends LitElement {
   _queue(key, value, send) {
     this._pending = { ...this._pending, [key]: value };
     clearTimeout(this._timers[key]);
+    this._sends = { ...this._sends, [key]: () => send(value) };
     this._timers[key] = setTimeout(() => {
       delete this._timers[key];
-      send(value);
+      this._sends[key]?.();
+      delete this._sends[key];
       // If the device never echoes it, forget the local value after a while.
       setTimeout(() => {
         if (this._pending[key] === value && !this._timers[key]) {
@@ -173,6 +176,18 @@ export class ConnieThermostatCard extends LitElement {
         }
       }, 15000);
     }, WRITE_DELAY_MS);
+  }
+
+  /** Send any still-debounced writes for `keys` now (in order), so a following command uses them. */
+  async _flush(...keys) {
+    for (const k of keys) {
+      if (!this._timers[k]) continue;
+      clearTimeout(this._timers[k]);
+      delete this._timers[k];
+      const send = this._sends?.[k];
+      delete this._sends[k];
+      await send?.();
+    }
   }
 
   _call(domain, service, data) {
@@ -295,7 +310,7 @@ export class ConnieThermostatCard extends LitElement {
   }
 
   /** The (i) button alone (see _info); pair it with _infoTip(id) placed elsewhere. */
-  _infoBtn(id, label) {
+  _infoBtn(id, label, { hover = true } = {}) {
     const open = this._tip?.id === id;
     const show = () => {
       if (this._tip?.id !== id) this._tip = { id, pinned: false };
@@ -303,8 +318,10 @@ export class ConnieThermostatCard extends LitElement {
     const hide = () => {
       if (this._tip?.id === id && !this._tip.pinned) this._tip = null;
     };
-    return html`<span class="info-b" data-tip=${id} @mouseenter=${show} @mouseleave=${hide}><button class="info" type="button"
-      aria-label=${label} aria-describedby="tip-${id}" aria-expanded=${open ? 'true' : 'false'} @focus=${show} @blur=${hide}
+    // hover = false: click/tap only (the in-flow setpoint tip would otherwise move the row under the pointer)
+    const peek = hover ? show : null;
+    return html`<span class="info-b" data-tip=${id} @mouseenter=${peek} @mouseleave=${hide}><button class="info" type="button"
+      aria-label=${label} aria-describedby="tip-${id}" aria-expanded=${open ? 'true' : 'false'} @focus=${peek} @blur=${hide}
       @click=${(e) => {
         e.stopPropagation();
         this._tip = open && this._tip.pinned ? null : { id, pinned: true };
@@ -421,7 +438,7 @@ export class ConnieThermostatCard extends LitElement {
     const periodName = period === 'boost' ? `Morning boost${this._boostOffsetText()}` : period === 'noclock' ? 'Day (no clock)' : info.day ? 'Day' : 'Night';
     return html`<div class="setpoint">
       <span class="period-row"><span class="period">${icon(periodIcon, 'sm')}${periodName}${info.span ? html` · ${info.span}` : nothing}</span>
-        ${this._infoBtn('setpoint', 'About the setpoint')}</span>
+        ${this._infoBtn('setpoint', 'About the setpoint', { hover: false })}</span>
       ${this._infoTip('setpoint', `Changes the ${info.label} program setpoint${period === 'boost' ? ' (the morning boost is added on top)' : ''}.`, { inline: true })}
       <div class="sp-row">
         <button class="round" aria-label="Lower setpoint" ?disabled=${unavailable || v <= a.min_temp} @click=${() => this._stepSetpoint(-1)}>${icon(I.mdiMinus)}</button>
@@ -535,31 +552,47 @@ export class ConnieThermostatCard extends LitElement {
     const meta = active ? `${humanize(state)}${rem ? ` · ${Math.round(rem)} min left` : ''}` : 'Idle';
     const sel = this._st('boost_mode');
     const dirIcon = { auto: I.mdiThermostatAuto, heat: I.mdiFire, cool: I.mdiSnowflake };
+    const cs = this._st('climate')?.state;
+    const offline = !cs || cs === 'unavailable' || cs === 'unknown';
+    // Labels use the value that will be sent: a pending (debounced) edit wins over the entity state.
     const sp = this._st('boost_setpoint');
-    const spText = sp ? this._fmtNum(num(sp) ?? 0, decimalsOf(sp.attributes?.step), sp.attributes?.unit_of_measurement ?? '') : '';
-    const mins = num(this._st('boost_duration'));
+    const spV = sp ? this._val('boost_setpoint', num(sp)) : null;
+    const spText = spV !== null ? this._fmtNum(spV, decimalsOf(sp.attributes?.step), sp.attributes?.unit_of_measurement ?? '') : '—';
+    const mins = this._val('boost_duration', num(this._st('boost_duration')));
     const runChip = (k) => (kind === k ? html`<span class="run-chip">${icon(I.mdiPlay, 'xs')}${k === 'timed' && rem ? `${Math.round(rem)} min left` : 'Running'}</span>` : nothing);
-    const go = (k, key, startLabel) =>
-      kind === k
-        ? html`<button class="go stop" ?disabled=${!this._e.boost_cancel} aria-label="Stop boost" @click=${() => this._press('boost_cancel')}>${icon(I.mdiStop, 'sm')}Stop</button>`
-        : html`<button class="go" ?disabled=${!this._e[key]} aria-label=${startLabel} @click=${() => this._press(key)}>${icon(I.mdiPlay, 'sm')}Start</button>`;
+    const what = { target: `boost to ${spText}`, timed: `timed boost for ${mins ?? '—'} min` };
+    // One persistent <button> per tile: Start / Switch / Stop only change its name and action,
+    // so focus stays put and screen readers announce the new name. Starting the other kind
+    // while one runs replaces it (CtrlBoostStart: "A running boost is replaced").
+    const go = (k, key, valueKey) => {
+      const stop = kind === k;
+      const sw = !!kind && !stop;
+      const ok = !offline && !!this._e[stop ? 'boost_cancel' : key];
+      return html`<button class="go ${stop ? 'stop' : ''}" ?disabled=${!ok}
+        aria-label=${stop ? `Stop ${k === 'timed' ? 'timed boost' : 'boost to target'}` : `${sw ? 'Switch to' : 'Start'} ${what[k]}`}
+        @click=${async () => {
+          if (stop) return this._press('boost_cancel');
+          await this._flush(valueKey);
+          this._press(key);
+        }}>${icon(stop ? I.mdiStop : sw ? I.mdiSwapHorizontal : I.mdiPlay, 'sm')}${stop ? 'Stop' : sw ? 'Switch' : 'Start'}</button>`;
+    };
     return this._section('boost', 'Boost', meta, () => html`
       <div class="dir-row"><span id="boost-dir-l">Direction</span>${sel
         ? html`<div class="seg mini-seg" role="group" aria-labelledby="boost-dir-l">${(sel.attributes?.options ?? []).map((o) => html`<button
-            aria-pressed=${o === sel.state ? 'true' : 'false'} @click=${() => this._call('select', 'select_option', { entity_id: this._e.boost_mode, option: o })}>${dirIcon[o.toLowerCase()] ? icon(dirIcon[o.toLowerCase()], 'xs') : nothing}${humanize(o)}</button>`)}</div>`
+            aria-pressed=${o === sel.state ? 'true' : 'false'} ?disabled=${offline} @click=${() => this._call('select', 'select_option', { entity_id: this._e.boost_mode, option: o })}>${dirIcon[o.toLowerCase()] ? icon(dirIcon[o.toLowerCase()], 'xs') : nothing}${humanize(o)}</button>`)}</div>`
         : html`<span class="missing">n/a</span>`}</div>
       ${this._tile('boost-target', {
         title: 'Boost to target', iconPath: I.mdiThermometerChevronUp, cls: kind === 'target' ? 'running' : '', status: runChip('target'),
         help: 'Heats or cools (per Direction) until the room reaches this temperature.',
-        body: html`${this._numStepper('boost_setpoint', { label: 'boost target' })}${go('target', 'boost_start_target', `Start boost to ${spText}`)}`,
+        body: html`${this._numStepper('boost_setpoint', { label: 'boost target' })}${go('target', 'boost_start_target', 'boost_setpoint')}`,
       })}
       ${this._tile('boost-timed', {
         title: 'Timed boost', iconPath: I.mdiTimerPlayOutline, cls: kind === 'timed' ? 'running' : '', status: runChip('timed'),
         help: 'Runs heating or cooling (per Direction) for this long, then returns to the program.',
-        body: html`${this._numStepper('boost_duration', { label: 'boost duration' })}${go('timed', 'boost_start_timed', `Start timed boost for ${mins ?? '—'} min`)}`,
+        body: html`${this._numStepper('boost_duration', { label: 'boost duration' })}${go('timed', 'boost_start_timed', 'boost_duration')}`,
       })}
       ${active && !kind ? html`<div class="boost-live">${icon(I.mdiThermometerChevronUp)}<span>${humanize(state)}</span>
-        <button class="go stop" aria-label="Stop boost" @click=${() => this._press('boost_cancel')}>${icon(I.mdiStop, 'sm')}Stop</button></div>` : nothing}`);
+        <button class="go stop" aria-label="Stop boost" ?disabled=${offline} @click=${() => this._press('boost_cancel')}>${icon(I.mdiStop, 'sm')}Stop</button></div>` : nothing}`);
   }
 
   _renderStatus() {
