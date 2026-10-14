@@ -485,6 +485,7 @@ static void app_task(void *arg)
                 /* Only returns on failure (no valid image in the other slot): keep running this one
                  * instead of retrying every loop and chattering the outputs. */
                 ESP_LOGE(TAG, "rollback failed (%s): keeping current image", esp_err_to_name(rb));
+                esp_ota_mark_app_valid_cancel_rollback();   /* keep this image bootable after the next reset */
                 ota_marked = true;
             }
         }
