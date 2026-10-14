@@ -44,7 +44,8 @@ zha-quirks 2.3.0); includes a check against ZHA's real climate entity `hvac_mode
 4. Pair the thermostat. If it's already paired: Device page → ⋮ → *Reconfigure*, or remove it and
    pair again (needed after updating the quirk so the replaced Thermostat cluster is used). The device page should list the quirk as "(Connie / thermostat-v3)" and show the
    boost entities.
-5. Optional: add `../dashboard-card.yaml` as a manual card (fix the entity IDs first).
+5. Optional: install the custom [Lovelace card](../lovelace-card/) (auto-discovers the entities), or add
+   `../dashboard-card.yaml` as a manual card (fix the entity IDs first).
 
 The quirk imports from `zhaquirks.builder` (current zha-quirks). On older HA releases it falls
 back to `zigpy.quirks.v2`.

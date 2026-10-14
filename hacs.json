@@ -1,0 +1,6 @@
+{
+  "name": "Connie Thermostat V3 card",
+  "filename": "connie-thermostat-card.js",
+  "render_readme": false,
+  "homeassistant": "2024.8.0"
+}
