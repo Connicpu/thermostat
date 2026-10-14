@@ -26,6 +26,11 @@ PIN_NAME = {W: "W", Y: "Y", G: "G"}
 COMP_MIN_OFF = 5 * MIN
 HEAT_MIN_OFF = 1 * MIN
 CHANGEOVER = 5 * MIN
+COMP_MIN_ON = 3 * MIN
+HEAT_MIN_ON = 2 * MIN
+# a run shorter than min-on is only legitimate if one of these happened within 1 s of the stop
+MIN_ON_EXCUSE = re.compile(r"^(RESET|BOOT )|EVT ctrl fault=(?!OK)|EVT output fault|EVT fault output|EVT safe mode|"
+                           r"rolling back|factory reset|OTA end|INTERLOCK")
 
 SCENARIOS = []
 
@@ -176,7 +181,22 @@ def safety_monitor(r, stuck_ok=()):
 
     lvl = {W: 0, Y: 0, G: 0}
     last_fall = {W: None, Y: None, G: None}
+    last_rise = {W: None, Y: None, G: None}
     boot_t, cfg = 0, False
+    ctrl_fault, safe = False, False
+    mode, excuses = None, []
+    for t, x in r.ev:
+        m = re.search(r"EVT setpoint mode=(\d+)", x)
+        if m:
+            if mode is not None and int(m.group(1)) != mode:
+                excuses.append(t)
+            mode = int(m.group(1))
+        elif MIN_ON_EXCUSE.search(x):
+            excuses.append(t)
+
+    def excused(t):
+        return any(abs(e - t) <= 1000 for e in excuses)
+
     i, ev = 0, r.ev
     while i < len(ev):
         t = ev[i][0]
@@ -186,17 +206,28 @@ def safety_monitor(r, stuck_ok=()):
             x = ev[i][1]
             if x.startswith("BOOT "):
                 boot_t, cfg = t, False
+                ctrl_fault, safe = False, False
                 lvl = {W: 0, Y: 0, G: 0}
+                last_rise = {W: None, Y: None, G: None}
             elif "EVT cfg loaded" in x:
                 cfg = True
+            elif "EVT ctrl fault=" in x:
+                ctrl_fault = "fault=OK" not in x
+            elif re.search(r"EVT safe mode: \d+ resets", x):
+                safe = True
             elif x.startswith("GPIO "):
                 _, p, v = x.split()
                 p, v = int(p), int(v)
                 if p in lvl:
                     if v and not lvl[p]:
                         rises.append(p)
+                        last_rise[p] = t
                     if not v and lvl[p]:
                         last_fall[p] = t
+                        mo = {W: HEAT_MIN_ON, Y: COMP_MIN_ON}.get(p)
+                        if mo and last_rise[p] is not None and t - last_rise[p] < mo and not broken(p, t) \
+                                and not excused(t):
+                            bad.append(f"@{t}: {PIN_NAME[p]} ran only {t - last_rise[p]} ms (min on {mo}) with no fault/mode change/reset")
                     lvl[p] = v
             i += 1
         for p in rises:
@@ -215,6 +246,9 @@ def safety_monitor(r, stuck_ok=()):
             bad.append(f"@{t}: W and Y on together")
         if lvl[Y] and not lvl[G] and not (broken(Y, t) or broken(G, t)):
             bad.append(f"@{t}: Y on without G")
+        if (ctrl_fault or safe) and any(lvl[p] and not broken(p, t) for p in lvl):
+            bad.append(f"@{t}: output on while {'safe mode' if safe else 'control failsafe'} is active "
+                       f"(W={lvl[W]} Y={lvl[Y]} G={lvl[G]})")
         if not cfg and any(lvl[p] and not broken(p, t) for p in lvl):
             bad.append(f"@{t}: output on before the configuration was loaded (boot @{boot_t})")
         if len(bad) > 20:
@@ -285,6 +319,32 @@ def run_one(sc, sim, keep=None):
             pass
 
 
+def monitor_selftest():
+    """The monitor must flag each seeded violation (and accept the clean trace)."""
+    base = ["@0 BOOT n=1 reason=POWERON", "@0 GPIO 0 0", "@0 GPIO 1 0", "@0 GPIO 2 0", "@1 I evt: EVT cfg loaded mode=4"]
+    cases = {
+        "clean": (["@400000 GPIO 2 1", "@400000 GPIO 1 1", "@700000 GPIO 1 0", "@700000 GPIO 2 0"], None),
+        "W+Y": (["@70000 GPIO 0 1", "@400000 GPIO 2 1", "@400000 GPIO 1 1"], "together"),
+        "Y min off": (["@100000 GPIO 2 1", "@100000 GPIO 1 1"], "compressor min off"),
+        "Y min on": (["@400000 GPIO 2 1", "@400000 GPIO 1 1", "@460000 GPIO 1 0"], "min on"),
+        "Y min on excused": (["@400000 GPIO 2 1", "@400000 GPIO 1 1", "@460000 GPIO 1 0",
+                              "@460000 GPIO 2 0", "@460000 I evt: EVT ctrl fault=SENSOR FAIL"], None),
+        "Y without G": (["@400000 GPIO 1 1"], "without G"),
+        "failsafe": (["@100000 I evt: EVT ctrl fault=SENSOR FAIL", "@100100 GPIO 2 1"], "failsafe"),
+        "safe mode": (["@2 I evt: EVT safe mode: 5 resets", "@100100 GPIO 2 1"], "safe mode"),
+        "before cfg": (["@0 BOOT n=2 reason=SW", "@0 GPIO 2 1"], "before the configuration"),
+        "changeover": (["@70000 GPIO 0 1", "@300000 GPIO 0 0", "@400000 GPIO 2 1", "@400000 GPIO 1 1"], "changeover"),
+    }
+    ok = True
+    for name, (extra, want) in cases.items():
+        r = Result(base + extra, 1, None)
+        got = safety_monitor(r)
+        hit = any(want in g for g in got) if want else not got
+        print(f"{'PASS' if hit else 'FAIL'}  monitor selftest: {name}" + ("" if hit else f"  got {got}"))
+        ok &= hit
+    return ok
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("-k", default="")
@@ -293,7 +353,10 @@ def main():
     ap.add_argument("--keep", default=None, help="keep per-scenario logs/framebuffers under DIR")
     ap.add_argument("--sim", default=DEFAULT_SIM)
     ap.add_argument("--junit", default=None)
+    ap.add_argument("--selftest", action="store_true", help="check the safety monitor flags seeded violations")
     a = ap.parse_args()
+    if a.selftest:
+        sys.exit(0 if monitor_selftest() else 1)
     import scenarios  # noqa: F401  (registers into hootl.SCENARIOS)
     import hootl as H
     sel = [s for s in H.SCENARIOS if a.k in s["name"]]

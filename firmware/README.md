@@ -53,7 +53,10 @@ All of these live in `control.c`, and the tests in `test/host/test_control.c` co
 | Fan run-on | G stays on 90 s after W and 45 s after Y. G is energised with Y. With W it's left to the furnace (`heat_drives_fan=false`) |
 | **Failsafe** | No valid reading for 30 s, **or** a reading outside 0–45 °C, turns **all outputs off immediately** (overriding the minimum on-time and the fan run-on). Recovery needs 3 consecutive good readings. The firmware boots in failsafe |
 | **W/Y interlock** | `hvac_interlock()` is the only path to the pins. If W and Y are both requested, both are dropped and a fault is counted. That fault makes the loop unhealthy, so it stops kicking and the watchdogs reset the chip |
-| **Watchdog** | The STWD100 (about 1.6 s) is armed 10 s after boot, and only after the loop has run cleanly. It's kicked once per 250 ms loop, and only while the health check passes (display task alive, no interlock fault). The IDF task watchdog (5 s) watches the same loop as a second layer. A watchdog reset puts the GPIOs in high-Z, and the 10k pull-downs then switch every triac off |
+| **Watchdog** | The STWD100 (about 1.6 s) is armed 10 s after boot, and only after the loop has run cleanly. It's kicked once per 250 ms loop, and only while the health check passes (no interlock fault; a stalled display is reported but deliberately not a reason to reset). The IDF task watchdog (5 s) watches the same loop as a second layer. A watchdog reset puts the GPIOs in high-Z, and the 10k pull-downs then switch every triac off |
+
+| **Output readback** | W/Y/G pins are INPUT_OUTPUT and the pad is read back on the **next** 250 ms pass (≥ 1 ms after the last change, past the C6 input synchroniser), never right after the write. **2 consecutive** mismatches, or a `gpio_set_level` error, latch an OUTPUT FAULT: everything off, shown on screen, no reboot. G is raised before Y, and Y is never raised if G failed. The latch is **re-tested after 10 min** (longer than every min-off/changeover time, so resuming cannot short-cycle), only while the pads read "all off", at most 3 times per boot; then it stays off until reboot. `gpio_config` failure at boot is permanent. **Readback only sees the ESP32 pad: it cannot detect a shorted (or open) triac, a dead MOC3063 or a wiring fault**, and must be verified on real hardware with the MOC3063s loaded (that the loaded pad still reads back its driven level) |
+| **Boot-loop guard** | NVS `boot/n` counts boots that end before 3 min of healthy uptime. Software restarts (`ESP_RST_SW`: OTA reboot/rollback, factory reset, safe-mode retry) are not counted; power-on resets are, because an STWD100 reset pulls CHIP_EN and reports as power-on (so 5 quick power cycles also enter safe mode). At 5: SAFE MODE (outputs off, STWD100 not armed, banner). After 30 min it reboots with the count set to 4: exactly one trial boot; one more counted reset goes straight back to safe mode. The counter is in its own namespace and **survives a factory reset** |
 
 A one-week randomised soak test (temperature drift, random mode and setpoint changes, sensor dropouts,
 garbage readings) checks the invariants on every simulated second.
@@ -344,7 +347,13 @@ time sync, OTA pending-verify and rollback all run the shipping code.
   * W off ≥ 60 s;
   * 5 min heat↔cool changeover gap;
   * G on whenever Y is on;
+  * min-on: W ≥ 2 min, Y ≥ 3 min, unless a failsafe, output fault, mode change, reset,
+    safe mode, OTA, rollback or factory reset happened within 1 s of the stop;
+  * all outputs off while the control failsafe (`EVT ctrl fault≠OK`) or safe mode is active;
   * all outputs low from reset until `EVT cfg loaded`.
+
+  `hootl.py --selftest` (run by `tools/run_hootl.sh`) feeds the monitor seeded
+  violations and checks each is flagged.
 
   Pins a scenario deliberately breaks are exempt after the fault is injected. A
   mutation check: setting the compressor min-off to 1 s makes the monitor fail
@@ -375,8 +384,15 @@ time sync, OTA pending-verify and rollback all run the shipping code.
   (modelled as "low");
 * the real STWD100's tolerance (tWD 1.12–2.08 s; the model uses 1.6 s) and its
   power-on ~EN timing;
-* output faults beyond the pad: readback sees only the GPIO pad level, so a welded
-  relay, an open triac or a field-wiring fault downstream of the pin is not detected;
+* output faults beyond the pad: readback sees only the GPIO pad level, so a **shorted
+  triac**, an open triac, a dead MOC3063 or a field-wiring fault downstream of the pin is
+  not detected. The pad-readback timing (synchroniser delay modelled as 2 µs) and that a
+  pad loaded by the MOC3063 LED still reads its driven level must be verified on real
+  hardware with the MOC3063s fitted;
+* the Zigbee stack's exact signal ordering: the fake follows esp-zigbee-lib 1.6 as
+  documented (OTA: START, RECEIVE…, APPLY, CHECK, FINISH; ZED reboot with no network is
+  modelled both as REBOOT(OK)+NO_ACTIVE_LINKS_LEFT and as REBOOT(ESP_FAIL)). Server-side
+  OTA timeouts are modelled as a stall (no ABORT from the stack);
 * the e-paper's actual optics (the framebuffer is checked, not the panel).
 
 #### Failure-mode coverage
@@ -395,7 +411,12 @@ Every row also passes the safety monitor.
 | SHT40 | I2C driver init fails | `sht40_bus_init_fails` | sensor fault, rest of system runs |
 | STWD100 | missed kick (app hang) | `stwd100_missed_kick_resets` | reset 1.6 s after last WDI edge; outputs low; normal boot after |
 | STWD100 | reset mid-heat / power cut mid-cool | `reset_mid_heat_keeps_heat_off_time`, `reset_mid_cool_keeps_compressor_off_time` | W ≥ 60 s / Y ≥ 5 min off across the reboot |
-| STWD100 | repeated resets (boot loop) | `boot_loop_enters_safe_mode` | after 5 short boots: SAFE MODE, outputs off, STWD100 not armed; retries normal boot after 30 min |
+| STWD100 | repeated resets (boot loop) | `boot_loop_enters_safe_mode` | 5th counted boot: SAFE MODE, outputs off, STWD100 not armed; retries normal boot after 30 min |
+| Boot guard | software resets (factory reset ×6, OTA ×5) | `bootloop_sw_resets_not_counted`, `bootloop_ota_reboots_not_counted` | counter does not move, never safe mode |
+| Boot guard | power-on resets | `bootloop_power_cycles_counted` | counted (STWD100 looks like power-on): 5th boot is safe mode |
+| Boot guard | counter cleared by stable uptime | `bootloop_counter_clears_after_3_min` | cleared after 3 min; next 4 resets stay below the limit |
+| Boot guard | safe-mode retry | `bootloop_safe_mode_single_trial_boot` | trial boot has count 4; it hangs once → straight back to safe mode |
+| Boot guard | factory reset | `bootloop_count_survives_factory_reset` | count survives (4 → factory reset → 4 → power cycle → safe mode) |
 | Task WDT | hang before STWD100 armed | `task_wdt_before_stwd_armed` | task watchdog resets |
 | E-paper | BUSY stuck | `epd_busy_stuck` | control continues; no reboot |
 | E-paper | SPI error | `epd_spi_error` | error reported by `ssd1680_show`; control continues |
@@ -430,11 +451,15 @@ Every row also passes the safety monitor.
 | Zigbee | platform config / register / start fails; task create fails | `radio_platform_config_fails`, `radio_device_register_fails`, `radio_stack_start_fails`, `radio_zigbee_task_create_fails` | "radio fault" link state; **no reboot**; local control (buttons) works |
 | Zigbee | stack init signal fails ×3 | `radio_stack_init_signal_fails_then_ok` | retried with backoff, joins |
 | Zigbee | join never succeeds | `radio_join_never_succeeds` | backoff (≤ 14 attempts in 2 h), keeps heating |
-| Zigbee | parent lost / network down / leave | `radio_link_lost_mid_run_rejoins`, `radio_link_lost_coordinator_down`, `radio_leave_then_repair`, `radio_reboot_with_network_down` | rejoin via backoff; control continues |
+| Zigbee | parent lost / network down / leave | `radio_link_lost_mid_run_rejoins`, `radio_link_lost_coordinator_down`, `radio_leave_then_repair`, `radio_reboot_with_network_down`, `radio_reboot_network_down_reboot_fail_variant` | rejoin via backoff; control continues |
 | Zigbee | flapping link | `radio_flapping_link_backs_off` | backoff not reset by short joins (≤ 16 attempts in 2 h) |
 | Zigbee | task stalls / dies | `radio_zigbee_task_stalls`, `radio_zigbee_task_dies` | radio fault within 60–70 s; UI pairing does not block main loop; no reboot |
 | Zigbee | remote writes: Auto, out-of-range setpoint, burst, while lost | `remote_auto_write_refused`, `remote_setpoint_clamped`, `sht40_*` (mode+fan burst), `radio_remote_writes_while_lost` | refused/clamped; burst writes all apply; local changes apply offline |
-| Outputs | W pad stuck high | `output_w_stuck_high` | readback → OUTPUT FAULT latched; Y/G held low; no reboot |
+| Outputs | W pad stuck high | `output_w_stuck_high`, `output_w_stuck_high_no_retest` | readback → OUTPUT FAULT latched; Y/G held low; no reboot; pads never read "off" so never re-tested |
+| Outputs | one stale / glitched readback | `output_readback_single_glitch_tolerated`, `output_readback_stale_read_model` | no fault (fake returns the pre-write level for same-instant reads; readback is on the next pass) |
+| Outputs | 2 consecutive mismatches, then healthy | `output_two_mismatches_latch_then_retest_recovers` | latched, all off; re-test after 10 min passes; cooling resumes respecting min-off |
+| Outputs | transient W stuck low | `output_w_stuck_low_transient_recovers` | latched; re-test clears; heating resumes |
+| Outputs | Y driver dead (stuck low) | `output_y_stuck_low_retest_gives_up` | 3 re-tests each re-latch, then off until reboot |
 | Outputs | Y pad stuck low | `output_y_stuck_low_while_cooling` | mismatch → fault, all off |
 | Outputs | G `gpio_set_level` fails | `output_g_set_fails` | fault; Y never runs without G |
 | Outputs | W `gpio_config` fails at boot | `output_w_config_fails_at_boot` | no reboot loop; fault shown; all off |
@@ -550,5 +575,5 @@ The converter is written against the standard `fz.thermostat` / `tz.thermostat_*
   ControlSequenceOfOperation table; the quirk test pins that, so a ZHA change would show up there first.
 - Occupancy and the setpoint raise/lower command are not implemented.
 - The Z2M converter and ZHA behaviour are untested. The OTA flow is untested end to end.
-- No feedback that a triac actually switched, and no 24 VAC presence or C-wire detection (the hardware has none).
-- Interlock fault handling is a deliberate "stop kicking and reboot". A fault counter in NVS could stop boot loops.
+- No feedback that a triac actually switched (pad readback only; a shorted triac is not detected), and no 24 VAC presence or C-wire detection (the hardware has none).
+- Interlock fault handling is a deliberate "stop kicking and reboot"; the boot-loop guard turns a persistent one into safe mode after 5 counted resets.

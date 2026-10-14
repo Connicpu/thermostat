@@ -45,7 +45,7 @@ static const char *TAG = "app";
 #define OTA_JOIN_TIMEOUT_MS (10 * 60 * 1000) /* roll back if never rejoined Zigbee by then */
 #define BANNER_MS           4000
 #define BOOT_LOOP_LIMIT     5             /* this many resets without BOOT_STABLE_MS uptime -> safe mode */
-#define BOOT_STABLE_MS      (10 * 60 * 1000)
+#define BOOT_STABLE_MS      (3 * 60 * 1000)
 #define SAFE_MODE_RETRY_MS  (30 * 60 * 1000) /* safe mode: try a normal boot again after this */
 
 /* Structured lines for the HOOTL scenario runner / field logs: "EVT <what> ...". */
@@ -404,15 +404,22 @@ static void led_update(uint64_t now, const ctrl_output_t *o, link_state_t link)
 /* Count boots that did not reach BOOT_STABLE_MS of uptime (NVS "boot"/"n").
  * Whatever keeps resetting the chip (watchdog, panic, brown-out), after
  * BOOT_LOOP_LIMIT of them the thermostat stays up in safe mode instead:
- * outputs off, STWD100 not armed, the fault on screen and on Zigbee. */
-static uint8_t boot_count_rw(int op)   /* op: 1 = increment, 0 = clear; returns the stored count */
+ * outputs off, STWD100 not armed, the fault on screen and on Zigbee.
+ * Deliberate software restarts (ESP_RST_SW: OTA reboot/rollback, factory reset,
+ * safe-mode retry) are not counted. Power-on resets ARE counted, because an
+ * STWD100 reset pulls CHIP_EN and reports as ESP_RST_POWERON; so 5 quick power
+ * cycles also enter safe mode (it ends by itself after SAFE_MODE_RETRY_MS).
+ * The counter lives in its own NVS namespace and survives a factory reset. */
+static uint8_t boot_count_rw(int op)   /* op: 1 = increment, 0 = clear, -1 = read, else 0x100|n = set n */
 {
     nvs_handle_t h;
     uint8_t n = 0;
     if (!s_nvs_ok || nvs_open("boot", NVS_READWRITE, &h) != ESP_OK) return 0;
     if (nvs_get_u8(h, "n", &n) != ESP_OK) n = 0;
-    n = op ? (uint8_t)(n < 255 ? n + 1 : 255) : 0;
-    if (nvs_set_u8(h, "n", n) == ESP_OK) nvs_commit(h);
+    if (op >= 0x100) n = (uint8_t)(op & 0xFF);
+    else if (op == 1) n = (uint8_t)(n < 255 ? n + 1 : 255);
+    else if (op == 0) n = 0;
+    if (op != -1 && nvs_set_u8(h, "n", n) == ESP_OK) nvs_commit(h);
     nvs_close(h);
     return n;
 }
@@ -482,6 +489,7 @@ static void app_task(void *arg)
             evt_out = act; evt_out_init = true;
         }
         if (out_fault && !evt_out_fault) { EVT("EVT fault output mask=0x%x", hvac_outputs_drive_fault()); evt_out_fault = true; }
+        if (!out_fault && evt_out_fault) { EVT("EVT fault output cleared"); evt_out_fault = false; }
         if ((int)o.fault != evt_fault) { EVT("EVT ctrl fault=%s", ctrl_fault_str(o.fault)); evt_fault = (int)o.fault; }
         if (!evt_s_init || memcmp(&evt_s, &eff, sizeof eff) != 0) {
             EVT("EVT setpoint mode=%d heat=%d cool=%d fan=%d sched=%d", eff.mode, eff.heat_sp, eff.cool_sp, eff.fan, (int)sst);
@@ -602,7 +610,8 @@ static void app_task(void *arg)
         }
         if (s_safe_mode && now - boot >= SAFE_MODE_RETRY_MS) {
             ESP_LOGW(TAG, "EVT safe mode: retrying a normal boot");
-            boot_count_rw(0);
+            /* exactly one trial: one more counted reset goes straight back to safe mode */
+            boot_count_rw(0x100 | (BOOT_LOOP_LIMIT - 1));
             hvac_outputs_all_off();
             esp_restart();
         }
@@ -665,7 +674,9 @@ void app_main(void)
     if (esp_pm_configure(&pm) != ESP_OK) ESP_LOGW(TAG, "power management not configured");
 #endif
 
-    uint8_t boots = boot_count_rw(1);
+    esp_reset_reason_t rr = esp_reset_reason();
+    uint8_t boots = boot_count_rw(rr == ESP_RST_SW ? -1 : 1);
+    EVT("EVT boot reason=%d count=%u", (int)rr, boots);
     s_safe_mode = boots >= BOOT_LOOP_LIMIT;
     if (s_safe_mode) EVT("EVT safe mode: %u resets without %d min of stable uptime", boots, BOOT_STABLE_MS / 60000);
 

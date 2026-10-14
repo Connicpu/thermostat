@@ -6,4 +6,5 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 cmake -S test/hootl -B test/hootl/build -G "${CMAKE_GENERATOR:-Ninja}" >/dev/null
 cmake --build test/hootl/build
+python3 test/hootl/hootl.py --selftest
 exec python3 test/hootl/hootl.py -j "$(nproc)" "$@"

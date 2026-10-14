@@ -244,10 +244,10 @@ def reset_mid_heat(s):
 
 @scenario("boot_loop_enters_safe_mode", until=50 * MIN, max_boots=7)
 def boot_loop(s):
-    """6 consecutive hangs: after 5 short boots the 6th stays up in SAFE MODE (outputs off, no STWD100),
-    retries a normal boot after 30 min and heats again."""
+    """Power-on + 4 STWD100 resets = 5 counted boots: the 5th stays up in SAFE MODE (outputs off,
+    no STWD100), retries a normal boot after 30 min and heats again."""
     heating(s)
-    s.set(0, "hang.boots", 5)
+    s.set(0, "hang.boots", 4)
     s.set(0, "hang.after", 20 * SEC)
     def check(r):
         r.check(len(r.resets) >= 5, f"resets {r.resets}")
@@ -968,4 +968,201 @@ def out_cfg(s):
         r.expect(r"EVT output fault: config pin 0")
         r.never(r"RESET")
         r.check(r.high_ms(Y, 0, 5 * MIN) + r.high_ms(G, 0, 5 * MIN) == 0, "all off")
+    return check
+
+
+# =============================================================================
+# 10. readback debounce / re-test (review item 1)
+# =============================================================================
+
+@scenario("output_readback_single_glitch_tolerated", until=10 * MIN)
+def out_glitch1(s):
+    """One bad readback of W while heating (stale/noisy read): no fault, heating not interrupted."""
+    heating(s)
+    s.set(3 * MIN, "gpio.glitch.0", 1)
+    def check(r):
+        r.expect(r"GLITCH read pin 0", msg="glitch really injected")
+        r.never(r"EVT output fault|EVT fault output")
+        r.check(r.high_ms(W, 2 * MIN, 4 * MIN) == 2 * MIN, "W stays on through the glitch")
+    return check
+
+
+@scenario("output_readback_stale_read_model", until=5 * MIN)
+def out_stale(s):
+    """The fake returns the pre-write level for reads issued in the same instant as the write
+    (C6 input synchroniser). Readback is done on the next pass, so normal switching never faults."""
+    heating(s)
+    s.fan(4 * MIN, True)
+    def check(r):
+        r.check(len(r.rises(W)) >= 1 and len(r.rises(G)) >= 1, "outputs switched")
+        r.never(r"EVT output fault|EVT fault output")
+    return check
+
+
+@scenario("output_two_mismatches_latch_then_retest_recovers", until=40 * MIN)
+def out_retest(s):
+    """Two consecutive bad G readbacks while cooling: fault latched, all off; after 10 min the
+    re-test passes and cooling resumes (monitor checks compressor min-off and min-on)."""
+    cooling(s)
+    s.set(8 * MIN, "gpio.glitch.2", 2)
+    def check(r):
+        t = r.expect(r"EVT output fault: readback", after=8 * MIN, before=8 * MIN + 1 * SEC)
+        r.check(r.pin(Y, t + 1) == 0 and r.pin(G, t + 1) == 0, "all off at the latch")
+        rt = r.expect(r"EVT output retest 1/3", after=t)
+        r.check(10 * MIN <= rt - t <= 10 * MIN + 1 * SEC, f"re-test after {rt - t} ms")
+        r.expect(r"EVT fault output cleared", after=rt)
+        y = r.rises(Y, after=rt)
+        r.check(y and y[0] - rt < 1 * SEC, "cooling resumes at the re-test (min-off already met)")
+    return check
+
+
+@scenario("output_y_stuck_low_retest_gives_up", until=75 * MIN, stuck_ok=(Y,))
+def out_giveup(s):
+    """Y pad stuck low (driver dead): each re-test re-latches; after 3 re-tests it stays off."""
+    cooling(s)
+    s.set(0, "gpio.stuck.1", 0)
+    def check(r):
+        r.check(r.count(r"EVT output retest") == 3, f"{r.count(r'EVT output retest')} re-tests")
+        last = r.find_all(r"EVT output fault: readback")[-1][0]
+        r.check(r.high_ms(G, last + 1, 75 * MIN) == 0, "stays off after giving up")
+        r.never(r"RESET")
+    return check
+
+
+@scenario("output_w_stuck_high_no_retest", until=30 * MIN, stuck_ok=(W,))
+def out_stuck_hi(s):
+    """W pad stuck high: the pads never agree with 'all off', so no re-test re-enables anything."""
+    cooling(s)
+    s.set(1 * MIN, "gpio.stuck.0", 1)
+    def check(r):
+        r.never(r"EVT output retest")
+        r.check(r.high_ms(Y, 0, 30 * MIN) == 0, "no compressor")
+    return check
+
+
+@scenario("output_w_stuck_low_transient_recovers", until=30 * MIN, stuck_ok=(W,))
+def out_stuck_transient(s):
+    """W pad held low for 2 min while heating (transient) then released: re-test clears the fault."""
+    heating(s)
+    s.set(3 * MIN, "gpio.stuck.0", 0)
+    s.set(5 * MIN, "gpio.stuck.0", -1)
+    def check(r):
+        rt = r.expect(r"EVT output retest 1/3")
+        r.expect(r"EVT fault output cleared", after=rt)
+        heats(r, 30 * MIN - 1, msg="heating resumes")
+    return check
+
+
+# =============================================================================
+# 11. boot-loop counting (review items 2 and 3)
+# =============================================================================
+
+def counts(r):
+    return [int(x.split("count=")[1]) for t, x in r.find_all(r"EVT boot reason=")]
+
+
+@scenario("bootloop_sw_resets_not_counted", until=3 * MIN, max_boots=7)
+def sw_not_counted(s):
+    """Six factory resets in a row (ESP_RST_SW each): counter never moves, no safe mode."""
+    heating(s)
+    for k in range(6):
+        s.press(20 * SEC + k * 25 * SEC, "mode", 15500)
+    def check(r):
+        r.check(r.boots == 7, f"{r.boots} boots")
+        r.check(counts(r) == [1] * 7, f"counts {counts(r)}")
+        r.never(r"EVT safe mode")
+    return check
+
+
+@scenario("bootloop_ota_reboots_not_counted", until=12 * MIN, max_boots=6)
+def ota_not_counted(s):
+    """Five OTA updates in quick succession: software reboots, never safe mode."""
+    heating(s)
+    for k in range(5):
+        s.zb(30 * SEC + k * 2 * MIN, "ota 3000")
+    def check(r):
+        r.check(r.boots == 6, f"{r.boots} boots")
+        r.check(max(counts(r)) == 1, f"counts {counts(r)}")
+        r.never(r"EVT safe mode")
+    return check
+
+
+@scenario("bootloop_power_cycles_counted", until=10 * MIN, max_boots=5)
+def power_counted(s):
+    """Power-on resets count (an STWD100 reset looks like one): 4 quick power cycles -> 5th boot is safe mode."""
+    heating(s)
+    for k in range(4):
+        s.at(30 * SEC + k * 30 * SEC, "power cycle")
+    def check(r):
+        r.check(counts(r) == [1, 2, 3, 4, 5], f"counts {counts(r)}")
+        r.expect(r"EVT safe mode: 5 resets", after=r.boot_times[4])
+        r.check(r.high_ms(W, r.boot_times[4], 10 * MIN) == 0, "outputs off in safe mode")
+    return check
+
+
+@scenario("bootloop_counter_clears_after_3_min", until=12 * MIN, max_boots=8)
+def counter_clears(s):
+    """3 quick resets, then 3+ min of stable uptime clears the counter; 4 more resets stay below the limit."""
+    heating(s)
+    for k in range(3):
+        s.at(20 * SEC + k * 20 * SEC, "power cycle")
+    for k in range(4):
+        s.at(5 * MIN + k * 20 * SEC, "power cycle")
+    def check(r):
+        r.check(counts(r) == [1, 2, 3, 4, 1, 2, 3, 4], f"counts {counts(r)}")
+        r.never(r"EVT safe mode")
+        r.expect(r"NVS set boot/n", after=60 * SEC + 3 * MIN, before=60 * SEC + 3 * MIN + 2 * SEC)
+    return check
+
+
+@scenario("bootloop_safe_mode_single_trial_boot", until=60 * MIN, max_boots=8)
+def single_trial(s):
+    """Boot loop -> safe mode -> 30 min -> one trial boot (count = LIMIT-1). The trial hangs once
+    (STWD100 reset): straight back to safe mode on the next boot, not 5 more tries."""
+    heating(s)
+    s.set(0, "hang.boots", 4)
+    s.set(0, "hang.after", 20 * SEC)
+    s.set(31 * MIN, "hang.boots", 1)      # read by the trial boot
+    def check(r):
+        sm = [t for t, x in r.find_all(r"EVT safe mode: 5 resets")]
+        r.check(len(sm) == 2, f"safe mode entered {len(sm)} times")
+        r.check(r.boots == 7, f"{r.boots} boots (4 loop + safe + trial + safe)")
+        r.check(counts(r)[5] == BOOT_LIMIT - 1, f"trial boot count {counts(r)}")
+        r.check(r.resets[5][1] == "STWD100", f"trial ended by the STWD100 ({r.resets})")
+    return check
+
+
+@scenario("bootloop_count_survives_factory_reset", until=5 * MIN, max_boots=7)
+def survives_factory(s):
+    """The safe-mode counter is not in the settings namespace: a factory reset does not clear it."""
+    heating(s)
+    for k in range(3):
+        s.at(20 * SEC + k * 20 * SEC, "power cycle")     # counts 1..4
+    s.press(100 * SEC, "mode", 15500)                     # factory reset: SW, count stays 4
+    s.at(150 * SEC, "power cycle")                        # -> 5: safe mode
+    def check(r):
+        r.check(counts(r) == [1, 2, 3, 4, 4, 5], f"counts {counts(r)}")
+        r.expect(r"EVT safe mode: 5 resets")
+    return check
+
+
+BOOT_LIMIT = 5
+
+
+@scenario("radio_reboot_network_down_reboot_fail_variant", until=30 * MIN, max_boots=2)
+def reboot_fail_variant(s):
+    """Same as radio_reboot_with_network_down, but the stack reports the failed rejoin as
+    DEVICE_REBOOT(ESP_FAIL) (the other signal ordering seen on ZBOSS): lost parent, backoff, rejoins."""
+    heating(s)
+    s.set(0, "zb.reboot_fail", 1)
+    s.zb(2 * MIN, "coord down")
+    s.at(2 * MIN, "power cycle")
+    s.zb(15 * MIN, "coord up")
+    def check(r):
+        b = r.boot_times[1]
+        r.expect(r"stack init failed", after=b)
+        r.expect(r"EVT link 3", after=b)
+        r.check(r.count(r"stack init failed", after=b, before=15 * MIN) <= 8, "backoff, not a tight retry loop")
+        r.expect(r"EVT link 2", after=15 * MIN)
+        heats(r, 30 * MIN - 1)
     return check

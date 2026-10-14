@@ -54,6 +54,13 @@ static int s_out[NPIN];        /* output latch */
 static int s_mode[NPIN];
 static int s_ext[NPIN];        /* externally driven level for inputs */
 static int s_pad_last[NPIN];
+/* C6 GPIO input path: the IN register goes through a 2-stage synchroniser, so a
+ * read issued right after a write still returns the old pad level. Modelled as:
+ * reads less than GPIO_SYNC_US after the last write see the previous level
+ * (virtual time does not advance inside a code path, so "immediately" = stale). */
+#define GPIO_SYNC_US 2
+static int s_out_prev[NPIN];
+static uint64_t s_out_at[NPIN];
 
 static int pad(int n)
 {
@@ -95,6 +102,7 @@ esp_err_t gpio_set_level(gpio_num_t n, uint32_t level)
     char k[32];
     snprintf(k, sizeof k, "gpio.setfail.%d", n);
     if (K(k)) return ESP_FAIL;
+    if ((level ? 1 : 0) != s_out[n]) { s_out_prev[n] = s_out[n]; s_out_at[n] = sim_now_us(); }
     s_out[n] = level ? 1 : 0;
     trace(n);
     if (n == 10 || n == 11) stwd_poll_edge();
@@ -109,7 +117,17 @@ int gpio_get_level(gpio_num_t n)
     if (n < 0 || n >= NPIN) return 0;
     if (n == 23) return epd_busy_level();
     if (n == 3 || n == 4 || n == 5) return btn_level(n);
-    if (s_mode[n] & GPIO_MODE_INPUT) return pad(n);    /* readback needs the input buffer enabled */
+    if (s_mode[n] & GPIO_MODE_INPUT) {                 /* readback needs the input buffer enabled */
+        int v = pad(n);
+        char k[32];
+        snprintf(k, sizeof k, "gpio.stuck.%d", n);
+        if ((s_mode[n] & GPIO_MODE_OUTPUT) && sim_kv_get(k, -1) < 0 && sim_now_us() - s_out_at[n] < GPIO_SYNC_US)
+            v = s_out_prev[n];                         /* synchroniser delay: stale */
+        snprintf(k, sizeof k, "gpio.glitch.%d", n);    /* injected: next N reads inverted */
+        int64_t g = sim_kv_get(k, 0);
+        if (g > 0) { sim_kv_set(k, g - 1); v = !v; sim_emit("GLITCH read pin %d", (int)n); }
+        return v;
+    }
     if (s_mode[n] & GPIO_MODE_OUTPUT) return 0;        /* output-only pad: IN register reads 0 on the C6 */
     return s_ext[n];
 }

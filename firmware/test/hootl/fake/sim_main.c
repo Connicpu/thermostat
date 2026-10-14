@@ -8,6 +8,7 @@
  * exits with SIM_EXIT_RESET; the runner starts the next boot with the same
  * FILE. Output on stdout, one event per line, each prefixed "@<virtual ms> ". */
 #include "sim.h"
+#include "esp_system.h"
 #include "esp_err.h"
 #include <stdarg.h>
 #include <stdio.h>
@@ -147,6 +148,18 @@ static void save_state(const char *reason)
 }
 
 static char s_reset_reason[32] = "POWERON";
+
+/* What the C6 reports after each kind of sim reset. The STWD100 WDO pulls CHIP_EN,
+ * which the chip cannot tell from a power-on. */
+esp_reset_reason_t esp_reset_reason(void)
+{
+    static const struct { const char *n; esp_reset_reason_t r; } M[] = {
+        {"POWERON", ESP_RST_POWERON}, {"STWD100", ESP_RST_POWERON}, {"SW", ESP_RST_SW},
+        {"OTA_ROLLBACK", ESP_RST_SW}, {"PANIC", ESP_RST_PANIC}, {"TASK_WDT", ESP_RST_TASK_WDT},
+    };
+    for (unsigned i = 0; i < sizeof M / sizeof M[0]; i++) if (!strcmp(M[i].n, s_reset_reason)) return M[i].r;
+    return ESP_RST_UNKNOWN;
+}
 
 static void load_state(void)
 {

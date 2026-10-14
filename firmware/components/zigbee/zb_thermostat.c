@@ -212,6 +212,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *sig_s)
         if (st != ESP_OK) {
             uint32_t d = zb_retry_failed(&s_retry);
             ESP_LOGW(TAG, "stack init failed (%s), retrying in %lu ms", esp_err_to_name(st), (unsigned long)d);
+            if (!esp_zb_bdb_is_factory_new()) s_link = LINK_LOST;   /* joined before: show "lost parent", not "offline" */
             esp_zb_scheduler_alarm(commissioning_cb, ESP_ZB_BDB_MODE_INITIALIZATION, d);
             break;
         }

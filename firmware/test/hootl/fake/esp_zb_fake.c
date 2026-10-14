@@ -101,6 +101,11 @@ static void j_init_result(int64_t a, int64_t b)
     bool fresh = !K("zb.joined");
     if (fails > 0) { sim_kv_set("zb.fail.init", fails - 1); signal(fresh ? ESP_ZB_BDB_SIGNAL_DEVICE_FIRST_START : ESP_ZB_BDB_SIGNAL_DEVICE_REBOOT, ESP_FAIL); return; }
     if (!fresh) s_linked = KD("zb.coord", 1) != 0;   /* rejoin on reboot works only if the network is there */
+    if (!fresh && !s_linked && K("zb.reboot_fail")) {
+        /* variant: the stack reports the failed rejoin as a failed DEVICE_REBOOT */
+        signal(ESP_ZB_BDB_SIGNAL_DEVICE_REBOOT, ESP_FAIL);
+        return;
+    }
     if (!fresh && !s_linked) {   /* stack reports the reboot, then loses the parent */
         signal(ESP_ZB_BDB_SIGNAL_DEVICE_REBOOT, ESP_OK);
         job(2000, j_signal, ESP_ZB_NWK_SIGNAL_NO_ACTIVE_LINKS_LEFT, ESP_OK);
@@ -283,6 +288,8 @@ static void j_ota_block(int64_t a, int64_t b)
     if (e != ESP_OK) { sim_emit("ZB ota: client rejected block -> abort"); ota_msg(ESP_ZB_ZCL_OTA_UPGRADE_STATUS_ABORT, NULL, 0); s_ota.on = false; return; }
     if (s_ota.off < s_ota.size) { job(100, j_ota_block, 0, 0); return; }
     s_ota.on = false;
+    /* esp-zigbee-lib 1.6 client order after the last block: APPLY, CHECK, FINISH */
+    ota_msg(ESP_ZB_ZCL_OTA_UPGRADE_STATUS_APPLY, NULL, 0);
     if (ota_msg(ESP_ZB_ZCL_OTA_UPGRADE_STATUS_CHECK, NULL, 0) != ESP_OK) { ota_msg(ESP_ZB_ZCL_OTA_UPGRADE_STATUS_ABORT, NULL, 0); return; }
     ota_msg(ESP_ZB_ZCL_OTA_UPGRADE_STATUS_FINISH, NULL, 0);   /* reboots on success */
 }
