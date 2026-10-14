@@ -291,19 +291,6 @@ esp_err_t esp_timer_start_periodic(esp_timer_handle_t t, U64 p)
     return Start(t, p, p);
 }
 
-/** Fake esp_timer_start_once(): fires once after `us`. */
-esp_err_t esp_timer_start_once(esp_timer_handle_t t, U64 us)
-{
-    return Start(t, us, 0);
-}
-
-/** Disarm the timer. */
-esp_err_t esp_timer_stop(esp_timer_handle_t t)
-{
-    t->active = false;
-    return ESP_OK;
-}
-
 /**
  * The esp_timer task (priority 22): runs expired callbacks in its own context, then sleeps until the next expiry or a new start.
  */
@@ -868,19 +855,6 @@ esp_err_t nvs_get_u8(nvs_handle_t h, const char *pKey, U8 *pOut)
 esp_err_t nvs_set_u8(nvs_handle_t h, const char *pKey, U8 v)
 {
     return nvs_set_blob(h, pKey, &v, 1);
-}
-
-/** Remove one key. */
-esp_err_t nvs_erase_key(nvs_handle_t h, const char *pKey)
-{
-    esp_err_t e = WriteCheck(h);
-    if (e != ESP_OK)
-        return e;
-    int i = NvsFind(Hns(h), pKey, false);
-    if (i < 0)
-        return ESP_ERR_NVS_NOT_FOUND;
-    s_nvs[i].used = false;
-    return ESP_OK;
 }
 
 /** Remove every key in the handle's namespace. */

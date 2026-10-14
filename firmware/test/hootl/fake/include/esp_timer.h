@@ -20,5 +20,3 @@ typedef struct
 int64_t esp_timer_get_time(void);
 esp_err_t esp_timer_create(const esp_timer_create_args_t *a, esp_timer_handle_t *out);
 esp_err_t esp_timer_start_periodic(esp_timer_handle_t t, uint64_t period_us);
-esp_err_t esp_timer_start_once(esp_timer_handle_t t, uint64_t us);
-esp_err_t esp_timer_stop(esp_timer_handle_t t);
