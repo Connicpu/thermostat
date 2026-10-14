@@ -587,11 +587,11 @@ Judgment calls:
 
 `tools/check_naming.py` checks all of this with libclang (`pip install libclang`). It reads the compile databases of the host-test, HOOTL and production builds, so build those first. It exits non-zero on any violation.
 - Production files are parsed a second time with a variant config: `CONFIG_THERMO_DISPLAY_FAHRENHEIT`, `CONFIG_THERMO_HW_WDT_ENABLE` and `CONFIG_PM_ENABLE` off, and `EPD_ROTATION=3`. That way both sides of our `#if`s get checked.
-- Code that is still inactive (e.g. `#if 0`) is checked word by word. Every identifier there must be a name declared somewhere, or must fit one of the conventions.
+- Branches neither config parses (`#if 0`, `#ifdef`s on macros no build defines) only get a name-shape check, word by word. Every identifier there must be a name declared somewhere, or must fit one of the conventions. Scope rules such as the `s_` prefix on statics can't be checked there, because the type and storage class are unknown. Calls (`name(` not preceded by a type) are skipped, so vendor functions used only in such a branch aren't flagged.
 - Our `.c`/`.h` files that no compile database covers are parsed with a neighbouring file's flags.
-- Names starting with `_` are violations. The exceptions are `__` names and the macro-local temporaries listed in `UNDERSCORE_ALLOW`.
+- Names starting with `_` are violations. The exceptions are `__` names and the temporaries listed in `UNDERSCORE_ALLOW`, and those are allowed only when they come from a macro expansion. Written out literally, they are flagged too.
 
-`tools/test_check_naming.py` is the checker's own test. It builds a small fixture tree and checks that each kind of bad name is flagged and that good code passes.
+`tools/test_check_naming.py` is the checker's own test. It builds a small fixture tree and checks that each kind of bad name is flagged and that good code passes. It includes a `static int countBad;` in the `#else` of `CONFIG_THERMO_HW_WDT_ENABLE`, which has a valid shape and is caught only by the variant parse.
 
 CI runs both in the host-test job. The production job also builds the Kconfig variant from `sdkconfig.variant` with `-DEPD_ROTATION=3`, and warnings fail that build too. To run it locally:
 

@@ -137,6 +137,13 @@ def variant_args(args, tmp):
 class _Range(ctypes.Structure):
     _fields_ = [("count", ctypes.c_uint), ("ranges", ctypes.POINTER(ci.SourceRange))]
 
+def in_macro(c, f, n):
+    """True if declaration c (named n) comes from a macro expansion: the source text at its
+    (expansion) location is the macro's name, not n written out literally."""
+    ls = rd(f).splitlines()
+    ln, col = c.location.line, c.location.column
+    return not (0 < ln <= len(ls) and ls[ln - 1][col - 1:col - 1 + len(n)] == n)
+
 def skipped_ranges(tu):
     """[(file, startOffset, endOffset)] of #if branches clang did not parse."""
     lib = ci.conf.lib
@@ -153,6 +160,8 @@ def skipped_ranges(tu):
         lib.clang_disposeSourceRangeList(rl)
     return out
 
+DECL_KW = {"void", "int", "char", "short", "long", "unsigned", "signed", "bool", "struct", "union", "enum",
+           "static", "extern", "inline", "const", "volatile"}
 STRIP = re.compile(r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'', re.S)
 ANY_OK = [PASCAL, CAMEL, PTR, KCONST, MACRO, re.compile(r"^[sg]_p?[a-zA-Z][A-Za-z0-9]*$")]
 
@@ -197,7 +206,7 @@ def main(argv=None):
                 vendor.add(usr); continue
             n = c.spelling
             if n in KEEP or " " in n or n.startswith("__"): continue
-            if n.startswith("_") and n in UNDERSCORE_ALLOW and c.kind == CK.VAR_DECL: continue
+            if n.startswith("_") and n in UNDERSCORE_ALLOW and c.kind == CK.VAR_DECL and in_macro(c, f, n): continue
             rx, what = expect(c)
             if n.startswith("_"):
                 rx, what = re.compile("^$"), what + " (no leading '_': reserved name)"
@@ -225,6 +234,12 @@ def main(argv=None):
             n = m.group(0)
             line_start = t.rfind("\n", 0, s0 + m.start()) + 1
             if t[line_start:s0 + m.start()].lstrip().startswith("#"): continue   # directive lines
+            # a call (name followed by '(' but not preceded by a type/declarator) is a use of a
+            # name declared elsewhere, possibly by a vendor header that branch would include
+            before = re.search(r"(\w+|\S)\s*$", t[max(0, s0 + m.start() - 80):s0 + m.start()])
+            if re.match(r"\s*\(", t[s0 + m.end():s0 + m.end() + 40]) and \
+                    not (before and re.match(r"\w|\*", before.group(1)) and before.group(1) not in C_KEYWORDS - DECL_KW):
+                continue
             if n in C_KEYWORDS or n in known or n.startswith("__"): continue
             if not n.startswith("_") and any(r.match(n) for r in ANY_OK): continue
             lexbad.add((f[len(ROOT) + 1:], t.count("\n", 0, s0 + m.start()) + 1, n,

@@ -27,11 +27,17 @@ FILES = {
                   "void TakesPtr(int *bad) { (void)bad; }\n"
                   "uint8_t RawType(void) { return 0; }\n"
                   "#if CONFIG_THERMO_HW_WDT_ENABLE\n#else\nstatic int bad_variant;\n#endif\n"   # only in variant parse
-                  "#if 0\nstatic int bad_inactive;\n#endif\n",     # never active: lexical check
+                  "#if CONFIG_THERMO_HW_WDT_ENABLE\n#else\nstatic int countBad;\n#endif\n"   # shape OK: only the variant parse sees the missing s_
+                  "static int _a;\n"                                # allowlisted name, but written literally: flagged
+                  "#define TMP_USE(x) do { int _a = (x); (void)_a; } while (0)\n"
+                  "void UsesTmp(void) { TMP_USE(1); }\n"           # _a from a macro expansion: allowed
+                  "#if 0\nstatic int bad_inactive;\n"
+                  "void Unparsed(void) { esp_vendor_call(1); x_y = vendor_fn(2); }\n"   # vendor calls: not flagged
+                  "#endif\n",                                      # never active: lexical check
     "components/orphan/orphan.c": "void orphan_func(void) {}\n",   # in no compile DB
 }
 BAD = {"bad_static", "bad_func", "_hiddenBad", "_pHidden", "Bad_field", "bad_type_t", "BAD_ENUM", "badMacro",
-       "bad", "uint8_t", "bad_variant", "bad_inactive", "orphan_func"}
+       "bad", "uint8_t", "bad_variant", "countBad", "_a", "bad_inactive", "x_y", "orphan_func"}
 
 class CheckNamingTest(unittest.TestCase):
     @classmethod
