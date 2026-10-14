@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ENTITY_KEYS, boostResultIsBad, deltaFactor, discoverEntities, findDevice, fmtTime, hoursToMin, inSpan, periodOf, snap, timeToHours } from '../src/model.js';
+import { ENTITY_KEYS, boostResultIsBad, deltaFactor, discoverEntities, findDevice, fmtTime, hoursToMin, periodOf, snap, timeToHours } from '../src/model.js';
 import { DEVICE_ID, PREFIX, makeHass } from './mock-hass.js';
 
 describe('discovery', () => {
@@ -48,8 +48,6 @@ describe('helpers', () => {
     expect(timeToHours('06:40')).toBe(6.75);
     expect(timeToHours('23:59')).toBe(23.75);
     expect(timeToHours('')).toBeNull();
-    expect(inSpan(23 * 60, 22 * 60, 6 * 60)).toBe(true);
-    expect(inSpan(12 * 60, 22 * 60, 6 * 60)).toBe(false);
   });
 
   it('scales °C differences only for °F users', () => {

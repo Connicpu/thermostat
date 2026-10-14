@@ -112,11 +112,6 @@ export function timeToHours(str, step = 0.25) {
   return Math.min(23.75, Math.round(h / step) * step);
 }
 
-/** True if `nowMin` lies in [start, end) on a 24 h clock (wraps past midnight). */
-export function inSpan(nowMin, start, end) {
-  return start <= end ? nowMin >= start && nowMin < end : nowMin >= start || nowMin < end;
-}
-
 /**
  * Temperature differences (swing, morning-boost offset) have no device_class, so HA leaves
  * them in °C. Returns a display factor: 1.8 when the entity is °C and HA shows °F.

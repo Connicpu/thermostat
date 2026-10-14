@@ -13,7 +13,6 @@ import {
   fmtTime,
   hoursToMin,
   humanize,
-  inSpan,
   periodOf,
   snap,
   timeToHours,
