@@ -868,9 +868,9 @@ static esp_zb_ep_list_t *BuildEndpoint(const CtrlSettings *pInit, I8 calib)
     TRY(esp_zb_cluster_add_manufacturer_attr(pBc, ZB_BOOST_CLUSTER_ID, kZbAttrSwing, ZB_BOOST_MANUF_CODE,
                                              ESP_ZB_ZCL_ATTR_TYPE_U16, rw, &s_swing));
     for (U16 id = ZB_SCHED_ATTR_FIRST; id <= ZB_SCHED_ATTR_LAST; id++)
-        TRY(esp_zb_cluster_add_manufacturer_attr(
-            pBc, ZB_BOOST_CLUSTER_ID, id, ZB_BOOST_MANUF_CODE,
-            SchedAttrSigned(id) ? ESP_ZB_ZCL_ATTR_TYPE_S16 : ESP_ZB_ZCL_ATTR_TYPE_U16, rw, SchedField(&s_sched, id)));
+        TRY(esp_zb_cluster_add_manufacturer_attr(pBc, ZB_BOOST_CLUSTER_ID, id, ZB_BOOST_MANUF_CODE,
+                                                 SchedAttrSigned(id) ? ESP_ZB_ZCL_ATTR_TYPE_S16 : ESP_ZB_ZCL_ATTR_TYPE_U16,
+                                                 rw, SchedField(&s_sched, id)));
     TRY(esp_zb_cluster_add_manufacturer_attr(pBc, ZB_BOOST_CLUSTER_ID, kZbAttrSchedState, ZB_BOOST_MANUF_CODE,
                                              ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, ro, &s_schedState));
     TRY(esp_zb_cluster_list_add_custom_cluster(pCl, pBc, SERVER));
