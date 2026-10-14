@@ -58,7 +58,9 @@ describe('card', () => {
     await el.updateComplete;
     expect($(el, '.sp-val').textContent).toContain('72');
     expect(el.hass.calls).toEqual([]);
-    vi.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(450);
+    expect(el.hass.calls).toEqual([]);
+    vi.advanceTimersByTime(50);
     expect(el.hass.calls).toEqual([{ domain: 'climate', service: 'set_temperature', data: { entity_id: `climate.${PREFIX}`, temperature: 72 } }]);
   });
 
@@ -128,6 +130,10 @@ describe('card', () => {
     input.value = '07:10';
     input.dispatchEvent(new Event('change'));
     button(el, 'Increase night heating temperature').click();
+    await el.updateComplete;
+    const v = button(el, 'Increase night heating temperature').previousElementSibling;
+    expect(v.classList.contains('pending')).toBe(true);
+    expect(v.getAttribute('aria-label')).toBe('night heating temperature: 65.5°F, sending…');
     vi.advanceTimersByTime(1000);
     expect(el.hass.calls).toEqual(expect.arrayContaining([
       { domain: 'number', service: 'set_value', data: { entity_id: `number.${PREFIX}_day_heating_start`, value: 7.25 } },

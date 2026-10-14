@@ -20,7 +20,7 @@ import {
 import './editor.js';
 
 export const CARD_VERSION = '1.0.0';
-const WRITE_DELAY_MS = 900;
+const WRITE_DELAY_MS = 500;
 
 const icon = (path, cls = '') => html`<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true">${svg`<path d=${path}></path>`}</svg>`;
 
@@ -215,12 +215,6 @@ export class ConnieThermostatCard extends LitElement {
 
   // ---------- render helpers ----------
 
-  _fmtTemp(v, unit = this._haUnit, step) {
-    if (v === null || v === undefined || Number.isNaN(v)) return '—';
-    const d = step !== undefined ? decimalsOf(step) : Number.isInteger(v) ? 0 : 1;
-    return `${Number(v).toFixed(d)} ${unit}`;
-  }
-
   /** "70°F" / "70.5°F" (whole values drop the decimal), "1.8°F", "45 min". */
   _fmtNum(v, decimals, unit) {
     const isTemp = unit === '°F' || unit === '°C';
@@ -244,7 +238,7 @@ export class ConnieThermostatCard extends LitElement {
     const go = (dir) => this._setNumber(key, snap((v ?? 0) + dir * step, Number(a.min), Number(a.max), step));
     return html`<span class="stepper">
       <button class="mini" aria-label="Decrease ${label}" ?disabled=${unavailable || v <= Number(a.min)} @click=${() => go(-1)}>${icon(I.mdiMinus)}</button>
-      <span class="v ${key in this._pending ? 'pending' : ''}">${shown}</span>
+      <span class="v ${key in this._pending ? 'pending' : ''}" aria-label="${label}: ${shown}${key in this._pending ? ', sending…' : ''}">${shown}</span>
       <button class="mini" aria-label="Increase ${label}" ?disabled=${unavailable || v >= Number(a.max)} @click=${() => go(1)}>${icon(I.mdiPlus)}</button>
     </span>`;
   }

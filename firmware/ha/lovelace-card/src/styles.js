@@ -63,7 +63,7 @@ export const cardStyles = css`
   .sp-row { display: flex; align-items: center; justify-content: center; gap: 20px; width: 100%; }
   .sp-val { border-radius: 8px; outline: none; font-size: 52px; line-height: 1; color: var(--primary-text-color); min-width: 3.4ch; text-align: center; font-variant-numeric: tabular-nums; }
   .sp-val small { font-size: 22px; color: var(--secondary-text-color); }
-  .sp-val.pending { opacity: 0.6; }
+  .sp-val.pending, .stepper .v.pending { opacity: 0.7; font-style: italic; text-decoration: underline dotted; text-underline-offset: 4px; }
   .caption { font-size: 13px; color: var(--secondary-text-color); text-align: center; }
   .round {
     width: 48px; height: 48px; border-radius: 50%; border: none; cursor: pointer; display: grid; place-items: center;
@@ -124,7 +124,6 @@ export const cardStyles = css`
   }
   .stepper { display: inline-flex; align-items: center; gap: 2px; }
   .stepper .v { min-width: 5.2ch; white-space: nowrap; text-align: center; font-size: 14px; color: var(--primary-text-color); font-variant-numeric: tabular-nums; }
-  .stepper .v.pending { opacity: 0.6; }
   .mini { width: 30px; height: 30px; border-radius: 50%; border: none; background: var(--card-background-color, var(--ha-card-background, #fff)); color: var(--primary-text-color); display: grid; place-items: center; cursor: pointer; }
   .mini:disabled { opacity: 0.35; cursor: default; }
   .mini svg { width: 18px; height: 18px; }

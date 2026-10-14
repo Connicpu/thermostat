@@ -15,7 +15,9 @@ number tiles with a single card that covers everything the quirk exposes.
 * **Setpoint:** − / + buttons with a badge for the active program period (Day, Night, Morning boost, or
   "Day (no clock)") and its hours. The caption names the program value the buttons change,
   e.g. *Changes the Day heating program setpoint*. On the thermostat, the setpoint *is* the current
-  period's program temperature. Taps are batched (0.9 s) into one `climate.set_temperature`.
+  period's program temperature. Taps are batched (0.5 s) into one `climate.set_temperature`; an unsent value shows in italics
+  with a dotted underline, and screen readers hear "sending…". The value is a keyboard slider: arrows ±1 step,
+  PageUp/PageDown ±5, Home/End min/max.
 * **Mode:** Off / Heat / Cool only (any Auto / heat_cool is filtered out), plus a **Fan On / Auto** toggle.
 * **Program schedule:** a 24 h timeline for heating and cooling (day solid, night light, morning boost
   hatched, a marker for now). Below it, Day and Night tiles for each mode with the start time and target;
@@ -53,7 +55,15 @@ The visual editor has a device picker, filtered to manufacturer `Connie` / model
 section toggles, and an *Entity overrides* panel. With no device set, the card uses the first Connie
 thermostat it finds. Entities are matched on the device by the quirk's `translation_key`, then by
 entity_id suffix (e.g. `_day_heating_start`). The editor reports how many of the 24 entities it found.
-YAML options are in [`example.yaml`](example.yaml).
+YAML options are in [`example.yaml`](example.yaml):
+
+| Option | Default | Meaning |
+|---|---|---|
+| `device_id` | first Connie thermostat-v3 | Device to show |
+| `name` | device name | Card title |
+| `show_schedule`, `show_morning_boost`, `show_manual_boost`, `show_status` | `true` | Show or hide a section |
+| `collapsed` | `[boost, status]` | Sections that start closed (`schedule`, `morning`, `boost`, `status`); they can still be opened by tapping. Listing a section here only adds to the defaults |
+| `entities` | auto | Override any discovered entity (keys as in `src/model.js` `ENTITY_KEYS`) |
 
 ## Develop
 
