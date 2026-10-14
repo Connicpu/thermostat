@@ -15,6 +15,10 @@
 #define BTN_LONG_MS        5000    /* home: pairing (acted on at release, before WARN) */
 #define BTN_WARN_MS        8000    /* home: factory-reset warning on screen */
 #define BTN_VLONG_MS       15000   /* home: factory reset */
+/* A button that is held at boot produces no events until it has been seen
+ * released (a stuck/shorted key must never trigger a factory reset), and an
+ * auto-repeat key stops repeating after BTN_STUCK_MS (no setpoint run-away). */
+#define BTN_STUCK_MS       30000
 
 typedef enum {
     BTN_EV_NONE = 0,
@@ -35,6 +39,8 @@ typedef struct {
     uint32_t held_ms;
     uint32_t next_repeat_ms;
     bool     hold_fired, long_fired, warn_fired, vlong_fired;
+    bool     armed;         /* seen released (debounced) since init */
+    bool     stuck;         /* held >= BTN_STUCK_MS */
 } btn_t;
 
 void        btn_init(btn_t *b, bool autorepeat);

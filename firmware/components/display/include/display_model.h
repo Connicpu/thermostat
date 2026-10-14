@@ -5,7 +5,8 @@
 #include "control.h"
 #include "gfx.h"
 
-typedef enum { LINK_OFFLINE = 0, LINK_PAIRING, LINK_JOINED, LINK_LOST } link_state_t;
+/* LINK_FAULT: radio/stack failed to start, or the Zigbee task stalled. Local control is unaffected. */
+typedef enum { LINK_OFFLINE = 0, LINK_PAIRING, LINK_JOINED, LINK_LOST, LINK_FAULT } link_state_t;
 
 /* What the on-device menu wants on screen (filled by menu_view(), see
  * components/ui/menu.h). VIEW_HOME = normal screen. Plain text only, so the

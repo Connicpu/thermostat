@@ -299,6 +299,147 @@ interval and OTA identifiers.
 tools/run_host_tests.sh       # cmake + gcc/clang only; builds with -Werror and ASan/UBSan
 ```
 
+### HOOTL simulation (hardware-out-of-the-loop scenarios)
+
+```sh
+idf.py reconfigure            # once: fetches esp-zigbee-lib (headers used by the simulator)
+tools/run_hootl.sh            # build test/hootl + run every scenario (~25 s, parallel)
+tools/run_hootl.sh -k sht40 --keep /tmp/hootl   # subset; keep logs + framebuffers (fb_NNN.pbm)
+python3 test/hootl/hootl.py --list              # scenario names + what each asserts
+```
+
+The **unmodified** firmware (`main/*.c` and every component, including
+`zb_thermostat.c`, the control loop, settings codec, menu, renderer and SSD1680/SHT40
+drivers) is compiled for the host against fake ESP-IDF / FreeRTOS headers in
+`test/hootl/fake/` and the real esp-zigbee-lib headers. The fakes sit at the lowest
+layer the firmware calls: GPIO pads, the I2C master transaction, SPI transfers, NVS,
+`esp_ota_*`, `esp_timer`, the task watchdog and `esp_zb_*`. So clamping, Auto refusal,
+time sync, OTA pending-verify and rollback all run the shipping code.
+
+* **Deterministic virtual time.** A cooperative kernel runs one FreeRTOS task at a
+  time (pthreads passing one baton); when every task is blocked, time jumps to the next
+  wake-up. 1 tick = 1 ms. Three simulated hours take about 5 s, and the same seed gives
+  the same trace. All randomness (sensor noise, intermittent faults, bounce) comes
+  from `--seed`.
+* **One process = one boot.** A reset (`esp_restart`, STWD100, task WDT, OTA reboot,
+  `power cycle`) saves NVS, OTA slot state, Zigbee join state, sticky hardware faults
+  and the clock to a state file and exits with code 3. The runner relaunches the
+  simulator on the same file, the same way the hardware reboots onto the same flash.
+* **Peripheral models:**
+  * an SHT40 with a room thermal model;
+  * the STWD100: reset if WDI has no edge for 1.6 s while ~EN is low;
+  * an SSD1680 that decodes DC/RAM writes, models BUSY timing, and dumps each refresh
+    as a PBM (`EPD refresh ... ink= crc=` lines);
+  * scripted buttons with bounce;
+  * a Zigbee coordinator: join/steer, leave, parent loss, Time cluster, OTA server,
+    remote writes;
+  * a stall, death or failure of every Zigbee init call.
+* **Scenarios** (`test/hootl/scenarios.py`) are scripts of `<ms> <command>` lines.
+  They assert on the structured `@<ms> EVT ...` / `GPIO` / `ZB` lines. Each scenario has
+  a wall-clock timeout and a boot budget. The runner also fails on a panic,
+  `ESP_ERROR_CHECK`, sanitizer output, Zigbee lock misuse, or more boots than allowed.
+* **Safety monitor, run after every scenario over the whole W/Y/G trace, across reboots:**
+  * W and Y never on together;
+  * Y off ≥ 5 min (from the last Y-off or from power-on);
+  * W off ≥ 60 s;
+  * 5 min heat↔cool changeover gap;
+  * G on whenever Y is on;
+  * all outputs low from reset until `EVT cfg loaded`.
+
+  Pins a scenario deliberately breaks are exempt after the fault is injected. A
+  mutation check: setting the compressor min-off to 1 s makes the monitor fail
+  `cool_cycles_room_model`.
+* **CI** (`.github/workflows/firmware.yml`):
+  * a production `idf.py build` that fails on any warning;
+  * `CONFIG_THERMOSTAT_SIM` must be off in `sdkconfig.defaults` and the built config;
+  * `tools/check_release.sh` (no `sim_*`/fake symbols or simulator strings in the ELF);
+  * host unit tests, ZHA quirk tests, and every HOOTL scenario (JUnit XML).
+* **SIM isolation.** No firmware source has a `CONFIG_THERMOSTAT_SIM` ifdef. The
+  simulator is purely a different build (`test/hootl/CMakeLists.txt`), and the Kconfig
+  option exists only so CI can assert it is off.
+* **Why not the IDF `linux` target.** In IDF 5.3 the linux target has no GPIO, SPI,
+  I2C, OTA, power-management or 802.15.4 drivers (those components build as
+  "unsupported"). Its FreeRTOS POSIX port also runs in wall-clock time and is
+  preemptive and non-deterministic. Hours-long scenarios would take hours and flake.
+  The plain-CMake host build gets the same "real sources, fake HAL" result
+  deterministically.
+
+**What it does not cover (still needs the bench / hardware bring-up checklist):**
+* real drivers and silicon: the IDF GPIO/SPI/I2C drivers, the IEEE 802.15.4 radio
+  and esp-zigbee-lib's own code (only its API contract is modelled);
+* real timing: ISR latency, SPI/I2C clock-stretching, flash write time, true
+  preemption (the cooperative kernel cannot show priority-inversion or data-race
+  bugs; the host unit tests' sanitizers cover some of that);
+* light sleep, RTC and wake-up sources; brownout and supply droop; reset-pin levels
+  and the real pull-up/down behaviour of the pads between reset and `gpio_config`
+  (modelled as "low");
+* the real STWD100's tolerance (tWD 1.12–2.08 s; the model uses 1.6 s) and its
+  power-on ~EN timing;
+* output faults beyond the pad: readback sees only the GPIO pad level, so a welded
+  relay, an open triac or a field-wiring fault downstream of the pin is not detected;
+* the e-paper's actual optics (the framebuffer is checked, not the panel).
+
+#### Failure-mode coverage
+
+Every row also passes the safety monitor.
+
+| Peripheral | Failure mode | Scenario(s) | Expected (asserted) behaviour |
+|---|---|---|---|
+| SHT40 | NAK (no ACK) | `sht40_nak` | SENSOR FAIL within 30 s; W/Y/G **all** off incl. Fan ON; Zigbee unaffected; recovers after 3 good readings |
+| SHT40 | bus stuck / timeout | `sht40_bus_stuck_timeout` | same |
+| SHT40 | CRC error | `sht40_crc_error` | same |
+| SHT40 | intermittent (100% / 30%) | `sht40_intermittent_100pct`, `sht40_intermittent_30pct_keeps_control` | 100%: failsafe + recovery; 30% (seeded): readings still arrive, no fault, keeps heating |
+| SHT40 | stuck/frozen value | `sht40_frozen_value` | identical reading for 20 min → frozen → failsafe; clears when values move |
+| SHT40 | implausible value (90 °C) | `sht40_out_of_range` | TEMP RANGE fault, all off; recovers |
+| SHT40 | absent from power-on | `sht40_absent_at_boot` | never leaves failsafe, nothing on, no reboot |
+| SHT40 | I2C driver init fails | `sht40_bus_init_fails` | sensor fault, rest of system runs |
+| STWD100 | missed kick (app hang) | `stwd100_missed_kick_resets` | reset 1.6 s after last WDI edge; outputs low; normal boot after |
+| STWD100 | reset mid-heat / power cut mid-cool | `reset_mid_heat_keeps_heat_off_time`, `reset_mid_cool_keeps_compressor_off_time` | W ≥ 60 s / Y ≥ 5 min off across the reboot |
+| STWD100 | repeated resets (boot loop) | `boot_loop_enters_safe_mode` | after 5 short boots: SAFE MODE, outputs off, STWD100 not armed; retries normal boot after 30 min |
+| Task WDT | hang before STWD100 armed | `task_wdt_before_stwd_armed` | task watchdog resets |
+| E-paper | BUSY stuck | `epd_busy_stuck` | control continues; no reboot |
+| E-paper | SPI error | `epd_spi_error` | error reported by `ssd1680_show`; control continues |
+| E-paper | init failure | `epd_init_fail` | display fault reported; control continues |
+| E-paper | SPI hang (display task stalls) | `epd_spi_hang` | display fault reported; **not** treated as unhealthy (no reboot loop) |
+| E-paper | framebuffer content | `boot_idle`, `epd_framebuffer_shows_radio_fault` | non-blank first frame; radio-fault screen drawn |
+| Buttons | M stuck pressed at boot | `button_mode_stuck_at_boot` | ignored until released: no pairing, no factory reset |
+| Buttons | UP stuck during runtime | `button_up_stuck_runtime` | auto-repeat stops after 30 s; setpoint bounded |
+| Buttons | bounce | `button_bounce_single_step` | exactly one step |
+| Buttons | factory reset 15 s / release at 14.9 s | `factory_reset_hold_15s`, `factory_reset_release_at_14_9s_cancels` | erase + reboot to defaults / nothing erased |
+| Buttons | pairing window | `pairing_window_5_to_8s` | 4.9 s: nothing; 6 s: steering at release |
+| NVS | empty / corrupt / wrong size / empty blob / old v0.2.1 key | `nvs_empty`, `nvs_corrupt_blob`, `nvs_wrong_size_blob`, `nvs_empty_blob`, `nvs_old_v021_cfg_key` | blob rejected, defaults, no reboot |
+| NVS | read failure / open failure at boot | `nvs_read_fail`, `nvs_open_fail_at_boot` | defaults, keeps running |
+| NVS | write / commit / open failure, full | `nvs_write_fail`, `nvs_commit_fail`, `nvs_open_fail_runtime`, `nvs_full` | new value used from RAM, "not saved" fault, retried once a minute, saved when flash recovers |
+| NVS | no free pages / new version | `nvs_init_no_free_pages`, `nvs_init_new_version` | erased + re-initialised |
+| NVS | partition missing / init error | `nvs_partition_missing`, `nvs_init_generic_fail` | defaults in RAM, storage fault shown, **no** ESP_ERROR_CHECK reboot loop |
+| NVS | settings survive reboot | `nvs_roundtrip_settings_survive_reboot` | restored |
+| OTA | pending-verify, never joins | `ota_pending_never_joins_rolls_back` | rolls back at 10 min (outputs off first) |
+| OTA | pending-verify, joins | `ota_pending_joins_confirms` | confirmed after ≥ 60 s healthy |
+| OTA | rollback impossible | `ota_rollback_impossible_keeps_running` | keeps image, marks valid, no reboot, **no output blip** |
+| OTA | full update | `ota_full_update_and_confirm` | outputs off before reboot, boots slot 1 pending, confirms |
+| OTA | flash write error | `ota_write_error` | transfer aborted, no reboot, control continues |
+| OTA | image invalid / unknown tag | `ota_image_invalid`, `ota_wrong_element_tag` | rejected, boot partition unchanged |
+| OTA | no partition / begin fails / set-boot fails | `ota_no_partition`, `ota_begin_fails`, `ota_set_boot_fails` | refused, stays on old image |
+| OTA | server abort / stall / no image | `ota_server_abort_mid_transfer`, `ota_server_stalls_banner_cleared`, `ota_unavailable` | clean abort; banner cleared after 5 min stall; nothing |
+| OTA | link lost mid-transfer | `ota_link_lost_mid_transfer` | aborted; rejoins |
+| Clock | never synced | `time_never_synced` | DAY program; Time reads back off 1, 2, 5 min then hourly |
+| Clock | TimeStatus unset / bogus epoch | `time_status_unset`, `time_bogus_epoch` | ignored, time stays unknown |
+| Clock | jump back across boost window | `time_jump_back_across_boost_window` | follows new clock (night), boosts again at 06:00 |
+| Clock | DST shift / sync lost then restored | `time_dst_shift`, `time_sync_lost_then_restored` | local time shifts 1 h / stays known, resyncs |
+| Clock | schedule wraps midnight | `schedule_night_wraps_midnight`, `schedule_morning_boost_mocked_time` | night holds across 00:00; boost window correct |
+| Zigbee | platform config / register / start fails; task create fails | `radio_platform_config_fails`, `radio_device_register_fails`, `radio_stack_start_fails`, `radio_zigbee_task_create_fails` | "radio fault" link state; **no reboot**; local control (buttons) works |
+| Zigbee | stack init signal fails ×3 | `radio_stack_init_signal_fails_then_ok` | retried with backoff, joins |
+| Zigbee | join never succeeds | `radio_join_never_succeeds` | backoff (≤ 14 attempts in 2 h), keeps heating |
+| Zigbee | parent lost / network down / leave | `radio_link_lost_mid_run_rejoins`, `radio_link_lost_coordinator_down`, `radio_leave_then_repair`, `radio_reboot_with_network_down` | rejoin via backoff; control continues |
+| Zigbee | flapping link | `radio_flapping_link_backs_off` | backoff not reset by short joins (≤ 16 attempts in 2 h) |
+| Zigbee | task stalls / dies | `radio_zigbee_task_stalls`, `radio_zigbee_task_dies` | radio fault within 60–70 s; UI pairing does not block main loop; no reboot |
+| Zigbee | remote writes: Auto, out-of-range setpoint, burst, while lost | `remote_auto_write_refused`, `remote_setpoint_clamped`, `sht40_*` (mode+fan burst), `radio_remote_writes_while_lost` | refused/clamped; burst writes all apply; local changes apply offline |
+| Outputs | W pad stuck high | `output_w_stuck_high` | readback → OUTPUT FAULT latched; Y/G held low; no reboot |
+| Outputs | Y pad stuck low | `output_y_stuck_low_while_cooling` | mismatch → fault, all off |
+| Outputs | G `gpio_set_level` fails | `output_g_set_fails` | fault; Y never runs without G |
+| Outputs | W `gpio_config` fails at boot | `output_w_config_fails_at_boot` | no reboot loop; fault shown; all off |
+| Normal operation | heat/cool cycling, changeover, fan, menu, setpoint keys, timed boost | `heat_cycles_room_model`, `cool_cycles_room_model`, `changeover_heat_to_cool`, `fan_on_and_auto`, `menu_navigation_buttons`, `home_up_down_setpoint`, `timed_boost_combo`, `boot_idle` | min on/off, changeover gap, G with Y, holds 20 °C ±1 |
+
 ## Flashing: USB ONLY WITH 24 VAC DISCONNECTED
 
 > ⚠️ **Never plug USB in while the board is wired to the HVAC system.** Board ground is the

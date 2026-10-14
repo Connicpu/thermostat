@@ -4,3 +4,5 @@ sdkconfig
 sdkconfig.old
 test/host/build/
 *.pbm
+test/hootl/build/
+__pycache__/

@@ -18,4 +18,11 @@ menu "Thermostat V3"
         default y
         help
             Disable only for JTAG debugging; a breakpoint would otherwise reset the chip.
+config THERMOSTAT_SIM
+        bool "Host simulation build (HOOTL) - never enable on hardware"
+        default n
+        help
+            Informational marker only. The HOOTL simulator (test/hootl) is a separate
+            host build that defines this in its own fake sdkconfig.h; no firmware source
+            tests it. It must stay off in sdkconfig.defaults: CI fails if it is set.
 endmenu

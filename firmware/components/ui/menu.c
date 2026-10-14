@@ -147,9 +147,10 @@ menu_action_t menu_key(menu_t *m, const menu_ctx_t *c, menu_key_t k, btn_event_t
         if (ev == BTN_EV_RELEASE || ev == BTN_EV_PRESS) m->swallow_m = false;
         return (menu_action_t){0};
     }
-    if (menu_is_home(m)) return key_home(m, k, ev);
-
+    /* stamp first: opening the menu from the main screen must start the idle
+     * timeout now, not from the last key pressed inside a menu long ago */
     m->last_key_ms = now;
+    if (menu_is_home(m)) return key_home(m, k, ev);
     if (k == MENU_KEY_COMBO) return (menu_action_t){0};
     const bool updown = (k == MENU_KEY_UP || k == MENU_KEY_DOWN) && (ev == BTN_EV_PRESS || ev == BTN_EV_REPEAT);
     const int dir = k == MENU_KEY_UP ? 1 : -1;
@@ -276,6 +277,7 @@ static const char *link_name(link_state_t l)
     case LINK_JOINED:  return "connected";
     case LINK_PAIRING: return "pairing";
     case LINK_LOST:    return "lost parent";
+    case LINK_FAULT:   return "radio fault";
     default:           return "not paired";
     }
 }

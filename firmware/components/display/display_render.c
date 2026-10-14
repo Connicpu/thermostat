@@ -39,6 +39,7 @@ static const char *link_str(link_state_t l)
     case LINK_JOINED:  return "Zigbee: connected";
     case LINK_PAIRING: return "Zigbee: pairing...";
     case LINK_LOST:    return "Zigbee: lost parent";
+    case LINK_FAULT:   return "Zigbee: radio fault";
     default:           return "Zigbee: not paired";
     }
 }

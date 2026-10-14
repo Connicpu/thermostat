@@ -10,12 +10,19 @@
 
 static const char *TAG = "epd";
 static spi_device_handle_t s_spi;
+static esp_err_t s_err;   /* first SPI error since the start of the current refresh */
+
+static void xfer(spi_transaction_t *t)
+{
+    esp_err_t e = spi_device_polling_transmit(s_spi, t);
+    if (e != ESP_OK && s_err == ESP_OK) s_err = e;
+}
 
 static void cmd(uint8_t c)
 {
     gpio_set_level(BOARD_GPIO_EPD_DC, 0);
     spi_transaction_t t = {.length = 8, .tx_buffer = &c};
-    spi_device_polling_transmit(s_spi, &t);
+    xfer(&t);
 }
 
 static void data(const uint8_t *d, size_t n)
@@ -24,7 +31,7 @@ static void data(const uint8_t *d, size_t n)
     while (n) {
         size_t chunk = n > 2048 ? 2048 : n;
         spi_transaction_t t = {.length = chunk * 8, .tx_buffer = d};
-        spi_device_polling_transmit(s_spi, &t);
+        xfer(&t);
         d += chunk;
         n -= chunk;
     }
@@ -103,6 +110,7 @@ static void set_cursor(void)
 
 esp_err_t ssd1680_show(const gfx_fb_t *fb, const gfx_fb_t *prev, bool full)
 {
+    s_err = ESP_OK;
     esp_err_t err = panel_init();
     if (err != ESP_OK) return err;
     if (full) {
@@ -118,5 +126,9 @@ esp_err_t ssd1680_show(const gfx_fb_t *fb, const gfx_fb_t *prev, bool full)
     cmd(0x20);
     err = wait_busy(full ? 5000 : 2000);
     CMD(0x10, 0x01);                                          /* deep sleep mode 1 */
+    if (err == ESP_OK && s_err != ESP_OK) {
+        ESP_LOGE(TAG, "SPI error during refresh: %s", esp_err_to_name(s_err));
+        err = s_err;
+    }
     return err;
 }

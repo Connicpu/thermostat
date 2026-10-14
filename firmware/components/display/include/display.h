@@ -10,3 +10,4 @@ esp_err_t display_init(void);              /* starts the display task */
 void display_post(const display_model_t *m, bool urgent);
 /* Last time (ms since boot) the display task looped; used by the health check. */
 uint64_t display_last_alive_ms(void);
+bool     display_running(void);   /* false if display_init() failed */

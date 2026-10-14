@@ -4,6 +4,7 @@
 #include "esp_check.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_zigbee_core.h"
 #include "esp_zigbee_ota.h"
@@ -12,6 +13,7 @@
 #include "sdkconfig.h"
 #include "fw_version.h"
 #include "zb_time.h"
+#include "zb_retry.h"
 
 static const char *TAG = "zb";
 
@@ -38,6 +40,14 @@ static bool s_started;
 static sched_cfg_t s_sched;                   /* schedule attribute backing store */
 static uint8_t s_sched_state;                 /* ZB_ATTR_SCHED_STATE backing store */
 static volatile bool s_force_settings;        /* republish mode/setpoints (e.g. rejected AUTO write) */
+
+/* Radio failure handling. The thermostat never depends on Zigbee: a failure
+ * here only changes what zb_thermostat_link() reports. */
+static volatile bool s_radio_fault;           /* stack could not be started */
+static volatile uint64_t s_alive_ms;          /* Zigbee task heartbeat (stall detection) */
+static zb_retry_t s_retry;                     /* (re)join backoff, Zigbee task only */
+static bool s_steer_pending;                   /* a (re)join attempt is scheduled or running */
+#define HEARTBEAT_MS 5000
 
 /* Time sync: local seconds since midnight at s_time_at_ms (monotonic). */
 static uint8_t s_time_fails;                  /* consecutive reads without a usable answer */
@@ -159,8 +169,32 @@ bool zb_thermostat_local_minute(uint16_t *minute)
 
 static void commissioning_cb(uint8_t mode)
 {
-    if (esp_zb_bdb_start_top_level_commissioning(mode) != ESP_OK)
+    if (mode == ESP_ZB_BDB_MODE_NETWORK_STEERING) {
+        s_steer_pending = false;
+        if (esp_zb_bdb_dev_joined()) return;          /* already back (e.g. stack rejoined by itself) */
+        if (s_link != LINK_LOST) s_link = LINK_PAIRING;
+        s_steer_pending = true;
+    }
+    if (esp_zb_bdb_start_top_level_commissioning(mode) != ESP_OK) {
         ESP_LOGE(TAG, "commissioning start failed");
+        s_steer_pending = false;
+    }
+}
+
+/* schedule the next (re)join attempt; at most one outstanding */
+static void schedule_steering(uint32_t delay_ms, const char *why)
+{
+    if (s_steer_pending) return;
+    s_steer_pending = true;
+    ESP_LOGI(TAG, "EVT zb retry in %lu ms (%s, attempt %u)", (unsigned long)delay_ms, why, (unsigned)s_retry.fails);
+    esp_zb_scheduler_alarm(commissioning_cb, ESP_ZB_BDB_MODE_NETWORK_STEERING, delay_ms);
+}
+
+static void heartbeat(uint8_t unused)
+{
+    (void)unused;
+    s_alive_ms = mono_ms();
+    esp_zb_scheduler_alarm(heartbeat, 0, HEARTBEAT_MS);
 }
 
 void esp_zb_app_signal_handler(esp_zb_app_signal_t *sig_s)
@@ -176,17 +210,20 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *sig_s)
     case ESP_ZB_BDB_SIGNAL_DEVICE_FIRST_START:
     case ESP_ZB_BDB_SIGNAL_DEVICE_REBOOT:
         if (st != ESP_OK) {
-            ESP_LOGW(TAG, "stack init failed (%s), retrying", esp_err_to_name(st));
-            esp_zb_scheduler_alarm(commissioning_cb, ESP_ZB_BDB_MODE_INITIALIZATION, 1000);
+            uint32_t d = zb_retry_failed(&s_retry);
+            ESP_LOGW(TAG, "stack init failed (%s), retrying in %lu ms", esp_err_to_name(st), (unsigned long)d);
+            esp_zb_scheduler_alarm(commissioning_cb, ESP_ZB_BDB_MODE_INITIALIZATION, d);
             break;
         }
         if (esp_zb_bdb_is_factory_new()) {
             ESP_LOGI(TAG, "factory new: start network steering (pairing)");
             s_link = LINK_PAIRING;
+            s_steer_pending = true;
             esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
         } else {
             ESP_LOGI(TAG, "rejoined existing network");
             s_link = LINK_JOINED;
+            zb_retry_joined(&s_retry, mono_ms());
             time_sync_start();
         }
         break;
@@ -194,20 +231,27 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *sig_s)
         if (st == ESP_OK) {
             ESP_LOGI(TAG, "joined PAN 0x%04hx ch %d addr 0x%04hx", esp_zb_get_pan_id(),
                      esp_zb_get_current_channel(), esp_zb_get_short_address());
+            s_steer_pending = false;
             s_link = LINK_JOINED;
+            zb_retry_joined(&s_retry, mono_ms());
             time_sync_start();
         } else {
-            /* Keep trying, slowly. The thermostat works fine unpaired. */
-            s_link = LINK_PAIRING;
-            esp_zb_scheduler_alarm(commissioning_cb, ESP_ZB_BDB_MODE_NETWORK_STEERING, 10000);
+            /* Keep trying with backoff (zb_retry.h). The thermostat works fine unpaired. */
+            s_steer_pending = false;
+            if (s_link != LINK_LOST) s_link = LINK_PAIRING;
+            schedule_steering(zb_retry_failed(&s_retry), "steering failed");
         }
         break;
     case ESP_ZB_ZDO_SIGNAL_LEAVE:
+        /* Removed from the network (e.g. by the coordinator): go back to pairing, slowly. */
         ESP_LOGW(TAG, "left network");
         s_link = LINK_OFFLINE;
+        schedule_steering(zb_retry_lost(&s_retry, mono_ms()), "left network");
         break;
     case ESP_ZB_NWK_SIGNAL_NO_ACTIVE_LINKS_LEFT:
+        ESP_LOGW(TAG, "parent lost");
         s_link = LINK_LOST;
+        schedule_steering(zb_retry_lost(&s_retry, mono_ms()), "parent lost");
         break;
     case ESP_ZB_COMMON_SIGNAL_CAN_SLEEP:
         esp_zb_sleep_now();   /* light sleep until the next poll / timer / GPIO */
@@ -218,14 +262,24 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *sig_s)
     }
 }
 
-link_state_t zb_thermostat_link(void) { return s_link; }
+link_state_t zb_thermostat_link(void)
+{
+    if (s_radio_fault) return LINK_FAULT;
+    if (s_started && zb_retry_stalled(s_alive_ms, mono_ms())) return LINK_FAULT;   /* task dead or stuck */
+    return s_link;
+}
+
+/* Never wait for the stack forever: a stalled Zigbee task must not freeze the UI/control loop. */
+#define LOCK_WAIT_MS 1000
 
 void zb_thermostat_pair(void)
 {
-    if (!s_started) return;
-    esp_zb_lock_acquire(portMAX_DELAY);
+    if (!s_started || zb_thermostat_link() == LINK_FAULT) return;
+    if (!esp_zb_lock_acquire(pdMS_TO_TICKS(LOCK_WAIT_MS))) { ESP_LOGE(TAG, "pair: stack busy"); return; }
     if (!esp_zb_bdb_dev_joined()) {
         s_link = LINK_PAIRING;
+        s_retry.fails = 0;                 /* user asked: start the backoff over */
+        s_steer_pending = true;
         esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
     }
     esp_zb_lock_release();
@@ -234,7 +288,10 @@ void zb_thermostat_pair(void)
 void zb_thermostat_factory_reset(void)
 {
     if (!s_started) return;
-    esp_zb_lock_acquire(portMAX_DELAY);
+    if (!esp_zb_lock_acquire(pdMS_TO_TICKS(LOCK_WAIT_MS))) {
+        ESP_LOGE(TAG, "factory reset: Zigbee stack not responding, network data kept");
+        return;   /* caller restarts anyway */
+    }
     esp_zb_factory_reset();   /* erases zb_storage and reboots */
     esp_zb_lock_release();
 }
@@ -332,7 +389,13 @@ static esp_err_t on_set_attr(const esp_zb_zcl_set_attr_value_message_t *m)
             s_cbs.on_identify(*(const uint16_t *)v);
         break;
     }
-    if (changed && s_cbs.on_settings) s_cbs.on_settings(&s, what);
+    if (changed) {
+        /* The stack attribute now holds the written value: remember it so a second
+         * write before the app re-publishes (e.g. mode then fan in one burst) starts
+         * from it instead of the stale copy and does not undo the first write. */
+        s_settings = s;
+        if (s_cbs.on_settings) s_cbs.on_settings(&s, what);
+    }
     return ESP_OK;
 }
 
@@ -456,6 +519,9 @@ static esp_err_t action_handler(esp_zb_core_action_callback_id_t id, const void 
 /* data model                                                         */
 /* ------------------------------------------------------------------ */
 
+/* any failure building the data model = radio fault (no reboot loop) */
+#define TRY(x) do { esp_err_t _e = (x); if (_e != ESP_OK) { ESP_LOGE(TAG, "%s: %s", #x, esp_err_to_name(_e)); return NULL; } } while (0)
+
 static esp_zb_ep_list_t *build_endpoint(const ctrl_settings_t *init, int8_t calib)
 {
     esp_zb_cluster_list_t *cl = esp_zb_zcl_cluster_list_create();
@@ -466,10 +532,10 @@ static esp_zb_ep_list_t *build_endpoint(const ctrl_settings_t *init, int8_t cali
     esp_zb_basic_cluster_add_attr(basic, ESP_ZB_ZCL_ATTR_BASIC_MANUFACTURER_NAME_ID, MANUFACTURER_NAME);
     esp_zb_basic_cluster_add_attr(basic, ESP_ZB_ZCL_ATTR_BASIC_MODEL_IDENTIFIER_ID, MODEL_ID);
     esp_zb_basic_cluster_add_attr(basic, ESP_ZB_ZCL_ATTR_BASIC_SW_BUILD_ID, SW_BUILD_ID);
-    ESP_ERROR_CHECK(esp_zb_cluster_list_add_basic_cluster(cl, basic, SERVER));
+    TRY(esp_zb_cluster_list_add_basic_cluster(cl, basic, SERVER));
 
     esp_zb_identify_cluster_cfg_t id_cfg = {.identify_time = 0};
-    ESP_ERROR_CHECK(esp_zb_cluster_list_add_identify_cluster(cl, esp_zb_identify_cluster_create(&id_cfg), SERVER));
+    TRY(esp_zb_cluster_list_add_identify_cluster(cl, esp_zb_identify_cluster_create(&id_cfg), SERVER));
 
     /* Thermostat */
     esp_zb_thermostat_cluster_cfg_t th_cfg = {
@@ -493,22 +559,22 @@ static esp_zb_ep_list_t *build_endpoint(const ctrl_settings_t *init, int8_t cali
     esp_zb_thermostat_cluster_add_attr(th, ESP_ZB_ZCL_ATTR_THERMOSTAT_MAX_COOL_SETPOINT_LIMIT_ID, &max_sp);
     esp_zb_thermostat_cluster_add_attr(th, ESP_ZB_ZCL_ATTR_THERMOSTAT_LOCAL_TEMPERATURE_CALIBRATION_ID, &calib);
     esp_zb_thermostat_cluster_add_attr(th, ESP_ZB_ZCL_ATTR_THERMOSTAT_THERMOSTAT_RUNNING_STATE_ID, &running);
-    ESP_ERROR_CHECK(esp_zb_cluster_list_add_thermostat_cluster(cl, th, SERVER));
+    TRY(esp_zb_cluster_list_add_thermostat_cluster(cl, th, SERVER));
 
     /* Fan control: On/Auto */
     esp_zb_fan_control_cluster_cfg_t fan_cfg = {
         .fan_mode = (uint8_t)init->fan,
         .fan_mode_sequence = ESP_ZB_ZCL_FAN_CONTROL_FAN_MODE_SEQUENCE_ON_AUTO,
     };
-    ESP_ERROR_CHECK(esp_zb_cluster_list_add_fan_control_cluster(cl, esp_zb_fan_control_cluster_create(&fan_cfg), SERVER));
+    TRY(esp_zb_cluster_list_add_fan_control_cluster(cl, esp_zb_fan_control_cluster_create(&fan_cfg), SERVER));
 
     esp_zb_temperature_meas_cluster_cfg_t t_cfg = {
         .measured_value = (int16_t)0x8000, .min_value = -4500, .max_value = 13000,
     };
-    ESP_ERROR_CHECK(esp_zb_cluster_list_add_temperature_meas_cluster(cl, esp_zb_temperature_meas_cluster_create(&t_cfg), SERVER));
+    TRY(esp_zb_cluster_list_add_temperature_meas_cluster(cl, esp_zb_temperature_meas_cluster_create(&t_cfg), SERVER));
 
     esp_zb_humidity_meas_cluster_cfg_t h_cfg = {.measured_value = 0xFFFF, .min_value = 0, .max_value = 10000};
-    ESP_ERROR_CHECK(esp_zb_cluster_list_add_humidity_meas_cluster(cl, esp_zb_humidity_meas_cluster_create(&h_cfg), SERVER));
+    TRY(esp_zb_cluster_list_add_humidity_meas_cluster(cl, esp_zb_humidity_meas_cluster_create(&h_cfg), SERVER));
 
     /* Manufacturer-specific Boost cluster (see zb_boost.h). */
     esp_zb_attribute_list_t *bc = esp_zb_zcl_attr_list_create(ZB_BOOST_CLUSTER_ID);
@@ -516,33 +582,33 @@ static esp_zb_ep_list_t *build_endpoint(const ctrl_settings_t *init, int8_t cali
     static uint16_t b_rem = 0;
     const uint8_t RW = ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE | ESP_ZB_ZCL_ATTR_MANUF_SPEC;
     const uint8_t RO = ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY | ESP_ZB_ZCL_ATTR_ACCESS_REPORTING | ESP_ZB_ZCL_ATTR_MANUF_SPEC;
-    ESP_ERROR_CHECK(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_SETPOINT, ZB_BOOST_MANUF_CODE,
+    TRY(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_SETPOINT, ZB_BOOST_MANUF_CODE,
                                                          ESP_ZB_ZCL_ATTR_TYPE_S16, RW, &s_boost_sp));
-    ESP_ERROR_CHECK(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_DURATION, ZB_BOOST_MANUF_CODE,
+    TRY(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_DURATION, ZB_BOOST_MANUF_CODE,
                                                          ESP_ZB_ZCL_ATTR_TYPE_U16, RW, &s_boost_min));
-    ESP_ERROR_CHECK(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_MODE, ZB_BOOST_MANUF_CODE,
+    TRY(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_MODE, ZB_BOOST_MANUF_CODE,
                                                          ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, RW, &s_boost_dir));
-    ESP_ERROR_CHECK(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_COMMAND, ZB_BOOST_MANUF_CODE,
+    TRY(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_COMMAND, ZB_BOOST_MANUF_CODE,
                                                          ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, RW, &b_cmd));
-    ESP_ERROR_CHECK(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_STATE, ZB_BOOST_MANUF_CODE,
+    TRY(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_STATE, ZB_BOOST_MANUF_CODE,
                                                          ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, RO, &b_state));
-    ESP_ERROR_CHECK(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_REMAINING, ZB_BOOST_MANUF_CODE,
+    TRY(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_REMAINING, ZB_BOOST_MANUF_CODE,
                                                          ESP_ZB_ZCL_ATTR_TYPE_U16, RO, &b_rem));
-    ESP_ERROR_CHECK(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_LAST_RESULT, ZB_BOOST_MANUF_CODE,
+    TRY(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_LAST_RESULT, ZB_BOOST_MANUF_CODE,
                                                          ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, RO, &b_result));
-    ESP_ERROR_CHECK(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_ATTR_SWING, ZB_BOOST_MANUF_CODE,
+    TRY(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_ATTR_SWING, ZB_BOOST_MANUF_CODE,
                                                          ESP_ZB_ZCL_ATTR_TYPE_U16, RW, &s_swing));
     for (uint16_t id = ZB_SCHED_ATTR_FIRST; id <= ZB_SCHED_ATTR_LAST; id++)
-        ESP_ERROR_CHECK(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, id, ZB_BOOST_MANUF_CODE,
+        TRY(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, id, ZB_BOOST_MANUF_CODE,
                                                              sched_attr_signed(id) ? ESP_ZB_ZCL_ATTR_TYPE_S16 : ESP_ZB_ZCL_ATTR_TYPE_U16,
                                                              RW, sched_field(&s_sched, id)));
-    ESP_ERROR_CHECK(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_ATTR_SCHED_STATE, ZB_BOOST_MANUF_CODE,
+    TRY(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_ATTR_SCHED_STATE, ZB_BOOST_MANUF_CODE,
                                                          ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, RO, &s_sched_state));
-    ESP_ERROR_CHECK(esp_zb_cluster_list_add_custom_cluster(cl, bc, SERVER));
+    TRY(esp_zb_cluster_list_add_custom_cluster(cl, bc, SERVER));
 
     /* Time client: we read the coordinator's clock for the program schedule. */
     esp_zb_time_cluster_cfg_t time_cfg = {0};
-    ESP_ERROR_CHECK(esp_zb_cluster_list_add_time_cluster(cl, esp_zb_time_cluster_create(&time_cfg),
+    TRY(esp_zb_cluster_list_add_time_cluster(cl, esp_zb_time_cluster_create(&time_cfg),
                                                          ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
 
     /* OTA upgrade client */
@@ -563,7 +629,7 @@ static esp_zb_ep_list_t *build_endpoint(const ctrl_settings_t *init, int8_t cali
     esp_zb_ota_cluster_add_attr(ota, ESP_ZB_ZCL_ATTR_OTA_UPGRADE_CLIENT_DATA_ID, &ota_var);
     esp_zb_ota_cluster_add_attr(ota, ESP_ZB_ZCL_ATTR_OTA_UPGRADE_SERVER_ADDR_ID, &srv_addr);
     esp_zb_ota_cluster_add_attr(ota, ESP_ZB_ZCL_ATTR_OTA_UPGRADE_SERVER_ENDPOINT_ID, &srv_ep);
-    ESP_ERROR_CHECK(esp_zb_cluster_list_add_ota_cluster(cl, ota, ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
+    TRY(esp_zb_cluster_list_add_ota_cluster(cl, ota, ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
 
     esp_zb_ep_list_t *eps = esp_zb_ep_list_create();
     esp_zb_endpoint_config_t ep_cfg = {
@@ -572,7 +638,7 @@ static esp_zb_ep_list_t *build_endpoint(const ctrl_settings_t *init, int8_t cali
         .app_device_id = ESP_ZB_HA_THERMOSTAT_DEVICE_ID,
         .app_device_version = 0,
     };
-    ESP_ERROR_CHECK(esp_zb_ep_list_add_ep(eps, cl, ep_cfg));
+    TRY(esp_zb_ep_list_add_ep(eps, cl, ep_cfg));
     return eps;
 }
 
@@ -593,10 +659,22 @@ static void zb_task(void *arg)
     esp_zb_init(&cfg);
     esp_zb_set_rx_on_when_idle(false);              /* sleepy end device */
     esp_zb_set_default_long_poll_interval(CONFIG_THERMO_ZB_LONG_POLL_MS);
-    ESP_ERROR_CHECK(esp_zb_device_register(build_endpoint(&s_init, s_init_calib)));
-    esp_zb_core_action_handler_register(action_handler);
-    esp_zb_set_primary_network_channel_set(ESP_ZB_TRANSCEIVER_ALL_CHANNELS_MASK);
-    ESP_ERROR_CHECK(esp_zb_start(false));
+    esp_zb_ep_list_t *eps = build_endpoint(&s_init, s_init_calib);
+    esp_err_t err = eps ? esp_zb_device_register(eps) : ESP_FAIL;
+    if (err == ESP_OK) {
+        esp_zb_core_action_handler_register(action_handler);
+        esp_zb_set_primary_network_channel_set(ESP_ZB_TRANSCEIVER_ALL_CHANNELS_MASK);
+        err = esp_zb_start(false);
+    }
+    if (err != ESP_OK) {
+        /* No reboot: the radio stays off, the thermostat keeps working locally and shows the fault. */
+        ESP_LOGE(TAG, "EVT zb radio fault: stack start failed (%s)", esp_err_to_name(err));
+        s_radio_fault = true;
+        vTaskDelete(NULL);
+        return;
+    }
+    s_alive_ms = mono_ms();
+    esp_zb_scheduler_alarm(heartbeat, 0, HEARTBEAT_MS);
     s_started = true;
     esp_zb_stack_main_loop();
 }
@@ -615,8 +693,13 @@ esp_err_t zb_thermostat_start(const zb_thermostat_cbs_t *cbs, const zb_thermosta
         .radio_config = {.radio_mode = ZB_RADIO_MODE_NATIVE},
         .host_config = {.host_connection_mode = ZB_HOST_CONNECTION_MODE_NONE},
     };
-    ESP_RETURN_ON_ERROR(esp_zb_platform_config(&pc), TAG, "platform config");
-    return xTaskCreate(zb_task, "zigbee", 6144, NULL, 5, NULL) == pdPASS ? ESP_OK : ESP_FAIL;
+    esp_err_t err = esp_zb_platform_config(&pc);
+    if (err == ESP_OK && xTaskCreate(zb_task, "zigbee", 6144, NULL, 5, NULL) != pdPASS) err = ESP_ERR_NO_MEM;
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "EVT zb radio fault: %s", esp_err_to_name(err));
+        s_radio_fault = true;
+    }
+    return err;
 }
 
 /* ------------------------------------------------------------------ */

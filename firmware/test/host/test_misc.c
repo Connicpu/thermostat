@@ -1,6 +1,7 @@
 /* Host tests: SHT40 decoding, button state machine, display rendering
  * (also writes a PBM preview of the screen to display_preview.pbm). */
 #include "tinytest.h"
+#include "sensor_stuck.h"
 #include "sht40_parse.h"
 #include "buttons.h"
 #include "display_model.h"
@@ -53,10 +54,49 @@ static void buttons_debounce_and_repeat(void)
     n = feed(&b, false, 100, ev, 64); CHECK_EQ(n, 0);
 }
 
+/* A key held (stuck/shorted) at boot never fires; it works normally once released. */
+static void buttons_stuck_at_boot_ignored(void)
+{
+    btn_t b; btn_event_t ev[16]; int n;
+    btn_init(&b, false);
+    n = feed(&b, true, 20000, ev, 16); CHECK_EQ(n, 0);         /* no HOLD/LONG/WARN/VLONG (factory reset) */
+    n = feed(&b, false, 100, ev, 16);  CHECK_EQ(n, 0);         /* the release is not a PRESS either */
+    n = feed(&b, true, 100, ev, 16);   CHECK_EQ(n, 0);
+    n = feed(&b, false, 100, ev, 16);  CHECK_EQ(n, 1); CHECK_EQ(ev[0], BTN_EV_PRESS);
+    btn_init(&b, true);
+    n = feed(&b, true, 5000, ev, 16);  CHECK_EQ(n, 0);         /* UP held at boot: no setpoint change */
+}
+
+/* A key stuck during runtime: auto-repeat stops after BTN_STUCK_MS. */
+static void buttons_stuck_runtime_repeat_stops(void)
+{
+    btn_t b; btn_event_t ev[512]; int n;
+    btn_init(&b, true);
+    feed(&b, false, 50, ev, 512);
+    n = feed(&b, true, BTN_STUCK_MS, ev, 512);
+    CHECK(n > 100);
+    CHECK(!b.stuck || n > 100);
+    n = feed(&b, true, 60000, ev, 512); CHECK_EQ(n, 0); CHECK(b.stuck);
+    n = feed(&b, false, 100, ev, 512); CHECK_EQ(n, 0);
+    n = feed(&b, true, 100, ev, 512);  CHECK_EQ(n, 1); CHECK(!b.stuck);   /* recovers after release */
+}
+
+static void sensor_frozen_detection(void)
+{
+    sensor_stuck_t s = {0};
+    uint64_t t = 0;
+    for (; t < SENSOR_STUCK_MS; t += 2000) CHECK(!sensor_stuck_update(&s, 2100, 4500, t));
+    CHECK(sensor_stuck_update(&s, 2100, 4500, t));                 /* 20 min identical: frozen */
+    CHECK(!sensor_stuck_update(&s, 2100, 4501, t + 2000));         /* any change: alive again */
+    sensor_stuck_t n = {0};                                        /* noisy RH keeps it alive */
+    for (t = 0; t < 3 * SENSOR_STUCK_MS; t += 2000) CHECK(!sensor_stuck_update(&n, 2100, (uint16_t)(4500 + (t / 2000) % 2), t));
+}
+
 static void buttons_mode_short_long(void)
 {
     btn_t b; btn_event_t ev[8]; int n;
     btn_init(&b, false);
+    n = feed(&b, false, 50, ev, 8);  CHECK_EQ(n, 0);           /* arm: released after boot */
     n = feed(&b, true, 500, ev, 8);  CHECK_EQ(n, 0);           /* nothing until release */
     n = feed(&b, false, 100, ev, 8); CHECK_EQ(n, 1); CHECK_EQ(ev[0], BTN_EV_PRESS);
     n = feed(&b, true, 1600, ev, 8); CHECK_EQ(n, 1); CHECK_EQ(ev[0], BTN_EV_HOLD);
@@ -144,6 +184,9 @@ int main(void)
     RUN(sht40_parse_values);
     RUN(buttons_debounce_and_repeat);
     RUN(buttons_mode_short_long);
+    RUN(sensor_frozen_detection);
+    RUN(buttons_stuck_at_boot_ignored);
+    RUN(buttons_stuck_runtime_repeat_stops);
     RUN(temp_formatting);
     RUN(render_preview);
     RUN(render_preview_cool_celsius_fault);

@@ -27,6 +27,7 @@
 #include "nvs_flash.h"
 #include "sdkconfig.h"
 #include "sensor.h"
+#include "sensor_stuck.h"
 #include "settings.h"
 #include "schedule.h"
 #include "ui.h"
@@ -43,6 +44,16 @@ static const char *TAG = "app";
 #define OTA_VALID_AFTER_MS  60000      /* min healthy uptime before confirming a new image */
 #define OTA_JOIN_TIMEOUT_MS (10 * 60 * 1000) /* roll back if never rejoined Zigbee by then */
 #define BANNER_MS           4000
+#define BOOT_LOOP_LIMIT     5             /* this many resets without BOOT_STABLE_MS uptime -> safe mode */
+#define BOOT_STABLE_MS      (10 * 60 * 1000)
+#define SAFE_MODE_RETRY_MS  (30 * 60 * 1000) /* safe mode: try a normal boot again after this */
+
+/* Structured lines for the HOOTL scenario runner / field logs: "EVT <what> ...". */
+#define EVT(...) ESP_LOGI("evt", __VA_ARGS__)
+
+static bool s_nvs_ok;                 /* settings can be persisted */
+static bool s_safe_mode;              /* boot loop detected: outputs held off */
+static bool s_outputs_ok = true;      /* hvac_outputs_init() succeeded */
 
 /* on-device menu (pure state machine in components/ui/menu.c) */
 static menu_t s_menu;
@@ -223,7 +234,9 @@ static void handle_boost_cmd(ctrl_t *ctl, uint8_t cmd, uint64_t now)
 }
 
 static void zb_on_identify(uint16_t secs) { s_identify_s = secs; }
-static void zb_on_ota(int pct) { s_ota_pct = pct; }
+static volatile uint64_t s_ota_pct_at;
+static void zb_on_ota(int pct) { s_ota_pct = pct; s_ota_pct_at = now_ms(); }
+#define OTA_STALE_MS (5 * 60 * 1000)   /* no OTA progress for this long: the transfer is dead */
 static void zb_before_reboot(void) { hvac_outputs_all_off(); }
 
 /* ---------------- buttons (esp_timer task -> queue) ---------------- */
@@ -386,6 +399,24 @@ static void led_update(uint64_t now, const ctrl_output_t *o, link_state_t link)
     ui_led(on);
 }
 
+/* ---------------- boot-loop guard ---------------- */
+
+/* Count boots that did not reach BOOT_STABLE_MS of uptime (NVS "boot"/"n").
+ * Whatever keeps resetting the chip (watchdog, panic, brown-out), after
+ * BOOT_LOOP_LIMIT of them the thermostat stays up in safe mode instead:
+ * outputs off, STWD100 not armed, the fault on screen and on Zigbee. */
+static uint8_t boot_count_rw(int op)   /* op: 1 = increment, 0 = clear; returns the stored count */
+{
+    nvs_handle_t h;
+    uint8_t n = 0;
+    if (!s_nvs_ok || nvs_open("boot", NVS_READWRITE, &h) != ESP_OK) return 0;
+    if (nvs_get_u8(h, "n", &n) != ESP_OK) n = 0;
+    n = op ? (uint8_t)(n < 255 ? n + 1 : 255) : 0;
+    if (nvs_set_u8(h, "n", n) == ESP_OK) nvs_commit(h);
+    nvs_close(h);
+    return n;
+}
+
 /* ---------------- main loop ---------------- */
 
 static void app_task(void *arg)
@@ -397,7 +428,12 @@ static void app_task(void *arg)
 
     sensor_reading_t rd = {0};
     uint64_t next_sensor = 0, boot = now_ms(), last_ident_tick = boot;
-    bool ota_marked = false;
+    bool ota_marked = false, boot_stable = false;
+    hvac_state_t evt_out = {0};
+    bool evt_out_init = false, evt_disp_fault = false, evt_out_fault = false, evt_time = false;
+    int evt_link = -1, evt_fault = -1;
+    ctrl_settings_t evt_s = {0};
+    bool evt_s_init = false;
 
     for (;;) {
         TickType_t wake = xTaskGetTickCount();
@@ -409,6 +445,11 @@ static void app_task(void *arg)
         if (now >= next_sensor) {
             next_sensor = now + CONFIG_THERMO_SENSOR_PERIOD_MS;
             rd = sensor_read((int16_t)(CONFIG_THERMO_SELF_HEAT_OFFSET_C100 + p.calib_tenths * 10));
+            static sensor_stuck_t stuck;
+            static bool stuck_evt;
+            bool frozen = rd.valid && sensor_stuck_update(&stuck, rd.temp_c100, rd.rh_c100, now);
+            if (frozen != stuck_evt) { EVT("EVT fault sensor frozen=%d", frozen); stuck_evt = frozen; }
+            if (frozen) rd.valid = false;   /* a frozen sensor is no sensor: failsafe */
             ctrl_input_t in = {.valid = rd.valid, .temp = rd.temp_c100};
             ctrl_feed_sensor(&ctl, &in, now);
             s_raw = rd;
@@ -432,7 +473,21 @@ static void app_task(void *arg)
         ctrl_settings_t eff = p.s;
         sched_state_t sst = sched_apply(&prm, &p.sched, time_known, minute, &eff);
         ctrl_output_t o = ctrl_step(&ctl, &eff, now);
-        hvac_state_t act = hvac_outputs_set((hvac_state_t){.w = o.w, .y = o.y, .g = o.g});
+        hvac_state_t req = {.w = o.w, .y = o.y, .g = o.g};
+        if (s_safe_mode) req = (hvac_state_t){0};
+        hvac_state_t act = hvac_outputs_set(req);
+        bool out_fault = !s_outputs_ok || hvac_outputs_drive_fault() != 0;
+        if (!evt_out_init || act.w != evt_out.w || act.y != evt_out.y || act.g != evt_out.g) {
+            EVT("EVT out W=%d Y=%d G=%d", act.w, act.y, act.g);
+            evt_out = act; evt_out_init = true;
+        }
+        if (out_fault && !evt_out_fault) { EVT("EVT fault output mask=0x%x", hvac_outputs_drive_fault()); evt_out_fault = true; }
+        if ((int)o.fault != evt_fault) { EVT("EVT ctrl fault=%s", ctrl_fault_str(o.fault)); evt_fault = (int)o.fault; }
+        if (!evt_s_init || memcmp(&evt_s, &eff, sizeof eff) != 0) {
+            EVT("EVT setpoint mode=%d heat=%d cool=%d fan=%d sched=%d", eff.mode, eff.heat_sp, eff.cool_sp, eff.fan, (int)sst);
+            evt_s = eff; evt_s_init = true;
+        }
+        if (time_known != evt_time) { EVT("EVT time known=%d minute=%u", time_known, minute); evt_time = time_known; }
         ctrl_boost_status_t bs = ctrl_boost_status(&ctl, now);
         if (s_boost_active && bs.kind == BOOST_NONE && bs.last_end != BOOST_END_CANCELLED) {
             s_boost_result = end_to_result(bs.last_end);       /* ended by itself */
@@ -454,6 +509,7 @@ static void app_task(void *arg)
         };
         zb_thermostat_publish(&zs);
         link_state_t link = zb_thermostat_link();
+        if ((int)link != evt_link) { EVT("EVT link %d", (int)link); evt_link = (int)link; }
 
         /* 5. display */
         static char ota_banner[24];
@@ -481,34 +537,54 @@ static void app_task(void *arg)
         dm.boost_dir = bs.dir;
         dm.boost_sp = bs.sp;
         dm.boost_min_left = bs.kind == BOOST_TIMED ? bmin : 0;
+        if (s_ota_pct >= 0 && now - s_ota_pct_at >= OTA_STALE_MS) {
+            EVT("EVT ota stalled: no progress for %d min, banner cleared", OTA_STALE_MS / 60000);
+            s_ota_pct = -1;
+        }
         if (s_ota_pct >= 0) {
             snprintf(ota_banner, sizeof ota_banner, "Updating firmware %d%%", s_ota_pct);
             dm.banner = ota_banner;
+        } else if (s_safe_mode) {
+            dm.banner = "SAFE MODE: repeated resets";
+        } else if (out_fault) {
+            dm.banner = "OUTPUT FAULT - service";
         } else if (s_banner && now < s_banner_until) {
             dm.banner = s_banner;
+        } else if (!s_nvs_ok) {
+            dm.banner = "Storage fault: not saved";
         }
         display_post(&dm, urgent);
 
         /* 6. persistence */
         xSemaphoreTake(s_mtx, portMAX_DELAY);
-        bool save = s_dirty && now - s_dirty_at >= SAVE_DELAY_MS;
+        bool save = s_dirty && now >= s_dirty_at + SAVE_DELAY_MS;
         if (save) s_dirty = false;
         persist_t snap = s_persist;
         xSemaphoreGive(s_mtx);
-        if (save) settings_save(&snap);
+        if (save && s_nvs_ok && !settings_save(&snap)) {
+            /* write failed (flash full / worn / error): keep running, retry in a minute */
+            EVT("EVT fault nvs write: settings not saved, retrying");
+            xSemaphoreTake(s_mtx, portMAX_DELAY);
+            s_dirty = true;
+            s_dirty_at = now + 60000 - SAVE_DELAY_MS;
+            xSemaphoreGive(s_mtx);
+        }
 
         /* 7. LED / identify */
         if (s_identify_s && now - last_ident_tick >= 1000) { s_identify_s--; last_ident_tick = now; }
         if (!s_identify_s) last_ident_tick = now;
         led_update(now, &o, link);
 
-        /* 8. health check -> watchdogs. Kick only if every check passed. */
-        bool healthy = (now - display_last_alive_ms()) < DISPLAY_STALL_MS &&
-                       hvac_outputs_interlock_faults() == 0;
+        /* 8. health check -> watchdogs. Kick only if every check passed.
+         *    The display is NOT part of it: a dead panel must not stop heating
+         *    (or reboot-loop the thermostat); it is reported instead. */
+        bool disp_fault = !display_running() || (now - display_last_alive_ms()) >= DISPLAY_STALL_MS;
+        if (disp_fault != evt_disp_fault) { EVT("EVT display fault=%d", disp_fault); evt_disp_fault = disp_fault; }
+        bool healthy = hvac_outputs_interlock_faults() == 0;
         if (healthy) {
             esp_task_wdt_reset();
 #if CONFIG_THERMO_HW_WDT_ENABLE
-            if (!hw_watchdog_armed() && now - boot >= HWDT_ARM_AFTER_MS) {
+            if (!s_safe_mode && !hw_watchdog_armed() && now - boot >= HWDT_ARM_AFTER_MS) {
                 ESP_LOGI(TAG, "arming STWD100");
                 hw_watchdog_arm();
             }
@@ -517,6 +593,18 @@ static void app_task(void *arg)
         } else {
             ESP_LOGE(TAG, "unhealthy: outputs off, letting watchdog bite");
             hvac_outputs_all_off();
+        }
+
+        /* 8b. boot-loop guard */
+        if (!boot_stable && !s_safe_mode && healthy && now - boot >= BOOT_STABLE_MS) {
+            boot_stable = true;
+            boot_count_rw(0);
+        }
+        if (s_safe_mode && now - boot >= SAFE_MODE_RETRY_MS) {
+            ESP_LOGW(TAG, "EVT safe mode: retrying a normal boot");
+            boot_count_rw(0);
+            hvac_outputs_all_off();
+            esp_restart();
         }
 
         /* 9. OTA rollback protection: confirm the image only once it is healthy
@@ -533,11 +621,16 @@ static void app_task(void *arg)
                 esp_ota_mark_app_valid_cancel_rollback();
                 ota_marked = true;
             } else if (now - boot >= OTA_JOIN_TIMEOUT_MS) {
-                ESP_LOGE(TAG, "new image not confirmed within %d s: rolling back", OTA_JOIN_TIMEOUT_MS / 1000);
-                hvac_outputs_all_off();
-                esp_err_t rb = esp_ota_mark_app_invalid_rollback_and_reboot();
-                /* Only returns on failure (no valid image in the other slot): keep running this one
-                 * instead of retrying every loop and chattering the outputs. */
+                esp_err_t rb = ESP_ERR_OTA_ROLLBACK_FAILED;
+                /* Check first: forcing the outputs off and then carrying on would bypass
+                 * the compressor/heat minimum off times. */
+                if (esp_ota_check_rollback_is_possible()) {
+                    ESP_LOGE(TAG, "new image not confirmed within %d s: rolling back", OTA_JOIN_TIMEOUT_MS / 1000);
+                    hvac_outputs_all_off();
+                    rb = esp_ota_mark_app_invalid_rollback_and_reboot();   /* returns only on failure */
+                }
+                /* No valid image in the other slot: keep running this one instead of
+                 * retrying every loop. */
                 ESP_LOGE(TAG, "rollback failed (%s): keeping current image", esp_err_to_name(rb));
                 esp_ota_mark_app_valid_cancel_rollback();   /* keep this image bootable after the next reset */
                 ota_marked = true;
@@ -551,15 +644,17 @@ static void app_task(void *arg)
 void app_main(void)
 {
     /* Outputs first: guarantee a known-off state before anything else. */
-    hvac_outputs_init();
+    s_outputs_ok = hvac_outputs_init() == ESP_OK;   /* failure latches an output fault (all off) */
     hw_watchdog_init();      /* disarmed until the main loop proves itself */
 
+    /* Nothing below may abort: a fault here must not turn into a reboot loop. */
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         nvs_flash_erase();
         err = nvs_flash_init();
     }
-    ESP_ERROR_CHECK(err);
+    s_nvs_ok = err == ESP_OK;
+    if (!s_nvs_ok) EVT("EVT fault nvs init %s: running on defaults, nothing is saved", esp_err_to_name(err));
 
 #if CONFIG_PM_ENABLE
     esp_pm_config_t pm = {
@@ -567,8 +662,12 @@ void app_main(void)
         .min_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ,
         .light_sleep_enable = true,
     };
-    ESP_ERROR_CHECK(esp_pm_configure(&pm));
+    if (esp_pm_configure(&pm) != ESP_OK) ESP_LOGW(TAG, "power management not configured");
 #endif
+
+    uint8_t boots = boot_count_rw(1);
+    s_safe_mode = boots >= BOOT_LOOP_LIMIT;
+    if (s_safe_mode) EVT("EVT safe mode: %u resets without %d min of stable uptime", boots, BOOT_STABLE_MS / 60000);
 
     s_mtx = xSemaphoreCreateMutex();
     s_btn_q = xQueueCreate(16, sizeof(btn_msg_t));
@@ -579,10 +678,18 @@ void app_main(void)
     menu_init(&s_menu);
     ESP_LOGI(TAG, "settings: mode %d heat %d cool %d fan %d calib %d", s_persist.s.mode, s_persist.s.heat_sp,
              s_persist.s.cool_sp, s_persist.s.fan, s_persist.calib_tenths);
+    EVT("EVT cfg loaded mode=%d heat=%d cool=%d fan=%d", s_persist.s.mode, s_persist.s.heat_sp, s_persist.s.cool_sp,
+        s_persist.s.fan);
 
-    if (sensor_init() != ESP_OK) ESP_LOGE(TAG, "sensor init failed (control stays in failsafe)");
-    if (display_init() != ESP_OK) ESP_LOGE(TAG, "display init failed");
-    ESP_ERROR_CHECK(ui_init(on_button));
+    if (sensor_init() != ESP_OK) ESP_LOGE(TAG, "EVT fault sensor init (control stays in failsafe)");
+    if (display_init() != ESP_OK) ESP_LOGE(TAG, "EVT fault display init (control continues without a screen)");
+    if (ui_init(on_button) != ESP_OK) ESP_LOGE(TAG, "EVT fault buttons init (Zigbee control only)");
+
+    /* Local control first: it never waits for Zigbee. */
+    if (xTaskCreate(app_task, "app", 4096, NULL, 6, NULL) != pdPASS) {
+        ESP_LOGE(TAG, "app task: out of memory");
+        esp_restart();
+    }
 
     zb_thermostat_cbs_t cbs = {
         .on_settings = zb_on_settings,
@@ -600,7 +707,6 @@ void app_main(void)
         .boost_sp = s_persist.boost_sp, .boost_minutes = s_persist.boost_minutes, .boost_dir = s_persist.boost_dir,
         .swing = s_persist.swing, .sched = s_persist.sched,
     };
-    ESP_ERROR_CHECK(zb_thermostat_start(&cbs, &zi));
-
-    xTaskCreate(app_task, "app", 4096, NULL, 6, NULL);
+    if (zb_thermostat_start(&cbs, &zi) != ESP_OK)
+        ESP_LOGE(TAG, "Zigbee unavailable: local control only (radio fault shown)");
 }

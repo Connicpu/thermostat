@@ -1,0 +1,60 @@
+name: firmware
+
+on:
+  push:
+    paths: ["firmware/**", ".github/workflows/firmware.yml"]
+  pull_request:
+    paths: ["firmware/**", ".github/workflows/firmware.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  production:
+    name: Production build + release guard
+    runs-on: ubuntu-latest
+    container: espressif/idf:v5.3.2
+    defaults: { run: { shell: bash, working-directory: firmware } }
+    steps:
+      - uses: actions/checkout@v4
+      - name: CONFIG_THERMOSTAT_SIM must be off in sdkconfig.defaults
+        run: "! grep -q '^CONFIG_THERMOSTAT_SIM=y' sdkconfig.defaults"
+      - name: idf.py build (warnings are errors)
+        run: |
+          . $IDF_PATH/export.sh
+          idf.py set-target esp32c6 build 2>&1 | tee build.log
+          if grep -E '(^|[^-])warning:' build.log; then echo "::error::compiler warnings"; exit 1; fi
+      - name: No simulator code in the release ELF
+        run: . $IDF_PATH/export.sh && tools/check_release.sh
+      - uses: actions/upload-artifact@v4
+        with: { name: firmware, path: "firmware/build/*.bin" }
+
+  host:
+    name: Host unit tests + HOOTL scenarios
+    runs-on: ubuntu-latest
+    container: espressif/idf:v5.3.2      # for idf.py reconfigure (fetches esp-zigbee-lib headers)
+    defaults: { run: { shell: bash, working-directory: firmware } }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch managed components
+        run: . $IDF_PATH/export.sh && idf.py set-target esp32c6 reconfigure
+      - name: Host tools
+        run: apt-get update && apt-get install -y --no-install-recommends gcc g++ ninja-build cmake
+      - name: Host unit tests (ASan/UBSan, -Werror)
+        run: CMAKE_GENERATOR=Ninja tools/run_host_tests.sh
+      - name: HOOTL scenarios (simulated hardware, virtual time)
+        run: tools/run_hootl.sh --junit hootl.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: hootl-results, path: "firmware/hootl.xml" }
+
+  quirk:
+    name: ZHA quirk tests
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: firmware/ha/zha_quirk } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - run: pip install pytest==9.1.1 zha==2.3.1 zha-quirks==2.3.0 zigpy==2.3.0
+      - run: pytest -q

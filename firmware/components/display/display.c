@@ -30,6 +30,7 @@ static gfx_fb_t s_fb, s_prev;
 static uint64_t now_ms(void) { return (uint64_t)(esp_timer_get_time() / 1000); }
 
 uint64_t display_last_alive_ms(void) { return s_alive; }
+bool display_running(void) { return s_task != NULL; }
 
 void display_post(const display_model_t *m, bool urgent)
 {

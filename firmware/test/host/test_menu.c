@@ -70,6 +70,20 @@ static void timeout_discards_edit(void)
     CHECK_EQ(menu_tick(&M, T + 3 * MENU_TIMEOUT_MS).kind, MA_NONE);   /* no-op at home */
 }
 
+/* Regression (found by HOOTL menu_navigation_buttons): opening the menu long after
+ * the last menu key must not time out on the very next tick. */
+static void open_after_long_idle_does_not_time_out(void)
+{
+    reset();
+    T += 10 * MENU_TIMEOUT_MS;
+    sel();
+    CHECK(!menu_is_home(&M));
+    CHECK_EQ(menu_tick(&M, T + 1).kind, MA_NONE);
+    CHECK(!menu_is_home(&M));
+    sel();
+    CHECK_EQ(M.st, MS_EDIT_MODE);
+}
+
 static void edit_mode_saves(void)
 {
     reset();
@@ -348,6 +362,7 @@ static void info_screen(void)
 static menu_action_t hold_m(int ms, bool release, int *n_pair, int *n_reset)
 {
     btn_t b; btn_init(&b, false);
+    for (int t = 0; t < 50; t += BTN_TICK_MS) btn_tick(&b, false);   /* key seen released after boot */
     menu_action_t last = {0};
     for (int t = 0; t < ms + (release ? 200 : 0); t += BTN_TICK_MS) {
         btn_event_t e = btn_tick(&b, t < ms);
@@ -466,6 +481,7 @@ int main(void)
     RUN(home_keys_pass_through);
     RUN(navigation_wraps_and_back);
     RUN(timeout_discards_edit);
+    RUN(open_after_long_idle_does_not_time_out);
     RUN(edit_mode_saves);
     RUN(edit_fan_toggles);
     RUN(schedule_list_shows_all_knobs);

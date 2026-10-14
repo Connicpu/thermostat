@@ -10,7 +10,7 @@ include_directories(${FW}/control/include ${FW}/hvac_outputs/include ${FW}/senso
 add_executable(test_control test_control.c
     ${FW}/control/control.c ${FW}/hvac_outputs/hvac_interlock.c)
 add_executable(test_misc test_misc.c
-    ${FW}/sensor/sht40_parse.c ${FW}/ui/buttons.c
+    ${FW}/sensor/sht40_parse.c ${FW}/sensor/sensor_stuck.c ${FW}/ui/buttons.c
     ${FW}/display/gfx.c ${FW}/display/font_data.c ${FW}/display/display_render.c ${FW}/control/control.c)
 add_executable(test_menu test_menu.c
     ${FW}/ui/menu.c ${FW}/control/schedule.c ${FW}/ui/buttons.c
