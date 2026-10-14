@@ -98,6 +98,25 @@ export const cardStyles = css`
   .sec-b { margin-top: 12px; display: flex; flex-direction: column; gap: 12px; }
   section.closed .sec-b { display: none; }
 
+  /* info tooltips */
+  .period-row { display: inline-flex; align-items: center; gap: 4px; }
+  .info-w { position: relative; display: inline-flex; vertical-align: middle; }
+  .info { border: none; background: none; padding: 4px; margin: -4px 0; border-radius: 50%; color: var(--secondary-text-color); cursor: pointer; display: grid; place-items: center; }
+  .info:hover, .info[aria-expanded='true'] { color: var(--primary-color); }
+  .info:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 0; }
+  svg.xs { width: 16px; height: 16px; }
+  .tip {
+    position: absolute; top: calc(100% + 6px); z-index: 2; width: max-content; max-width: min(240px, 70vw);
+    padding: 8px 10px; border-radius: 8px; font-size: 13px; font-weight: 400; line-height: 1.35; text-align: left;
+    color: var(--card-background-color, #fff); background: var(--primary-text-color, #212121);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); visibility: hidden; opacity: 0; transition: opacity 0.12s;
+  }
+  .tip.open { visibility: visible; opacity: 1; }
+  .info-w.center .tip { left: 50%; transform: translateX(-50%); }
+  .info-w.start .tip { left: -4px; }
+  .info-w.end .tip { right: -4px; }
+  .legend { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--secondary-text-color); }
+
   /* timeline */
   .tl { display: grid; grid-template-columns: 40px 1fr; gap: 6px 8px; align-items: center; font-size: 12px; color: var(--secondary-text-color); }
   .bar { position: relative; height: 14px; border-radius: 7px; overflow: hidden; background: color-mix(in srgb, var(--c) 22%, transparent); }
@@ -130,9 +149,8 @@ export const cardStyles = css`
   .rows .mini, .rows select { background: var(--ct-tile); border-color: transparent; }
   .rows { display: flex; flex-direction: column; gap: 10px; }
   .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; color: var(--primary-text-color); min-height: 36px; }
-  .row .l { display: flex; flex-direction: column; }
-  .row .l span:last-child:not(:first-child) { font-size: 12px; color: var(--secondary-text-color); }
-  .row .r { color: var(--secondary-text-color); }
+  .row .l { display: flex; align-items: center; gap: 4px; }
+   .row .r { color: var(--secondary-text-color); }
   .row .r.bad { color: var(--error-color, #db4437); font-weight: 500; }
   select { font: inherit; font-size: 14px; color: var(--primary-text-color); background: var(--card-background-color, var(--ha-card-background, #fff)); border: 1px solid var(--ct-divider); border-radius: 6px; padding: 4px 6px; }
   .btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }

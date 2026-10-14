@@ -13,19 +13,21 @@ number tiles with a single card that covers everything the quirk exposes.
 
 * **Room:** temperature and humidity, plus Heat / Cool / Fan chips for the running state (`hvac_action`, fan mode).
 * **Setpoint:** − / + buttons with a badge for the active program period (Day, Night, Morning boost, or
-  "Day (no clock)") and its hours. The caption names the program value the buttons change,
+  "Day (no clock)") and its hours. The (i) next to the badge names the program value the buttons change,
   e.g. *Changes the Day heating program setpoint*. On the thermostat, the setpoint *is* the current
   period's program temperature. Taps are batched (0.5 s) into one `climate.set_temperature`; an unsent value shows in italics
   with a dotted underline, and screen readers hear "sending…". The value is a keyboard slider: arrows ±1 step,
   PageUp/PageDown ±5, Home/End min/max.
 * **Mode:** Off / Heat / Cool only (any Auto / heat_cool is filtered out), plus a **Fan On / Auto** toggle.
+* **Boost** (first, open by default): target, timed length, direction, To target / Timed / Cancel, and the live state with time left.
+* **Morning heating boost:** duration and offset.
 * **Program schedule:** a 24 h timeline for heating and cooling (day solid, night light, morning boost
   hatched, a marker for now). Below it, Day and Night tiles for each mode with the start time and target;
   the tile in use is outlined and tagged NOW.
-* **Morning heating boost:** duration and offset.
-* **Boost:** target, timed length, direction, To target / Timed / Cancel, and the live state with time left.
 * **Tuning & status:** temperature swing, program period, last boost result.
-* **Warnings:** device unavailable, no clock yet (holding the day program), and failed boosts (rejected, failsafe, limit).
+* **Help text** sits behind small (i) buttons, so the card stays quiet. Each opens on hover, focus or tap,
+  closes on Esc or a click elsewhere, and is linked with `aria-describedby`.
+* **Warnings** always stay visible: device unavailable, no clock yet (holding the day program), and failed boosts (rejected, failsafe, limit).
 
 ### Units
 Temperatures follow Home Assistant's unit system. HA already converts the climate entity and the
@@ -62,7 +64,7 @@ YAML options are in [`example.yaml`](example.yaml):
 | `device_id` | first Connie thermostat-v3 | Device to show |
 | `name` | device name | Card title |
 | `show_schedule`, `show_morning_boost`, `show_manual_boost`, `show_status` | `true` | Show or hide a section |
-| `collapsed` | `[boost, status]` | Sections that start closed (`schedule`, `morning`, `boost`, `status`); they can still be opened by tapping. Listing a section here only adds to the defaults |
+| `collapsed` | `[status]` | Sections that start closed (`schedule`, `morning`, `boost`, `status`); they can still be opened by tapping. Listing a section here only adds to the defaults |
 | `entities` | auto | Override any discovered entity (keys as in `src/model.js` `ENTITY_KEYS`) |
 
 ## Releasing
@@ -90,7 +92,7 @@ npm run screenshots   # headless system Chrome renders demo/ to screenshots/*.pn
 
 `demo/index.html` loads the built card with the mock hass and HA's default light/dark theme variables.
 Serve this folder and open `demo/?theme=dark&scenario=cool-night`. The scenarios are `heat-day`,
-`cool-night` and `morning-boost`.
+`cool-night`, `morning-boost` and `tooltip` (the setpoint tooltip pinned open).
 
 Source: `src/model.js` (discovery, units and schedule maths; no DOM), `src/connie-thermostat-card.js`,
 `src/editor.js`, `src/styles.js` and `src/icons.js`.

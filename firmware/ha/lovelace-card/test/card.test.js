@@ -97,6 +97,76 @@ describe('card', () => {
     expect(el.hass.calls).toEqual([{ domain: 'climate', service: 'set_temperature', data: { entity_id: `climate.${PREFIX}`, temperature: 50 } }]);
   });
 
+  it('puts help text in tooltips: hover, focus, click to pin, Esc and outside click close', async () => {
+    const el = await mount();
+    expect($(el, '.caption')).toBeNull();
+    const w = $(el, '.info-w[data-tip="setpoint"]');
+    const btn = w.querySelector('button.info');
+    const tip = $(el, '#tip-setpoint');
+    expect(tip.getAttribute('role')).toBe('tooltip');
+    expect(tip.textContent).toContain('Changes the Day heating program setpoint');
+    expect(btn.getAttribute('aria-describedby')).toBe('tip-setpoint');
+    expect($(el, '[role="slider"]').getAttribute('aria-describedby')).toBe('tip-setpoint');
+    const isOpen = () => $(el, '#tip-setpoint').classList.contains('open');
+    expect(isOpen()).toBe(false);
+
+    w.dispatchEvent(new Event('mouseenter'));
+    await el.updateComplete;
+    expect(isOpen()).toBe(true);
+    w.dispatchEvent(new Event('mouseleave'));
+    await el.updateComplete;
+    expect(isOpen()).toBe(false);
+
+    btn.dispatchEvent(new Event('focus'));
+    await el.updateComplete;
+    expect(isOpen()).toBe(true);
+    btn.dispatchEvent(new Event('blur'));
+    await el.updateComplete;
+    expect(isOpen()).toBe(false);
+
+    btn.click(); // pinned: survives mouseleave
+    await el.updateComplete;
+    expect(isOpen()).toBe(true);
+    expect(btn.getAttribute('aria-expanded')).toBe('true');
+    w.dispatchEvent(new Event('mouseleave'));
+    await el.updateComplete;
+    expect(isOpen()).toBe(true);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await el.updateComplete;
+    expect(isOpen()).toBe(false);
+
+    btn.click();
+    await el.updateComplete;
+    expect(isOpen()).toBe(true);
+    tip.click(); // inside the tooltip: stays open
+    await el.updateComplete;
+    expect(isOpen()).toBe(true);
+    document.body.click(); // outside
+    await el.updateComplete;
+    expect(isOpen()).toBe(false);
+
+    btn.click();
+    await el.updateComplete;
+    $(el, '.info-w[data-tip="mb-offset"] button.info').click(); // opening another closes the first
+    await el.updateComplete;
+    expect(isOpen()).toBe(false);
+    expect($(el, '#tip-mb-offset').classList.contains('open')).toBe(true);
+  });
+
+  it('keeps warnings visible, not in tooltips', async () => {
+    const el = await mount({}, { patch: { [`sensor.${PREFIX}_schedule_period`]: { state: 'No_clock_holding_day' } } });
+    const b = $(el, '.banner');
+    expect(b.textContent).toContain('holding the day program');
+    expect(b.closest('.tip')).toBeNull();
+    expect($$(el, '.tip').some((t) => t.textContent.includes('holding'))).toBe(false);
+  });
+
+  it('puts boost controls above the schedule', async () => {
+    const el = await mount();
+    expect($$(el, 'section h3').map((h) => h.textContent)).toEqual(['Boost', 'Morning heating boost', 'Program schedule', 'Tuning & status']);
+    expect($(el, 'section .btns')).not.toBeNull(); // Boost is open by default
+  });
+
   it('labels the night cooling period when cooling at night', async () => {
     const el = await mount({}, { patch: { [`climate.${PREFIX}`]: { state: 'cool', attributes: { hvac_action: 'idle', temperature: 72 } }, [`sensor.${PREFIX}_schedule_period`]: { state: 'Night' } } });
     expect(text(el)).toContain('Changes the Night cooling program setpoint');
@@ -153,8 +223,6 @@ describe('card', () => {
   it('starts and cancels boosts, sets the direction', async () => {
     const el = await mount({}, { patch: { [`binary_sensor.${PREFIX}_boost_active`]: { state: 'on' }, [`sensor.${PREFIX}_boost`]: { state: 'Timed_heat' }, [`sensor.${PREFIX}_boost_time_remaining`]: { state: '12' } } });
     expect(text(el)).toContain('Timed heat · 12 min left');
-    $$(el, '.sec-h').find((b) => b.querySelector('h3').textContent === 'Boost').click();
-    await el.updateComplete;
     button(el, 'Timed').click();
     button(el, 'Cancel').click();
     const sel = $(el, 'select[aria-label="Boost direction"]');

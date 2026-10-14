@@ -6,6 +6,7 @@ export {
   mdiClockAlertOutline,
   mdiFan,
   mdiFire,
+  mdiInformationOutline,
   mdiMinus,
   mdiPlus,
   mdiPower,

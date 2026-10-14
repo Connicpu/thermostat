@@ -35,6 +35,7 @@ export class ConnieThermostatCard extends LitElement {
     _config: { state: true },
     _open: { state: true },
     _pending: { state: true },
+    _tip: { state: true },
   };
 
   static styles = cardStyles;
@@ -50,7 +51,15 @@ export class ConnieThermostatCard extends LitElement {
 
   constructor() {
     super();
-    this._open = { schedule: true, morning: true, boost: false, status: false };
+    this._open = { boost: true, morning: true, schedule: true, status: false };
+    /** Open tooltip: { id, pinned } (pinned = opened by click/tap, survives mouseleave/blur). */
+    this._tip = null;
+    this._onDocClick = (ev) => {
+      if (this._tip && !ev.composedPath().some((n) => n.classList?.contains('info-w') && n.dataset.tip === this._tip.id)) this._tip = null;
+    };
+    this._onDocKey = (ev) => {
+      if (ev.key === 'Escape' && this._tip) this._tip = null;
+    };
     this._pending = {};
     this._timers = {};
     /** Overridable clock (minutes after local midnight), for tests and the demo. */
@@ -77,8 +86,16 @@ export class ConnieThermostatCard extends LitElement {
     return { columns: 12, min_columns: 6, rows: 'auto' };
   }
 
+  connectedCallback() {
+    super.connectedCallback();
+    document.addEventListener('click', this._onDocClick, true);
+    document.addEventListener('keydown', this._onDocKey);
+  }
+
   disconnectedCallback() {
     super.disconnectedCallback();
+    document.removeEventListener('click', this._onDocClick, true);
+    document.removeEventListener('keydown', this._onDocKey);
     for (const t of Object.values(this._timers)) clearTimeout(t);
     this._timers = {};
   }
@@ -256,6 +273,30 @@ export class ConnieThermostatCard extends LitElement {
       }} />`;
   }
 
+  /**
+   * Small (i) button with a tooltip. Opens on hover and focus (closes on leave/blur) and
+   * pins on click/tap; Esc or a click elsewhere closes it. The text stays in the DOM so
+   * aria-describedby works even while hidden.
+   */
+  _info(id, text, { align = 'center', label = 'More info' } = {}) {
+    const open = this._tip?.id === id;
+    const show = (pinned) => {
+      if (!this._tip || this._tip.id !== id || pinned) this._tip = { id, pinned: pinned || (this._tip?.id === id && this._tip.pinned) };
+    };
+    const hide = () => {
+      if (this._tip?.id === id && !this._tip.pinned) this._tip = null;
+    };
+    return html`<span class="info-w ${align}" data-tip=${id} @mouseenter=${() => show(false)} @mouseleave=${hide}>
+      <button class="info" type="button" aria-label=${label} aria-describedby="tip-${id}" aria-expanded=${open ? 'true' : 'false'}
+        @focus=${() => show(false)} @blur=${hide}
+        @click=${(e) => {
+          e.stopPropagation();
+          this._tip = open && this._tip.pinned ? null : { id, pinned: true };
+        }}>${icon(I.mdiInformationOutline, 'xs')}</button>
+      <span class="tip ${open ? 'open' : ''}" role="tooltip" id="tip-${id}">${text}</span>
+    </span>`;
+  }
+
   _section(id, title, meta, body) {
     const open = this._open[id];
     return html`<section class=${open ? '' : 'closed'}>
@@ -303,9 +344,9 @@ export class ConnieThermostatCard extends LitElement {
         ${this._renderHeader(name, c)}
         ${this._renderSetpoint(c, mode, period, unavailable)}
         ${this._renderModes(c, mode, unavailable)}
-        ${this._config.show_schedule ? this._renderSchedule(mode, period) : nothing}
-        ${this._config.show_morning_boost ? this._renderMorning(period) : nothing}
         ${this._config.show_manual_boost ? this._renderBoost() : nothing}
+        ${this._config.show_morning_boost ? this._renderMorning(period) : nothing}
+        ${this._config.show_schedule ? this._renderSchedule(mode, period) : nothing}
         ${this._config.show_status ? this._renderStatus() : nothing}
       </div>
     </ha-card>`;
@@ -360,16 +401,16 @@ export class ConnieThermostatCard extends LitElement {
     const periodIcon = period === 'boost' ? I.mdiWeatherSunsetUp : info.day ? I.mdiWeatherSunny : I.mdiWeatherNight;
     const periodName = period === 'boost' ? 'Morning boost' : period === 'noclock' ? 'Day (no clock)' : info.day ? 'Day' : 'Night';
     return html`<div class="setpoint">
-      <span class="period">${icon(periodIcon, 'sm')}${periodName}${info.span ? html` · ${info.span}` : nothing}</span>
+      <span class="period-row"><span class="period">${icon(periodIcon, 'sm')}${periodName}${info.span ? html` · ${info.span}` : nothing}</span>
+        ${this._info('setpoint', `Changes the ${info.label} program setpoint${period === 'boost' ? ' (the morning boost is added on top)' : ''}.`, { label: 'About the setpoint' })}</span>
       <div class="sp-row">
         <button class="round" aria-label="Lower setpoint" ?disabled=${unavailable || v <= a.min_temp} @click=${() => this._stepSetpoint(-1)}>${icon(I.mdiMinus)}</button>
         <span class="sp-val ${'climate' in this._pending ? 'pending' : ''}" role="slider" tabindex=${unavailable ? -1 : 0}
           aria-label="Setpoint" aria-valuenow=${v ?? nothing} aria-valuemin=${a.min_temp ?? nothing} aria-valuemax=${a.max_temp ?? nothing}
           aria-valuetext="${v ?? '—'} ${this._haUnit}, ${info.label}${'climate' in this._pending ? ', sending…' : ''}"
-          aria-disabled=${unavailable ? 'true' : 'false'} @keydown=${(e) => !unavailable && this._spKey(e)}>${v ?? '—'}<small>${this._haUnit}</small></span>
+          aria-describedby="tip-setpoint" aria-disabled=${unavailable ? 'true' : 'false'} @keydown=${(e) => !unavailable && this._spKey(e)}>${v ?? '—'}<small>${this._haUnit}</small></span>
         <button class="round" aria-label="Raise setpoint" ?disabled=${unavailable || v >= a.max_temp} @click=${() => this._stepSetpoint(1)}>${icon(I.mdiPlus)}</button>
       </div>
-      <div class="caption">Changes the <b>${info.label}</b> program setpoint${period === 'boost' ? ' (the morning boost is added on top)' : ''}.</div>
     </div>`;
   }
 
@@ -427,7 +468,7 @@ export class ConnieThermostatCard extends LitElement {
         <span>Cool</span>${this._bar('cool', period, mode)}
         <span class="ticks"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></span>
       </div>
-      <div class="caption" style="text-align:left">Now ${fmtTime(now)}. Solid = day, light = night${num(this._st('morning_boost_duration')) ? ', hatched = morning boost' : ''}.</div>
+      <div class="legend">Now ${fmtTime(now)}${this._info('timeline', `Solid = day, light = night${num(this._st('morning_boost_duration')) ? ', hatched = morning boost' : ''}. The line marks now.`, { align: 'start', label: 'About the timeline' })}</div>
       <div class="wide">
         <div><div class="slot-h" style="margin:0 0 6px">${icon(I.mdiFire, 'sm')}Heating</div>
           <div class="sched">${this._slot('heat', 'day', mode, period)}${this._slot('heat', 'night', mode, period)}</div></div>
@@ -440,8 +481,8 @@ export class ConnieThermostatCard extends LitElement {
     const dur = num(this._st('morning_boost_duration'));
     const meta = period === 'boost' ? 'Running now' : dur ? `${dur} min` : 'Off';
     return this._section('morning', 'Morning heating boost', meta, () => html`<div class="rows">
-      <div class="row"><span class="l"><span>Duration</span><span>After the day heating start; 0 = off</span></span>${this._numStepper('morning_boost_duration', { label: 'morning boost duration' })}</div>
-      <div class="row"><span class="l"><span>Offset</span><span>Added to the day heating target</span></span>${this._numStepper('morning_boost_offset', { delta: true, label: 'morning boost offset' })}</div>
+      <div class="row"><span class="l">Duration${this._info('mb-duration', 'Runs from the day heating start for this long; 0 = off.', { align: 'start', label: 'About morning boost duration' })}</span>${this._numStepper('morning_boost_duration', { label: 'morning boost duration' })}</div>
+      <div class="row"><span class="l">Offset${this._info('mb-offset', 'Added to the day heating target while the morning boost runs.', { align: 'start', label: 'About morning boost offset' })}</span>${this._numStepper('morning_boost_offset', { delta: true, label: 'morning boost offset' })}</div>
     </div>`);
   }
 
@@ -473,7 +514,7 @@ export class ConnieThermostatCard extends LitElement {
     const sched = this._st('schedule_state')?.state;
     const sw = this._st('temperature_swing');
     return this._section('status', 'Tuning & status', '', () => html`<div class="rows">
-      <div class="row"><span class="l"><span>Temperature swing</span><span>± around the setpoint before switching</span></span>${sw ? this._numStepper('temperature_swing', { delta: true, label: 'temperature swing' }) : html`<span class="missing">n/a</span>`}</div>
+      <div class="row"><span class="l">Temperature swing${this._info('swing', 'How far (±) the room may drift from the setpoint before heating or cooling switches.', { align: 'start', label: 'About temperature swing' })}</span>${sw ? this._numStepper('temperature_swing', { delta: true, label: 'temperature swing' }) : html`<span class="missing">n/a</span>`}</div>
       <div class="row"><span>Program period</span><span class="r">${sched ? humanize(sched) : '—'}</span></div>
       <div class="row"><span>Last boost result</span><span class="r ${boostResultIsBad(res) ? 'bad' : ''}">${res ? humanize(res) : '—'}</span></div>
     </div>`);

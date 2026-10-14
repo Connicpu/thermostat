@@ -8,7 +8,7 @@ type: custom:connie-thermostat-card
 # show_morning_boost: true
 # show_manual_boost: true
 # show_status: true
-# collapsed: [boost, status]                    # sections that start closed (default: boost, status)
+# collapsed: [status]                           # sections that start closed (default: status)
 # entities:                                     # override any auto-discovered entity
 #   climate: climate.connie_thermostat_v3
 #   humidity: sensor.hallway_humidity
