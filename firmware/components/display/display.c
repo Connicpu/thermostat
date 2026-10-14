@@ -19,6 +19,11 @@
 #define FULL_EVERY_PARTIALS  20
 #define FULL_EVERY_MS        (6ULL * 3600 * 1000)
 
+/**
+ * Display state. s_mtx guards s_model, s_dirty, s_urgent and s_urgentAt (shared with DisplayPost());
+ * s_alive is the task's heartbeat (ms); s_fb/s_prev are only touched by the display task (current
+ * frame and last frame shown, for partial updates and skip-if-unchanged).
+ */
 static const char *kTag = "display";
 static SemaphoreHandle_t s_mtx;
 static TaskHandle_t s_task;
@@ -28,11 +33,16 @@ static U64 s_urgentAt;
 static volatile U64 s_alive;
 static GfxFb s_fb, s_prev;
 
+/** @return monotonic time in ms (esp_timer). */
 static U64 NowMs(void) { return (U64)(esp_timer_get_time() / 1000); }
 
+/** See display.h. */
 U64 DisplayLastAliveMs(void) { return s_alive; }
+
+/** See display.h. */
 bool DisplayRunning(void) { return s_task != NULL; }
 
+/** Copy the model under the mutex, wake the task if urgent. See display.h. */
 void DisplayPost(const DisplayModel *pM, bool urgent)
 {
     if (!s_mtx) return;
@@ -46,6 +56,12 @@ void DisplayPost(const DisplayModel *pM, bool urgent)
     if (urgent && s_task) xTaskNotifyGive(s_task);
 }
 
+/**
+ * Display task. Every ≤200 ms (or when notified): heartbeat, then decide whether to refresh
+ * (urgent settle time, or the background interval), render the model, skip if the frame is
+ * unchanged, choose full vs partial, and push it to the panel. A failed refresh is logged and the
+ * next one is a full refresh.
+ */
 static void DisplayTask(void *pArg)
 {
     U64 lastRefresh = 0, lastFull = 0;
@@ -87,6 +103,7 @@ static void DisplayTask(void *pArg)
     }
 }
 
+/** See display.h. */
 esp_err_t DisplayInit(void)
 {
     esp_err_t err = Ssd1680BusInit();

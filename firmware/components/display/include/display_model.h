@@ -22,6 +22,12 @@ typedef enum {
 } ViewKind;
 
 #define VIEW_MAX_ROWS 12
+
+/**
+ * What the on-device menu wants on screen (filled by MenuGetView(), see components/ui/menu.h).
+ * kViewHome = normal screen. Plain text only, so the whole model stays memcmp-able for change
+ * detection. label/value: one row each (value right-aligned, may be empty).
+ */
 typedef struct {
     ViewKind kind;
     char    title[20];
@@ -34,6 +40,11 @@ typedef struct {
     bool    bigIsText;                  /* letters: medium font instead of the digit-only big font */
 } MenuView;
 
+/**
+ * Everything the screen shows. Built by the app task, posted with DisplayPost(), rendered by
+ * DisplayRender(). Must stay plain data (no pointers into mutable buffers apart from the constant
+ * pBanner string) because changes are detected with memcmp(); zero-initialise before filling it.
+ */
 typedef struct {
     bool         tempValid;
     I16      temp;        /* c°C */
@@ -50,13 +61,30 @@ typedef struct {
     U16     boostMinLeft;  /* minutes, rounded up (timed) */
     I16      swing;       /* c°C each side of the setpoint; 0 = not shown */
     U8      schedState; /* SchedState: 0 no clock (day), 1 day, 2 night, 3 day + morning boost */
-    const char  *pBanner;
+    const char  *pBanner;      /* optional one-off message (e.g. "FACTORY RESET"), NULL = none */
     MenuView  view;
-    U8      fullEpoch;  /* bump to force a full (de-ghosting) refresh */      /* optional one-off message (e.g. "FACTORY RESET"), NULL = none */
+    U8      fullEpoch;  /* bump to force a full (de-ghosting) refresh */
 } DisplayModel;
 
-/* Temperature formatting helpers shared with the UI. */
-int  TempToDisplay(I16 c100, bool fahrenheit, int *pTenths); /* returns integer part, tenths */
+/**
+ * Convert 0.01 °C to the display unit, rounded to tenths (half away from zero).
+ * @param c100        temperature, 0.01 °C
+ * @param fahrenheit  convert to °F
+ * @param pTenths     out (optional): the tenths digit, 0..9, of the absolute value
+ * @return the integer part (truncated toward zero after rounding)
+ */
+int  TempToDisplay(I16 c100, bool fahrenheit, int *pTenths);
+
+/**
+ * Format 0.01 °C in the display unit into pOut (at most n bytes, NUL-terminated): "21.5" /
+ * "-3.0" with tenths, or the value rounded to a whole degree without. No unit or degree sign.
+ */
 void FormatTemp(char *pOut, int n, I16 c100, bool fahrenheit, bool withTenths);
 
+/**
+ * Render a model into a frame buffer: a menu view (list/value/text/warning) when one is open,
+ * else the home screen (room temperature and humidity, swing, program period, mode, setpoint,
+ * running state, and a bottom bar with the menu hint, banner, boost or Zigbee link state).
+ * Pure: draws into *pFb only.
+ */
 void DisplayRender(GfxFb *pFb, const DisplayModel *pM);

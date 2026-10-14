@@ -1,8 +1,10 @@
 #include "hw_watchdog.h"
 #include "board.h"
 
+/** Driver state: s_armed = HwWatchdogArm() was called; s_wdi = current WDI output level. */
 static bool s_armed, s_wdi;
 
+/** Configure WDI/~EN, watchdog disarmed. See hw_watchdog.h. */
 void HwWatchdogInit(void)
 {
     gpio_config_t cfg = {
@@ -17,12 +19,14 @@ void HwWatchdogInit(void)
     gpio_sleep_sel_dis(BOARD_GPIO_WD_WDI);
 }
 
+/** Toggle WDI. See hw_watchdog.h. */
 void HwWatchdogKick(void)
 {
     s_wdi = !s_wdi;              /* STWD100 resets its timer on either edge */
     gpio_set_level(BOARD_GPIO_WD_WDI, s_wdi);
 }
 
+/** Kick, then drive ~EN low to arm. See hw_watchdog.h. */
 void HwWatchdogArm(void)
 {
     HwWatchdogKick();
@@ -30,4 +34,5 @@ void HwWatchdogArm(void)
     s_armed = true;
 }
 
+/** @return whether the watchdog has been armed. See hw_watchdog.h. */
 bool HwWatchdogArmed(void) { return s_armed; }

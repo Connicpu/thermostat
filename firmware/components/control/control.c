@@ -3,16 +3,19 @@
 #include "control.h"
 #include <string.h>
 
+/** @return v clamped into lo..hi. */
 static I16 Clamp16(I32 v, I16 lo, I16 hi)
 {
     return v < lo ? lo : (v > hi ? hi : (I16)v);
 }
 
+/** @return true if at least dur ms have passed since `since` (false if `since` is in the future). */
 static bool Elapsed(U64 now, U64 since, U32 dur)
 {
     return now >= since && (now - since) >= dur;
 }
 
+/** Reset to failsafe with all stages just turned off. See control.h. */
 void CtrlInit(Ctrl *pC, const CtrlParams *pP, U64 nowMs)
 {
     memset(pC, 0, sizeof(*pC));
@@ -26,6 +29,7 @@ void CtrlInit(Ctrl *pC, const CtrlParams *pP, U64 nowMs)
     pC->fault = kCtrlFaultSensorTimeout;
 }
 
+/** Validate mode/fan, clamp setpoints. See control.h. */
 void CtrlSanitizeSettings(const CtrlParams *pP, CtrlSettings *pS, bool keepHeat)
 {
     if (!CtrlModeValid(pS->mode)) pS->mode = kCtrlModeOff;
@@ -35,6 +39,7 @@ void CtrlSanitizeSettings(const CtrlParams *pP, CtrlSettings *pS, bool keepHeat)
     pS->coolSp = Clamp16(pS->coolSp, pP->minSp, pP->maxSp);
 }
 
+/** Track sensor validity, range fault and failsafe recovery streak. See control.h. */
 void CtrlFeedSensor(Ctrl *pC, const CtrlInput *pIn, U64 nowMs)
 {
     if (!pIn->valid) {
@@ -59,6 +64,10 @@ void CtrlFeedSensor(Ctrl *pC, const CtrlInput *pIn, U64 nowMs)
     }
 }
 
+/**
+ * Switch W, recording its on/off timestamp. Turning on marks a real heat run (for the changeover
+ * gap); turning off starts the heat fan run-on. No-op if already in that state.
+ */
 static void SetW(Ctrl *pC, bool on, U64 now)
 {
     if (on == pC->w) return;
@@ -70,6 +79,10 @@ static void SetW(Ctrl *pC, bool on, U64 now)
     }
 }
 
+/**
+ * Switch Y (compressor), recording its on/off timestamp. Turning on marks a real cooling run;
+ * turning off starts the cool fan run-on. No-op if already in that state.
+ */
 static void SetY(Ctrl *pC, bool on, U64 now)
 {
     if (on == pC->y) return;
@@ -81,6 +94,7 @@ static void SetY(Ctrl *pC, bool on, U64 now)
     }
 }
 
+/** Failsafe, boost, hysteresis, stage timers, fan. See control.h. */
 CtrlOutput CtrlStep(Ctrl *pC, const CtrlSettings *pIn, U64 now)
 {
     CtrlOutput o = {0};
@@ -192,6 +206,7 @@ CtrlOutput CtrlStep(Ctrl *pC, const CtrlSettings *pIn, U64 now)
     return o;
 }
 
+/** Off -> Heat -> Cool -> Off. See control.h. */
 CtrlMode CtrlNextMode(CtrlMode m)
 {
     switch (m) {
@@ -201,11 +216,13 @@ CtrlMode CtrlNextMode(CtrlMode m)
     }
 }
 
+/** See control.h. */
 bool CtrlModeValid(int v)
 {
     return v == kCtrlModeOff || v == kCtrlModeCool || v == kCtrlModeHeat;
 }
 
+/** See control.h. */
 const char *CtrlFaultStr(CtrlFault f)
 {
     switch (f) {
@@ -216,6 +233,7 @@ const char *CtrlFaultStr(CtrlFault f)
     }
 }
 
+/** Resolve direction and deadline, then replace any running boost. See control.h. */
 CtrlBoostResult CtrlBoostStart(Ctrl *pC, const CtrlSettings *pS, CtrlBoostKind kind,
                                      CtrlBoostDir dir, I16 sp, U16 minutes, U64 now)
 {
@@ -260,6 +278,7 @@ CtrlBoostResult CtrlBoostStart(Ctrl *pC, const CtrlSettings *pS, CtrlBoostKind k
     return kBoostOk;
 }
 
+/** See control.h. */
 void CtrlBoostCancel(Ctrl *pC)
 {
     if (!pC->boost.kind) return;
@@ -269,6 +288,7 @@ void CtrlBoostCancel(Ctrl *pC)
     pC->softStop = true;
 }
 
+/** See control.h. */
 CtrlBoostStatus CtrlGetBoostStatus(const Ctrl *pC, U64 now)
 {
     CtrlBoostStatus st = {.kind = pC->boost.kind, .dir = pC->boost.dir, .sp = pC->boost.sp,
@@ -277,11 +297,13 @@ CtrlBoostStatus CtrlGetBoostStatus(const Ctrl *pC, U64 now)
     return st;
 }
 
+/** See control.h. */
 I16 CtrlClampSwing(I32 v)
 {
     return Clamp16(v, CTRL_SWING_MIN, CTRL_SWING_MAX);
 }
 
+/** See control.h. */
 void CtrlSetSwing(Ctrl *pC, I16 swing)
 {
     pC->p.hysteresis = CtrlClampSwing(swing);

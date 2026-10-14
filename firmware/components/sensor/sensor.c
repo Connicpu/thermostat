@@ -15,6 +15,7 @@ static const char *kTag = "sht40";
 static i2c_master_bus_handle_t s_bus;
 static i2c_master_dev_handle_t s_dev;
 
+/** Bring up I2C0 and the SHT40 (soft reset). See sensor.h. */
 esp_err_t SensorInit(void)
 {
     i2c_master_bus_config_t bc = {
@@ -41,6 +42,7 @@ esp_err_t SensorInit(void)
     return err;
 }
 
+/** Measure, check CRC, apply the offset; on I2C error reset bus and sensor. See sensor.h. */
 SensorReading SensorRead(I16 offset)
 {
     SensorReading r = {0};

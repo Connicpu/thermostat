@@ -11,6 +11,11 @@
 
 #define SENSOR_STUCK_MS (20u * 60u * 1000u)
 
+/**
+ * Stuck-sensor detector state. Zero-initialise before first use.
+ * have: a reference reading has been stored. t (0.01 °C) and rh (0.01 %RH): the reference reading.
+ * sinceMs: monotonic time in ms at which the reading last changed.
+ */
 typedef struct {
     bool     have;
     I16  t;
@@ -18,5 +23,16 @@ typedef struct {
     U64 sinceMs;
 } SensorStuck;
 
-/* Feed every valid reading. Returns true while the value has been frozen for SENSOR_STUCK_MS. */
+/**
+ * Feed one valid reading into the stuck detector.
+ *
+ * A reading that differs in temperature or humidity from the stored one restarts the timer.
+ * Pure function: only *pS is modified.
+ *
+ * @param pS      detector state
+ * @param tC100   temperature, 0.01 °C
+ * @param rhC100  relative humidity, 0.01 %RH
+ * @param nowMs   monotonic time, ms
+ * @return true while the identical value has persisted for at least SENSOR_STUCK_MS
+ */
 bool SensorStuckUpdate(SensorStuck *pS, I16 tC100, U16 rhC100, U64 nowMs);

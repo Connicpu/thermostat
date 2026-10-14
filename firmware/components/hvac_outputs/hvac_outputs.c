@@ -20,7 +20,12 @@ static U8 s_retests;
 
 static const gpio_num_t kPins[3] = {BOARD_GPIO_DRV_W, BOARD_GPIO_DRV_Y, BOARD_GPIO_DRV_G};
 
-/* returns a bitmask of pins whose write failed (an error code is authoritative: no debounce) */
+/**
+ * Set the three pins to s: lowered pins first, then raised in the order G, W, Y, and Y is never
+ * raised if G failed (no compressor without the blower). Caller holds s_lock.
+ * @return bitmask (bit0 W, bit1 Y, bit2 G) of pins whose gpio_set_level() failed. An error code is
+ * authoritative, so there is no debounce.
+ */
 static U8 Drive(HvacState s)
 {
     U8 bad = 0;
@@ -40,18 +45,20 @@ static U8 Drive(HvacState s)
     return bad;
 }
 
-/* pad levels as read back through the input buffer (pins are INPUT_OUTPUT) */
+/** @return the pad levels read back through the input buffer (the pins are INPUT_OUTPUT). */
 static HvacState Readback(void)
 {
     return (HvacState){.w = gpio_get_level(BOARD_GPIO_DRV_W) != 0, .y = gpio_get_level(BOARD_GPIO_DRV_Y) != 0,
                           .g = gpio_get_level(BOARD_GPIO_DRV_G) != 0};
 }
 
+/** @return bitmask (bit0 W, bit1 Y, bit2 G) of outputs that differ between a and b. */
 static U8 Diff(HvacState a, HvacState b)
 {
     return (U8)((a.w != b.w) | ((a.y != b.y) << 1) | ((a.g != b.g) << 2));
 }
 
+/** Configure the pins, all off. See hvac_outputs.h. */
 esp_err_t HvacOutputsInit(void)
 {
     const gpio_num_t *pPins = kPins;
@@ -81,6 +88,15 @@ esp_err_t HvacOutputsInit(void)
     return ret;
 }
 
+/**
+ * Latch an output fault for the pins in `bad`: logs an EVT line once per newly faulted pin and
+ * records the time of the first latch (start of the HVAC_RETEST_MS wait).
+ * @param bad   bitmask of faulted pins (bit0 W, bit1 Y, bit2 G)
+ * @param pad   pad levels seen (for the log)
+ * @param cmd   what was commanded (for the log)
+ * @param pWhy  short reason for the log
+ * @param now   esp_timer time, µs
+ */
 static void Latch(U8 bad, HvacState pad, HvacState cmd, const char *pWhy, I64 now)
 {
     if ((bad & ~s_driveFault) != 0)
@@ -90,6 +106,7 @@ static void Latch(U8 bad, HvacState pad, HvacState cmd, const char *pWhy, I64 no
     s_driveFault |= bad;
 }
 
+/** Verify the previous command, re-test a latched fault, then interlock and drive. See hvac_outputs.h. */
 HvacState HvacOutputsSet(HvacState req)
 {
     const I64 now = esp_timer_get_time();
@@ -145,8 +162,10 @@ HvacState HvacOutputsSet(HvacState req)
     return s_state;
 }
 
+/** See hvac_outputs.h. */
 U8 HvacOutputsDriveFault(void) { return s_driveFault | s_cfgFault; }
 
+/** See hvac_outputs.h. */
 HvacState HvacOutputsGet(void)
 {
     portENTER_CRITICAL(&s_lock);
@@ -155,11 +174,13 @@ HvacState HvacOutputsGet(void)
     return s;
 }
 
+/** See hvac_outputs.h. */
 void HvacOutputsAllOff(void)
 {
     HvacOutputsSet((HvacState){0});
 }
 
+/** See hvac_outputs.h. */
 U32 HvacOutputsInterlockFaults(void)
 {
     return s_faults;

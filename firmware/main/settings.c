@@ -16,8 +16,10 @@
 #define FDEF false
 #endif
 
+/** Shared NVS read/write buffer for SettingsLoad()/SettingsSave() (not locked: one caller task). */
 static U8 s_buf[SETTINGS_BLOB_MAX];
 
+/** Defaults, then the NVS blob if it decodes, then sanitize. See settings.h. */
 void SettingsLoad(Persist *pP)
 {
     SettingsDefaults(pP, FDEF);
@@ -35,6 +37,7 @@ void SettingsLoad(Persist *pP)
     SettingsSanitize(pP, FDEF);
 }
 
+/** See settings.h. */
 bool SettingsSave(const Persist *pP)
 {
     size_t n = SettingsEncode(pP, s_buf, sizeof s_buf);
@@ -48,6 +51,7 @@ bool SettingsSave(const Persist *pP)
     return e == ESP_OK;
 }
 
+/** See settings.h. */
 void SettingsErase(void)
 {
     nvs_handle_t h;

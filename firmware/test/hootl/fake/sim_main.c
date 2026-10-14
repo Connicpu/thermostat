@@ -26,28 +26,39 @@ static U64 s_seed = 1, s_rng;
 
 /* ---------------- kv ---------------- */
 #define KV_MAX 256
+
+/**
+ * Sticky key/value store (fault injection and fake configuration); persisted in the state file across sim reboots.
+ */
 static struct { char k[40]; I64 v; } s_kv[KV_MAX];
 static int s_nkv;
 
+/** See sim.h. */
 I64 SimKvGet(const char *pK, I64 def)
 {
     for (int i = 0; i < s_nkv; i++) if (!strcmp(s_kv[i].k, pK)) return s_kv[i].v;
     return def;
 }
+
+/** See sim.h. */
 void SimKvSet(const char *pK, I64 v)
 {
     for (int i = 0; i < s_nkv; i++) if (!strcmp(s_kv[i].k, pK)) { s_kv[i].v = v; return; }
     if (s_nkv < KV_MAX) { snprintf(s_kv[s_nkv].k, sizeof s_kv[0].k, "%s", pK); s_kv[s_nkv++].v = v; }
 }
 
+/** See sim.h. */
 U32 SimRand(void)
 {
     s_rng ^= s_rng << 13; s_rng ^= s_rng >> 7; s_rng ^= s_rng << 17;
     return (U32)(s_rng >> 16);
 }
+
+/** See sim.h. */
 const char *SimOutdir(void) { return s_pOut; }
 
 /* ---------------- output ---------------- */
+/** See sim.h. */
 void SimEmit(const char *pFmt, ...)
 {
     char buf[1024];
@@ -55,6 +66,8 @@ void SimEmit(const char *pFmt, ...)
     printf("@%llu %s\n", (unsigned long long)SimNowMs(), buf);
     fflush(stdout);
 }
+
+/** See sim.h. */
 void SimLog(char level, const char *pTag, const char *pFmt, ...)
 {
     char buf[900];
@@ -64,9 +77,14 @@ void SimLog(char level, const char *pTag, const char *pFmt, ...)
 
 /* ---------------- script ---------------- */
 #define CMD_MAX 2048
+
+/** The test script: commands sorted by file order, each with its virtual time (ms) and command text. */
 static struct { U64 tMs; char line[256]; } s_cmds[CMD_MAX];
 static int s_ncmd, s_cursor;
 
+/**
+ * Read the script: `<ms> <command...>` per line; blank lines and # comments are skipped. Missing file = empty script.
+ */
 static void LoadScript(void)
 {
     FILE *pF = fopen(s_pScriptPath, "r");
@@ -86,6 +104,10 @@ static void LoadScript(void)
     fclose(pF);
 }
 
+/**
+ * Split one command into words and run it: `zb ...` goes to SimZbCmd(), everything else to
+ * SimPeriphCmd(). An unknown command is a test-script bug: emits CMDERR and aborts the run.
+ */
 static void RunCmd(const char *pLine)
 {
     char tmp[256], *argv[16];
@@ -100,8 +122,12 @@ static void RunCmd(const char *pLine)
     SimFinish(kSimExitAbort);
 }
 
+/** Virtual time (ms) of the next script command; UINT64_MAX when the script is done. */
 static U64 NextCmdMs(void) { return s_cursor < s_ncmd ? s_cmds[s_cursor].tMs : UINT64_MAX; }
 
+/**
+ * Run every command due by now. The cursor advances before the command, since a command may reset the chip.
+ */
 static void RunDueCmds(void)
 {
     while (s_cursor < s_ncmd && s_cmds[s_cursor].tMs <= SimNowMs()) {
@@ -110,7 +136,10 @@ static void RunDueCmds(void)
     }
 }
 
-/* highest priority: script commands + watchdog models */
+/**
+ * The sim service task (highest priority, 24): runs due script commands, checks the watchdog
+ * models, then sleeps until the next command or watchdog deadline (1..100 ms).
+ */
 static void SimTask(void *pArg)
 {
     (void)pArg;
@@ -128,8 +157,10 @@ static void SimTask(void *pArg)
     }
 }
 
+/** See sim.h. */
 void SimStartServiceTasks(void) { xTaskCreate(SimTask, "sim", 0, NULL, 24, NULL); }
 
+/** See sim.h. */
 bool SimFaultTaskCreate(const char *pName)
 {
     char k[40];
@@ -138,6 +169,9 @@ bool SimFaultTaskCreate(const char *pName)
 }
 
 /* ---------------- state ---------------- */
+/**
+ * Write the persistent state (virtual time, script cursor, reset reason, kv store, NVS) to the state file.
+ */
 static void SaveState(const char *pReason)
 {
     FILE *pF = fopen(s_pStatePath, "w");
@@ -150,8 +184,10 @@ static void SaveState(const char *pReason)
 
 static char s_resetReason[32] = "POWERON";
 
-/* What the C6 reports after each kind of sim reset. The STWD100 WDO pulls CHIP_EN,
- * which the chip cannot tell from a power-on. */
+/**
+ * Fake esp_reset_reason(): what the C6 reports after each kind of sim reset. The STWD100 WDO pulls
+ * CHIP_EN, which the chip cannot tell from a power-on.
+ */
 esp_reset_reason_t esp_reset_reason(void)
 {
     static const struct { const char *pN; esp_reset_reason_t r; } kM[] = {
@@ -162,6 +198,10 @@ esp_reset_reason_t esp_reset_reason(void)
     return ESP_RST_UNKNOWN;
 }
 
+/**
+ * Restore the previous boot's state file, if any. Virtual time resumes 50 ms later
+ * (reset + ROM boot, outputs low through the pull-downs).
+ */
 static void LoadState(void)
 {
     FILE *pF = fopen(s_pStatePath, "r");
@@ -179,6 +219,7 @@ static void LoadState(void)
     fclose(pF);
 }
 
+/** See sim.h. */
 void SimFinish(int code)
 {
     SaveState(code == kSimExitDone ? "END" : "ABORT");
@@ -187,6 +228,7 @@ void SimFinish(int code)
     _exit(code);
 }
 
+/** See sim.h. */
 void SimReset(const char *pReason)
 {
     SimEmit("RESET %s", pReason);
@@ -195,18 +237,29 @@ void SimReset(const char *pReason)
     _exit(kSimExitReset);
 }
 
+/**
+ * Panic hook for the fake abort()/assert path: emits PANIC with the location and resets (reason PANIC). Does not return.
+ */
 void SimAbort(const char *pWhy, const char *pFile, int line)
 {
     SimEmit("PANIC %s at %s:%d", pWhy, pFile, line);
     SimReset("PANIC");
 }
 
+/**
+ * First task body: run the script commands due at boot (pre-boot fault setup), then the firmware's app_main().
+ */
 static void Boot(void)
 {
     RunDueCmds();          /* everything scheduled up to now: pre-boot fault setup */
     app_main();
 }
 
+/**
+ * Simulator entry point: one process = one boot. Parses the options, restores state, counts the
+ * boot (kv sim.boots), seeds the RNG from --seed and the boot count, then boots the fake hardware and
+ * the kernel. Exits 2 on bad usage, 0 immediately if --until has already passed.
+ */
 int main(int argc, char **pArgv)
 {
     U64 until = 0;

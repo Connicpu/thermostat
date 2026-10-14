@@ -32,6 +32,10 @@ typedef enum {
     kBtnEvRelease,   /* released after kBtnEvHold fired (non-repeating buttons) */
 } BtnEvent;
 
+/**
+ * Debounce / hold state of one button. Fields are internal; read only `stable` (debounced level,
+ * true = pressed) from outside. Times are ms, counted in BTN_TICK_MS steps.
+ */
 typedef struct {
     bool     autorepeat;
     bool     stable;        /* debounced level, true = pressed */
@@ -44,5 +48,23 @@ typedef struct {
     bool     stuck;         /* held >= BTN_STUCK_MS */
 } Btn;
 
+/**
+ * Reset a button. It stays silent until it has been seen released (debounced), so a key held
+ * or shorted at boot never fires.
+ * @param autorepeat  true for UP/DOWN (press + repeat events), false for MODE (hold stages)
+ */
 void        BtnInit(Btn *pB, bool autorepeat);
+
+/**
+ * Advance the state machine by one BTN_TICK_MS sample. Pure; returns at most one event per tick.
+ *
+ * A level change is accepted after BTN_DEBOUNCE_MS of stable raw samples.
+ * Auto-repeat buttons: kBtnEvPress on press, then kBtnEvRepeat after BTN_REPEAT_DELAY and every
+ * BTN_REPEAT_EVERY, stopping once held for BTN_STUCK_MS.
+ * Other buttons: while held, kBtnEvHold, kBtnEvLong, kBtnEvWarn and kBtnEvVlong fire once each
+ * at their thresholds. On release: kBtnEvPress if released before BTN_HOLD_MS, else kBtnEvRelease.
+ *
+ * @param rawPressed  raw (undebounced) level, true = pressed
+ * @return the event, or kBtnEvNone
+ */
 BtnEvent BtnTick(Btn *pB, bool rawPressed);

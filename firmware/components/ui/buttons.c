@@ -1,12 +1,14 @@
 #include "buttons.h"
 #include <string.h>
 
+/** See buttons.h. */
 void BtnInit(Btn *pB, bool autorepeat)
 {
     memset(pB, 0, sizeof *pB);
     pB->autorepeat = autorepeat;
 }
 
+/** Debounce, then press/repeat or hold-stage events. See buttons.h. */
 BtnEvent BtnTick(Btn *pB, bool raw)
 {
     if (raw == pB->rawLast) {

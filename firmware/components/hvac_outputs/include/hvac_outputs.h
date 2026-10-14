@@ -17,11 +17,48 @@
 #define HVAC_RETEST_MS   (10u * 60u * 1000u)
 #define HVAC_RETEST_MAX  3
 
-esp_err_t    HvacOutputsInit(void);           /* all off, pins as in/out, held through light sleep; error = pin fault latched */
-/* Returns the pad levels read back. If a write fails or a pad does not follow,
- * an output fault is latched: every output is driven low from then on. */
+/**
+ * Configure DRV_W/Y/G as input+output (so the pads can be read back) with pull-downs, latched low
+ * before the driver is enabled, and kept in their awake configuration through auto light sleep.
+ * A pin that fails to configure is latched as a permanent output fault (the on-board 10 kΩ
+ * pull-down keeps that triac off); there is no reboot loop.
+ * @return ESP_OK, or the last gpio_config() error
+ */
+esp_err_t    HvacOutputsInit(void);
+
+/**
+ * Drive the outputs. The only path to the DRV_* GPIOs.
+ *
+ * 1. Verifies the PREVIOUS command once it is HVAC_SETTLE_US old; HVAC_MISMATCH_N consecutive
+ *    readback mismatches on a pin latch an output fault.
+ * 2. A latched fault is re-tested after HVAC_RETEST_MS while the pads read all-off, at most
+ *    HVAC_RETEST_MAX times per boot.
+ * 3. Passes req through HvacInterlock() (a W+Y request counts an interlock fault), forces
+ *    everything off while a fault is latched, and drives the pins (drop first, then G, W, Y;
+ *    never Y without G). A failed GPIO write latches a fault and drives everything low.
+ * Threading: the pin writes and the commanded state are updated under a spinlock, but the
+ * readback/re-test bookkeeping is not. Call from the app task; the one exception is
+ * HvacOutputsAllOff() from the Zigbee task just before a reboot (ZbBeforeReboot in main.c).
+ *
+ * @param req  requested outputs
+ * @return the state actually commanded (after the interlock and fault hold), not the pad readback
+ */
 HvacState HvacOutputsSet(HvacState req);
+
+/** @return the last commanded output state (spinlock-protected copy; safe from any task). */
 HvacState HvacOutputsGet(void);
+
+/** Command all outputs off through HvacOutputsSet() (so the normal verification still runs). */
 void         HvacOutputsAllOff(void);
+
+/**
+ * @return how many times HvacInterlock() has rejected a W+Y request since boot. Non-zero makes
+ * the main loop unhealthy, so the watchdogs stop being kicked.
+ */
 U32     HvacOutputsInterlockFaults(void);
-U8      HvacOutputsDriveFault(void);   /* current fault mask: bit0 W, bit1 Y, bit2 G (clears on a passed re-test) */
+
+/**
+ * @return the current output fault mask: bit0 W, bit1 Y, bit2 G. Readback/write faults clear on
+ * a passed re-test; pin configuration faults last until reboot.
+ */
+U8      HvacOutputsDriveFault(void);

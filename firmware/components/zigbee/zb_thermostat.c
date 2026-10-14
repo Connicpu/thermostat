@@ -58,9 +58,13 @@ static U32 s_timeLocalS;               /* ZCL UTCTime-style seconds (local) at s
 static U64 s_timeAtMs;
 static portMUX_TYPE s_timeMux = portMUX_INITIALIZER_UNLOCKED;
 
+/** @return monotonic time in ms (esp_timer). */
 static U64 MonoMs(void) { return (U64)(esp_timer_get_time() / 1000); }
 
-/* attribute id -> field of s_sched (NULL if not a schedule attribute) */
+/**
+ * @return a pointer to the SchedCfg field backing a schedule attribute id (I16 or U16, see
+ * SchedAttrSigned()), or NULL if id is not a schedule attribute.
+ */
 static void *SchedField(SchedCfg *pC, U16 id)
 {
     switch (id) {
@@ -77,6 +81,8 @@ static void *SchedField(SchedCfg *pC, U16 id)
     default:                        return NULL;
     }
 }
+
+/** @return true if the schedule attribute is a signed temperature (S16), false for U16 times/minutes. */
 static bool SchedAttrSigned(U16 id)
 {
     return id == kZbAttrDayCoolTemp || id == kZbAttrNightCoolTemp || id == kZbAttrDayHeatTemp ||
@@ -87,6 +93,11 @@ static bool SchedAttrSigned(U16 id)
 /* time of day (Time cluster client -> coordinator)                    */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Zigbee scheduler alarm: if joined, read Time, TimeStatus, TimeZone, DstShift and LocalTime from
+ * the coordinator, then reschedule itself (ZbTimeNextDelayMs()). A previous read that got no usable
+ * answer counts as a failure. Runs in the Zigbee task.
+ */
 static void TimeRequest(U8 unused)
 {
     (void)unused;
@@ -111,6 +122,12 @@ static void TimeRequest(U8 unused)
     esp_zb_scheduler_alarm(TimeRequest, 0, ZbTimeNextDelayMs(s_timeFails, s_timeKnown));
 }
 
+/**
+ * Handle the coordinator's Time read response: use LocalTime, or Time + TimeZone + DstShift if
+ * LocalTime is missing, and accept it only if ZbTimeAcceptable(). On success, store it with the
+ * monotonic timestamp under s_timeMux and reset the failure count; otherwise log it and let the
+ * next TimeRequest() count the failure.
+ */
 static void OnTimeResp(const esp_zb_zcl_cmd_read_attr_resp_message_t *pM)
 {
     bool haveUtc = false, haveLocal = false, haveStatus = false;
@@ -145,7 +162,7 @@ static void OnTimeResp(const esp_zb_zcl_cmd_read_attr_resp_message_t *pM)
     ESP_LOGI(kTag, "time sync: local %02lu:%02lu", (unsigned long)(local / 3600 % 24), (unsigned long)(local / 60 % 60));
 }
 
-/* one self-rescheduling poll chain, started on the first join */
+/** Start the self-rescheduling time poll chain (first read after 5 s). Only the first call does anything. */
 static void TimeSyncStart(void)
 {
     static bool s_running;
@@ -154,6 +171,7 @@ static void TimeSyncStart(void)
     esp_zb_scheduler_alarm(TimeRequest, 0, 5000);
 }
 
+/** Extrapolate from the last sync under the spinlock. See zb_thermostat.h. */
 bool ZbThermostatLocalMinute(U16 *pMinute)
 {
     portENTER_CRITICAL(&s_timeMux);
@@ -168,6 +186,11 @@ bool ZbThermostatLocalMinute(U16 *pMinute)
 /* commissioning                                                      */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Zigbee scheduler alarm: start BDB commissioning in `mode`. For network steering, does nothing if
+ * already joined again and otherwise shows pairing (or keeps "lost parent"). Clears s_steerPending
+ * if the start fails.
+ */
 static void CommissioningCb(U8 mode)
 {
     if (mode == ESP_ZB_BDB_MODE_NETWORK_STEERING) {
@@ -182,7 +205,10 @@ static void CommissioningCb(U8 mode)
     }
 }
 
-/* schedule the next (re)join attempt; at most one outstanding */
+/**
+ * Schedule the next (re)join attempt after delayMs. At most one is outstanding (s_steerPending).
+ * @param pWhy  reason, for the EVT log line
+ */
 static void ScheduleSteering(U32 delayMs, const char *pWhy)
 {
     if (s_steerPending) return;
@@ -191,6 +217,9 @@ static void ScheduleSteering(U32 delayMs, const char *pWhy)
     esp_zb_scheduler_alarm(CommissioningCb, ESP_ZB_BDB_MODE_NETWORK_STEERING, delayMs);
 }
 
+/**
+ * Zigbee scheduler alarm, every HEARTBEAT_MS: stamp s_aliveMs so ZbThermostatLink() can detect a stalled stack.
+ */
 static void Heartbeat(U8 unused)
 {
     (void)unused;
@@ -198,6 +227,11 @@ static void Heartbeat(U8 unused)
     esp_zb_scheduler_alarm(Heartbeat, 0, HEARTBEAT_MS);
 }
 
+/**
+ * esp-zigbee application signal handler (vendor callback, Zigbee task). Drives the link state and
+ * the join backoff: init, then rejoin or start steering when factory-new; steering result;
+ * leave; parent lost; and the light sleep request (esp_zb_sleep_now()).
+ */
 void esp_zb_app_signal_handler(esp_zb_app_signal_t *pSigS)
 {
     U32 *pP = pSigS->p_app_signal;
@@ -264,6 +298,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *pSigS)
     }
 }
 
+/** Radio fault, stall check, then the tracked state. See zb_thermostat.h. */
 LinkState ZbThermostatLink(void)
 {
     if (s_radioFault) return kLinkFault;
@@ -274,6 +309,7 @@ LinkState ZbThermostatLink(void)
 /* Never wait for the stack forever: a stalled Zigbee task must not freeze the UI/control loop. */
 #define LOCK_WAIT_MS 1000
 
+/** See zb_thermostat.h. */
 void ZbThermostatPair(void)
 {
     if (!s_started || ZbThermostatLink() == kLinkFault) return;
@@ -287,6 +323,7 @@ void ZbThermostatPair(void)
     esp_zb_lock_release();
 }
 
+/** See zb_thermostat.h. */
 void ZbThermostatFactoryReset(void)
 {
     if (!s_started) return;
@@ -302,6 +339,14 @@ void ZbThermostatFactoryReset(void)
 /* remote attribute writes                                            */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Handle a remote attribute write (Zigbee task, stack lock held).
+ * Thermostat setpoints/mode and fan mode go to onSettings. An unsupported system mode is refused
+ * and the real one republished. Calibration and identify are passed on. Boost cluster: parameters
+ * are clamped and passed to onBoostParams; the command goes to onBoostCommand; swing and schedule
+ * writes are clamped, written back so a read-back shows the stored value, and passed on.
+ * @return ESP_OK, or ESP_ERR_INVALID_ARG for a failed message
+ */
 static esp_err_t OnSetAttr(const esp_zb_zcl_set_attr_value_message_t *pM)
 {
     ESP_RETURN_ON_FALSE(pM && pM->info.status == ESP_ZB_ZCL_STATUS_SUCCESS, ESP_ERR_INVALID_ARG, kTag, "bad msg");
@@ -412,6 +457,16 @@ static esp_ota_handle_t s_ota;
 static bool s_otaTagSeen;
 static U32 s_otaOff, s_otaTotal;
 
+/**
+ * Strip the 6-byte OTA element header (tag + length) from the first chunk of the image, checking
+ * that it is an upgrade image whose length matches the total. Later chunks pass through unchanged.
+ * @param total    total image size from the OTA header
+ * @param pP       chunk
+ * @param n        chunk length
+ * @param pOut     out: start of the payload to write
+ * @param pOutlen  out: payload length
+ * @return ESP_OK, ESP_ERR_INVALID_ARG (bad tag/element) or ESP_ERR_INVALID_SIZE
+ */
 static esp_err_t OtaElement(U32 total, const U8 *pP, U16 n, const U8 **pOut, U16 *pOutlen)
 {
     if (!s_otaTagSeen) {
@@ -430,6 +485,7 @@ static esp_err_t OtaElement(U32 total, const U8 *pP, U16 n, const U8 **pOut, U16
     return ESP_OK;
 }
 
+/** Abort any open OTA write handle and reset the transfer state. */
 static void OtaReset(void)
 {
     if (s_ota) esp_ota_abort(s_ota);
@@ -438,6 +494,12 @@ static void OtaReset(void)
     s_otaTagSeen = false;
 }
 
+/**
+ * OTA client state machine (Zigbee task): START opens the next OTA partition, RECEIVE writes payload
+ * (reporting progress in %), CHECK verifies the byte count, FINISH validates, sets the boot partition,
+ * calls beforeOtaReboot and restarts, and ABORT resets. Any error resets the transfer and reports
+ * progress -1.
+ */
 static esp_err_t OnOta(const esp_zb_zcl_ota_upgrade_value_message_t *pM)
 {
     esp_err_t ret = ESP_OK;
@@ -492,6 +554,9 @@ static esp_err_t OnOta(const esp_zb_zcl_ota_upgrade_value_message_t *pM)
     return ret;
 }
 
+/**
+ * esp-zigbee core action callback: dispatch attribute writes, OTA events and Time read responses; approve offered OTA images.
+ */
 static esp_err_t ActionHandler(esp_zb_core_action_callback_id_t id, const void *pMsg)
 {
     switch (id) {
@@ -524,6 +589,14 @@ static esp_err_t ActionHandler(esp_zb_core_action_callback_id_t id, const void *
 /* any failure building the data model = radio fault (no reboot loop) */
 #define TRY(x) do { esp_err_t _e = (x); if (_e != ESP_OK) { ESP_LOGE(kTag, "%s: %s", #x, esp_err_to_name(_e)); return NULL; } } while (0)
 
+/**
+ * Build endpoint 1: Basic, Identify, Thermostat, Fan Control, Temperature and Humidity Measurement,
+ * the manufacturer Boost cluster (boost, swing and schedule attributes backed by this file's statics)
+ * and the Time and OTA clients.
+ * @param pInit  initial mode, fan and setpoints
+ * @param calib  LocalTemperatureCalibration, 0.1 °C
+ * @return the endpoint list, or NULL if any cluster could not be added (treated as a radio fault)
+ */
 static esp_zb_ep_list_t *BuildEndpoint(const CtrlSettings *pInit, I8 calib)
 {
     esp_zb_cluster_list_t *pCl = esp_zb_zcl_cluster_list_create();
@@ -647,6 +720,11 @@ static esp_zb_ep_list_t *BuildEndpoint(const CtrlSettings *pInit, I8 calib)
 static CtrlSettings s_init;
 static I8 s_initCalib;
 
+/**
+ * Zigbee task: init the stack as a sleepy end device, register the endpoint and action handler,
+ * start the stack and run its main loop forever. On failure the radio fault is recorded and the
+ * task deletes itself (no reboot).
+ */
 static void ZbTask(void *pArg)
 {
     esp_zb_cfg_t cfg = {
@@ -681,6 +759,7 @@ static void ZbTask(void *pArg)
     esp_zb_stack_main_loop();
 }
 
+/** See zb_thermostat.h. */
 esp_err_t ZbThermostatStart(const ZbThermostatCbs *pCbs, const ZbThermostatInit *pInit)
 {
     s_cbs = *pCbs;
@@ -708,12 +787,16 @@ esp_err_t ZbThermostatStart(const ZbThermostatCbs *pCbs, const ZbThermostatInit 
 /* local -> stack                                                     */
 /* ------------------------------------------------------------------ */
 
+/** Set a standard server attribute on endpoint 1 (no report); a failure is logged. */
 static void SetAttr(U16 cluster, U16 attr, void *pV)
 {
     esp_zb_zcl_status_t st = esp_zb_zcl_set_attribute_val(EP, cluster, SERVER, attr, pV, false);
     if (st != ESP_ZB_ZCL_STATUS_SUCCESS) ESP_LOGW(kTag, "set 0x%04x/0x%04x: %d", cluster, attr, st);
 }
 
+/**
+ * Send an explicit attribute report for a Boost cluster attribute to the coordinator (ZHA does not configure reporting for it).
+ */
 static void ReportBoostAttr(U16 attr)
 {
     esp_zb_zcl_report_attr_cmd_t r = {0};
@@ -730,6 +813,7 @@ static void ReportBoostAttr(U16 attr)
     if (e != ESP_OK) ESP_LOGW(kTag, "boost report 0x%04x: %s", attr, esp_err_to_name(e));
 }
 
+/** Skip if unchanged; update attributes; report boost/schedule changes. See zb_thermostat.h. */
 void ZbThermostatPublish(const ZbThermostatState *pSt)
 {
     if (!s_started) return;

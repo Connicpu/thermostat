@@ -7,6 +7,10 @@ static UiEventCb s_cb;
 static volatile bool s_combo;
 static const gpio_num_t kPin[3] = {BOARD_GPIO_BTN_UP, BOARD_GPIO_BTN_DOWN, BOARD_GPIO_BTN_MODE};
 
+/**
+ * esp_timer callback, every BTN_TICK_MS: sample the three buttons (low = pressed), deliver their
+ * events, then detect the UP+DOWN combo (fires once; reset when both are released).
+ */
 static void Tick(void *pArg)
 {
     for (int i = 0; i < 3; i++) {
@@ -22,8 +26,10 @@ static void Tick(void *pArg)
     }
 }
 
+/** See ui.h. */
 void UiLed(bool on) { gpio_set_level(BOARD_GPIO_LED, on ? 0 : 1); }
 
+/** See ui.h. */
 esp_err_t UiInit(UiEventCb cb)
 {
     s_cb = cb;
@@ -50,4 +56,5 @@ esp_err_t UiInit(UiEventCb cb)
     return err;
 }
 
+/** See ui.h. */
 bool UiComboActive(void) { return s_combo; }

@@ -32,6 +32,10 @@ typedef enum {
     kCtrlFanAuto = 0x05,
 } CtrlFan;
 
+/**
+ * The user's normal (non-boost) operating settings, as set from Zigbee, the menu or the schedule.
+ * Setpoints are in 0.01 °C and independent of each other (heat and cool never run in the same mode).
+ */
 typedef struct {
     CtrlMode mode;
     CtrlFan  fan;
@@ -39,6 +43,10 @@ typedef struct {
     I16     coolSp;   /* occupied cooling setpoint, c°C */
 } CtrlSettings;
 
+/**
+ * Tuning and safety limits for the control loop. Times in ms, temperatures in 0.01 °C.
+ * Fill with CTRL_PARAMS_DEFAULT(). Fixed at CtrlInit() except hysteresis (CtrlSetSwing()).
+ */
 typedef struct {
     I16  hysteresis;          /* swing, c°C each side of the setpoint (user setting,
                                    * CTRL_SWING_MIN..MAX, default 0.5 °C)       */
@@ -87,11 +95,16 @@ typedef enum {
     kCtrlFaultTempRange,      /* reading outside tempMin..tempMax */
 } CtrlFault;
 
+/** One sensor sample fed to CtrlFeedSensor(). */
 typedef struct {
     bool    valid;      /* reading succeeded (CRC ok etc.) */
     I16 temp;       /* c°C */
 } CtrlInput;
 
+/**
+ * Result of one CtrlStep(). w/y/g are the *requested* outputs, which still have to pass
+ * HvacInterlock() before they reach the relays.
+ */
 typedef struct {
     bool w, y, g;               /* requested outputs (still pass through the interlock!) */
     CtrlFault fault;         /* != NONE -> failsafe active, all outputs off */
@@ -115,6 +128,10 @@ typedef enum {
 #define BOOST_TIMED_MAX_MIN     120     /* timed boost: 1..120 min */
 #define BOOST_TARGET_MAX_MIN    180     /* boost-to-target gives up after 3 h */
 
+/**
+ * An active boost: a temporary override of what the thermostat asks for (runtime only, never persisted).
+ * kind == kBoostNone means no boost is running; lastEnd then tells why the last one ended.
+ */
 typedef struct {
     CtrlBoostKind kind;
     CtrlMode dir;          /* resolved: kCtrlModeHeat or kCtrlModeCool */
@@ -124,6 +141,10 @@ typedef struct {
     CtrlBoostEnd lastEnd;
 } CtrlBoost;
 
+/**
+ * Snapshot of the boost for reporting (Zigbee attributes, display). Built by CtrlGetBoostStatus().
+ * remainingS: seconds until the hard deadline, rounded up; 0 when no boost is running.
+ */
 typedef struct {
     CtrlBoostKind kind;   /* kBoostNone if inactive */
     CtrlMode dir;
@@ -132,6 +153,10 @@ typedef struct {
     CtrlBoostEnd lastEnd;
 } CtrlBoostStatus;
 
+/**
+ * Complete control-loop state. Owned by one task; none of the Ctrl* functions lock.
+ * Initialise with CtrlInit(). Timestamps (*At, *Until) are monotonic ms.
+ */
 typedef struct {
     CtrlParams p;
     CtrlBoost boost;
@@ -148,40 +173,121 @@ typedef struct {
     U8  goodStreak;
 } Ctrl;
 
+/**
+ * Reset the controller.
+ *
+ * Every output starts off, with wOffAt/yOffAt = nowMs, so after a power blip the compressor and
+ * the heat still get their full minimum off-time. The controller starts in failsafe
+ * (kCtrlFaultSensorTimeout) until pP->recoverSamples good readings have arrived.
+ * The swing is clamped into CTRL_SWING_MIN..MAX.
+ *
+ * @param pC     state to initialise (fully overwritten)
+ * @param pP     parameters, copied
+ * @param nowMs  monotonic time, ms
+ */
 void CtrlInit(Ctrl *pC, const CtrlParams *pP, U64 nowMs);
 
-/* Validate mode/fan and clamp both setpoints into minSp..maxSp. Heating and
- * cooling never run from the same mode, so the two setpoints are independent
- * (no deadband). `keep_heat` is kept for API compatibility and ignored. */
+/**
+ * Make settings safe to run: an unknown mode becomes kCtrlModeOff, an unknown fan mode
+ * becomes kCtrlFanAuto, and both setpoints are clamped into pP->minSp..maxSp. There is no
+ * heat/cool deadband, because heating and cooling never run in the same mode.
+ *
+ * @param pP        limits
+ * @param pS        settings to fix in place
+ * @param keepHeat  ignored (kept for API compatibility)
+ */
 void CtrlSanitizeSettings(const CtrlParams *pP, CtrlSettings *pS, bool keepHeat);
 
-/* Feed a sensor sample (call on every read attempt, valid or not). */
+/**
+ * Feed one sensor read attempt, valid or not. Call on every attempt.
+ *
+ * An invalid reading only resets the recovery streak. A dead sensor is detected by the
+ * timeout in CtrlStep(). A reading outside tempMin..tempMax raises kCtrlFaultTempRange.
+ * A plausible reading refreshes the timeout, and while in failsafe it counts towards the
+ * recoverSamples consecutive good readings needed to clear the fault.
+ *
+ * @param pC     controller
+ * @param pIn    the sample (temp in 0.01 °C)
+ * @param nowMs  monotonic time, ms
+ */
 void CtrlFeedSensor(Ctrl *pC, const CtrlInput *pIn, U64 nowMs);
 
-/* Run one control step; call at least once a second. */
+/**
+ * Run one control step. Call at least once a second.
+ *
+ * In order:
+ *  - failsafe: no valid reading for sensorTimeoutMs, or any fault, turns W, Y and G off
+ *    immediately (no fan run-on), drops the latched calls and ends a running boost (kBoostEndFault);
+ *  - boost: checks the end conditions (mode changed, deadline, target reached, timed-boost
+ *    comfort cap at maxSp/minSp), otherwise forces the boost's direction;
+ *  - hysteresis: latched heat/cool calls with +/- p.hysteresis around the setpoint;
+ *  - W and Y: minimum on/off times and the changeover gap (only after that stage actually ran).
+ *    After a boost ends or is displaced (softStop), the running stage still finishes its minimum
+ *    on-time;
+ *  - G: on when the fan mode is On, with Y, with W if heatDrivesFan, and during the run-on after W/Y.
+ *
+ * @param pC     controller
+ * @param pS     current settings (sanitised copy is used; *pS is not modified)
+ * @param nowMs  monotonic time, ms
+ * @return requested outputs plus demand/waiting/fault flags
+ */
 CtrlOutput CtrlStep(Ctrl *pC, const CtrlSettings *pS, U64 nowMs);
 
-/* Next mode: OFF -> HEAT -> COOL -> OFF. */
+/** @return the next system mode for the mode button: Off -> Heat -> Cool -> Off (unknown -> Off). */
 CtrlMode CtrlNextMode(CtrlMode m);
+
+/** @return true if v is one of the supported CtrlMode values (Off, Cool, Heat). */
 bool CtrlModeValid(int v);
 
+/** @return a short upper-case display string for a fault ("OK", "SENSOR FAIL", "TEMP RANGE", "?"). */
 const char *CtrlFaultStr(CtrlFault f);
 
-/* Start a boost. `s` = current normal settings (used for the AUTO boost direction of a
- * timed boost and for detecting later mode changes). kBoostToTarget uses
- * `sp` (clamped to minSp..maxSp) and ends when reached or after
- * BOOST_TARGET_MAX_MIN. kBoostTimed runs `minutes` (1..120). Starting a new
- * boost replaces a running one. All safety rules still apply: the boost only
- * changes what the thermostat *asks for*. */
+/**
+ * Start a boost. A running boost is replaced; a change of direction drops the old latched call.
+ *
+ * kBoostToTarget: sp is clamped to minSp..maxSp. kBoostDirAuto heats if the room is at least one
+ * swing below sp and cools if at least one swing above, otherwise the target is already reached.
+ * The boost ends when the room reaches sp, after BOOST_TARGET_MAX_MIN, or when the system
+ * mode changes.
+ * kBoostTimed: runs `minutes` (BOOST_TIMED_MIN_MIN..MAX_MIN). kBoostDirAuto follows the system
+ * mode, and in Off it follows the room relative to the heat/cool setpoints. It stops early at
+ * maxSp (heat) / minSp (cool).
+ * All safety rules (failsafe, min times, changeover, interlock) still apply: a boost only changes
+ * what the thermostat asks for.
+ *
+ * @param pC       controller
+ * @param pS       current normal settings (direction for Auto, base mode for change detection)
+ * @param kind     kBoostToTarget or kBoostTimed
+ * @param dir      kBoostDirAuto/Heat/Cool
+ * @param sp       target, 0.01 °C (kBoostToTarget only)
+ * @param minutes  duration (kBoostTimed only)
+ * @param nowMs    monotonic time, ms
+ * @return kBoostOk, kBoostErrFault (failsafe or no reading yet), kBoostErrArg,
+ *         kBoostErrAtTarget or kBoostErrNoDirection
+ */
 CtrlBoostResult CtrlBoostStart(Ctrl *pC, const CtrlSettings *pS, CtrlBoostKind kind,
                                      CtrlBoostDir dir, I16 sp, U16 minutes, U64 nowMs);
+
+/**
+ * Cancel a running boost (no-op if none): drops its latched call and records kBoostEndCancelled.
+ * The running stage still finishes its minimum on-time.
+ */
 void CtrlBoostCancel(Ctrl *pC);
 
-/* Clamp a swing value into CTRL_SWING_MIN..MAX. */
+/** @return swing (0.01 °C) clamped into CTRL_SWING_MIN..CTRL_SWING_MAX. */
 I16 CtrlClampSwing(I32 swing);
-/* Change the swing at runtime (clamped). Latched heat/cool calls are kept, so
- * a running stage simply finishes against the new off threshold. */
+
+/**
+ * Change the swing at runtime (clamped). Latched heat/cool calls are kept, so a running stage
+ * simply finishes against the new off threshold.
+ * @param swing  0.01 °C each side of the setpoint
+ */
 void CtrlSetSwing(Ctrl *pC, I16 swing);
+
+/**
+ * @param nowMs  monotonic time, ms
+ * @return the current boost state for reporting
+ */
 CtrlBoostStatus CtrlGetBoostStatus(const Ctrl *pC, U64 nowMs);
 
 #ifdef __cplusplus

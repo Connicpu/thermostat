@@ -8,12 +8,14 @@
 #include "display_model.h"
 #include <string.h>
 
+/** Sht40Crc8() matches the Sensirion datasheet example (0xBEEF -> 0x92). */
 static void Sht40CrcKnownVector(void)
 {
     const U8 d[2] = {0xBE, 0xEF};          /* Sensirion datasheet example: CRC 0x92 */
     CHECK_EQ(Sht40Crc8(d, 2), 0x92);
 }
 
+/** Sht40Parse() converts a known frame to 25.00 °C / 56.50 %RH, rejects a CRC error and clamps RH at 0. */
 static void Sht40ParseValues(void)
 {
     U8 f[6] = {0x66, 0x66, 0, 0x80, 0x00, 0};
@@ -31,6 +33,10 @@ static void Sht40ParseValues(void)
     CHECK_EQ(h, 0);                             /* clamped */
 }
 
+/**
+ * Feed one raw level to the button for `ms` (in BTN_TICK_MS ticks), collecting up to `max` events.
+ * @return the number of events stored in pEvs
+ */
 static int Feed(Btn *pB, bool level, int ms, BtnEvent *pEvs, int max)
 {
     int n = 0;
@@ -41,6 +47,9 @@ static int Feed(Btn *pB, bool level, int ms, BtnEvent *pEvs, int max)
     return n;
 }
 
+/**
+ * Contact bounce produces no events; an auto-repeat key presses once, then repeats after 600 ms every 200 ms.
+ */
 static void ButtonsDebounceAndRepeat(void)
 {
     Btn b; BtnEvent ev[64]; int n;
@@ -55,7 +64,7 @@ static void ButtonsDebounceAndRepeat(void)
     n = Feed(&b, false, 100, ev, 64); CHECK_EQ(n, 0);
 }
 
-/* A key held (stuck/shorted) at boot never fires; it works normally once released. */
+/** A key held (stuck/shorted) at boot never fires, not even its release; it works normally once released. */
 static void ButtonsStuckAtBootIgnored(void)
 {
     Btn b; BtnEvent ev[16]; int n;
@@ -68,7 +77,7 @@ static void ButtonsStuckAtBootIgnored(void)
     n = Feed(&b, true, 5000, ev, 16);  CHECK_EQ(n, 0);         /* UP held at boot: no setpoint change */
 }
 
-/* A key stuck during runtime: auto-repeat stops after BTN_STUCK_MS. */
+/** A key stuck during runtime stops auto-repeating after BTN_STUCK_MS and recovers after a release. */
 static void ButtonsStuckRuntimeRepeatStops(void)
 {
     Btn b; BtnEvent ev[512]; int n;
@@ -82,6 +91,9 @@ static void ButtonsStuckRuntimeRepeatStops(void)
     n = Feed(&b, true, 100, ev, 512);  CHECK_EQ(n, 1); CHECK(!b.stuck);   /* recovers after release */
 }
 
+/**
+ * 20 min of identical readings are reported as frozen; any change, or normal RH noise, keeps the sensor alive.
+ */
 static void SensorFrozenDetection(void)
 {
     SensorStuck s = {0};
@@ -93,6 +105,9 @@ static void SensorFrozenDetection(void)
     for (t = 0; t < 3 * SENSOR_STUCK_MS; t += 2000) CHECK(!SensorStuckUpdate(&n, 2100, (U16)(4500 + (t / 2000) % 2), t));
 }
 
+/**
+ * MODE: short press on release; hold, long, warn and very-long stages at their thresholds; release after a hold.
+ */
 static void ButtonsModeShortLong(void)
 {
     Btn b; BtnEvent ev[8]; int n;
@@ -110,6 +125,7 @@ static void ButtonsModeShortLong(void)
     n = Feed(&b, false, 100, ev, 8); CHECK_EQ(n, 1); CHECK_EQ(ev[0], kBtnEvRelease);
 }
 
+/** FormatTemp() in °C/°F, with and without tenths, including negative values. */
 static void TempFormatting(void)
 {
     char b[16];
@@ -120,6 +136,9 @@ static void TempFormatting(void)
     FormatTemp(b, sizeof b, 2000, true, false);  CHECK(!strcmp(b, "68"));
 }
 
+/**
+ * Write the frame as a plain PBM (P1) image for visual review; silently skipped if the file can't be opened.
+ */
 static void WritePbm(const GfxFb *pFb, const char *pName)
 {
     FILE *pF = fopen(pName, "w");
@@ -129,6 +148,9 @@ static void WritePbm(const GfxFb *pFb, const char *pName)
     fclose(pF);
 }
 
+/**
+ * Render a cool/°C/sensor-fault/pairing screen; nothing may be drawn in the last column. Writes display_preview_cool_c.pbm.
+ */
 static void RenderPreviewCoolCelsiusFault(void)
 {
     static GfxFb s_fb;
@@ -146,6 +168,9 @@ static void RenderPreviewCoolCelsiusFault(void)
     WritePbm(&s_fb, "display_preview_cool_c.pbm");
 }
 
+/**
+ * Render boost-to-target (°F) and timed cool boost screens; the boost bar is inverted. Writes PBM previews.
+ */
 static void RenderPreviewBoosts(void)
 {
     static GfxFb s_fb;
@@ -164,6 +189,9 @@ static void RenderPreviewBoosts(void)
     WritePbm(&s_fb, "display_preview_boost_timed.pbm");
 }
 
+/**
+ * Render a typical heating screen in °F and check the amount of ink is plausible. Writes display_preview.pbm.
+ */
 static void RenderPreview(void)
 {
     static GfxFb s_fb;
@@ -179,6 +207,7 @@ static void RenderPreview(void)
     WritePbm(&s_fb, "display_preview.pbm");
 }
 
+/** Run every test in this file; exit status 1 if any failed (tinytest DONE()). */
 int main(void)
 {
     RUN(Sht40CrcKnownVector);

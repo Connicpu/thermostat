@@ -25,6 +25,7 @@
 #define K(name) SimKvGet(name, 0)
 static void StwdPollEdge(void);
 
+/** Name of the error codes the firmware uses (subset of the real table); "ESP_ERR_?" for others. */
 const char *esp_err_to_name(esp_err_t c)
 {
     switch (c) {
@@ -63,6 +64,10 @@ static int s_padLast[NPIN];
 static int s_outPrev[NPIN];
 static U64 s_outAt[NPIN];
 
+/**
+ * Electrical pad level of GPIO n: a stuck pin (kv gpio.stuck.<n>) wins, then the output latch
+ * when the pin is an output, otherwise the board's resistors (pull-up on 11 = STWD100 ~EN, pull-downs elsewhere).
+ */
 static int Pad(int n)
 {
     char k[32];
@@ -73,8 +78,12 @@ static int Pad(int n)
     return n == 11 ? 1 : 0;   /* board: 10k pull-up on STWD100 ~EN (disarmed), pull-downs on the triac drivers */
 }
 
+/**
+ * Pins whose pad changes are traced: 0 W (heat), 1 Y (cool), 2 G (fan), 8, 10 STWD100 WDI, 11 STWD100 ~EN.
+ */
 static bool Traced(int n) { return n == 0 || n == 1 || n == 2 || n == 8 || n == 10 || n == 11; }
 
+/** Emit "GPIO <n> <level>" when a traced pad changed since the last trace. */
 static void Trace(int n)
 {
     if (!Traced(n)) return;
@@ -82,8 +91,10 @@ static void Trace(int n)
     if (p != s_padLast[n]) { s_padLast[n] = p; SimEmit("GPIO %d %d", n, p); }
 }
 
+/** Trace every pin (used at boot to log the reset state). */
 static void TraceAll(void) { for (int i = 0; i < NPIN; i++) Trace(i); }
 
+/** Fake gpio_config(): records the mode of each pin in the mask; kv gpio.cfgfail.<n> makes it fail. */
 esp_err_t gpio_config(const gpio_config_t *pC)
 {
     for (int n = 0; n < NPIN; n++) {
@@ -97,6 +108,10 @@ esp_err_t gpio_config(const gpio_config_t *pC)
     return ESP_OK;
 }
 
+/**
+ * Fake gpio_set_level(): updates the output latch, remembering the previous level and the time
+ * for the synchroniser model; kv gpio.setfail.<n> makes it fail. Writes to 10/11 poll the STWD100 model.
+ */
 esp_err_t gpio_set_level(gpio_num_t n, U32 level)
 {
     if (n < 0 || n >= NPIN) return ESP_ERR_INVALID_ARG;
@@ -113,6 +128,11 @@ esp_err_t gpio_set_level(gpio_num_t n, U32 level)
 int EpdBusyLevel(void);
 int BtnLevel(int n);
 
+/**
+ * Fake gpio_get_level(): 23 = e-paper BUSY, 3/4/5 = buttons. With the input buffer enabled
+ * it returns the pad, stale within GPIO_SYNC_US of a write, and inverted for the next N reads when
+ * kv gpio.glitch.<n> = N. Output-only pads read 0 as on the C6; plain inputs read s_ext.
+ */
 int gpio_get_level(gpio_num_t n)
 {
     if (n < 0 || n >= NPIN) return 0;
@@ -133,11 +153,17 @@ int gpio_get_level(gpio_num_t n)
     return s_ext[n];
 }
 
+/** No-op; always ESP_OK. */
 esp_err_t gpio_sleep_sel_dis(gpio_num_t n) { (void)n; return ESP_OK; }
 
 /* ================= buttons ================= */
 /* pin 3 = MODE, 4 = UP, 5 = DOWN; active low. kv btn.<pin> = 1 pressed. Bounce: random toggles until bounce_until. */
 static U64 s_bounceUntil[NPIN];
+
+/**
+ * Button pad level (active low; pin 3 = MODE, 4 = UP, 5 = DOWN). kv btn.<pin> = 1 means pressed;
+ * before s_bounceUntil the contact reads random levels.
+ */
 int BtnLevel(int n)
 {
     char k[32];
@@ -147,6 +173,7 @@ int BtnLevel(int n)
     return pressed ? 0 : 1;
 }
 
+/** Pin of a script button name (mode or m, up, down); -1 when unknown. */
 static int BtnPin(const char *pName)
 {
     if (!strcmp(pName, "mode") || !strcmp(pName, "m")) return 3;
@@ -156,13 +183,16 @@ static int BtnPin(const char *pName)
 }
 
 /* ================= esp_timer ================= */
+/** Fake esp_timer: callback, period (us, 0 = one-shot), next expiry (virtual us) and armed flag. */
 struct SimTimer { esp_timer_cb_t cb; void *pArg; U64 period, next; bool active; };
 static struct SimTimer s_timers[16];
 static int s_ntimers;
 static TaskHandle_t s_timerTask;
 
+/** Virtual time in us. */
 I64 esp_timer_get_time(void) { return (I64)SimNowUs(); }
 
+/** Allocate one of 16 timers; kv fault.esp_timer (or a full table) gives ESP_ERR_NO_MEM. */
 esp_err_t esp_timer_create(const esp_timer_create_args_t *pA, esp_timer_handle_t *pOut)
 {
     if (K("fault.esp_timer") || s_ntimers >= 16) return ESP_ERR_NO_MEM;
@@ -171,16 +201,27 @@ esp_err_t esp_timer_create(const esp_timer_create_args_t *pA, esp_timer_handle_t
     *pOut = pT;
     return ESP_OK;
 }
+
+/** Arm timer t to fire `us` from now, then every `period` us (0 = once), and wake the timer task. */
 static esp_err_t Start(esp_timer_handle_t t, U64 us, U64 period)
 {
     t->period = period; t->next = SimNowUs() + us; t->active = true;
     if (s_timerTask) xTaskNotifyGive(s_timerTask);
     return ESP_OK;
 }
+
+/** Fake esp_timer_start_periodic(): period `p` us, first expiry after one period. */
 esp_err_t esp_timer_start_periodic(esp_timer_handle_t t, U64 p) { return Start(t, p, p); }
+
+/** Fake esp_timer_start_once(): fires once after `us`. */
 esp_err_t esp_timer_start_once(esp_timer_handle_t t, U64 us) { return Start(t, us, 0); }
+
+/** Disarm the timer. */
 esp_err_t esp_timer_stop(esp_timer_handle_t t) { t->active = false; return ESP_OK; }
 
+/**
+ * The esp_timer task (priority 22): runs expired callbacks in its own context, then sleeps until the next expiry or a new start.
+ */
 static void TimerTask(void *pArg)
 {
     (void)pArg;
@@ -202,7 +243,10 @@ static void TimerTask(void *pArg)
 }
 
 /* ================= SHT40 + room model ================= */
+/** Fake I2C bus handle (no state). */
 struct SimI2cBus { int dummy; };
+
+/** Fake I2C device handle: only the address matters (0x44 = SHT40). */
 struct SimI2cDev { U16 addr; };
 static struct SimI2cBus s_bus;
 static struct SimI2cDev s_sht;
@@ -213,6 +257,11 @@ static U64 s_roomAt;
 static U16 s_stuckT, s_stuckH;
 static bool s_haveStuck;
 
+/**
+ * Advance the room model to now. Without kv room.model the temperature is just room.t (0.01 °C).
+ * With it: + room.heat while W (pad 0) is on, - room.cool while Y (pad 1) is on (0.01 °C/min), plus a
+ * leak of room.leak %/min towards room.ambient (0.01 °C). The result is written back to room.t.
+ */
 static void RoomUpdate(void)
 {
     U64 now = SimNowUs();
@@ -228,6 +277,7 @@ static void RoomUpdate(void)
     SimKvSet("room.t", (I64)llround(s_roomC * 100.0));
 }
 
+/** SHT40 CRC-8 (poly 0x31, init 0xFF). */
 static U8 Crc8(const U8 *pD, int n)
 {
     U8 c = 0xFF;
@@ -235,6 +285,7 @@ static U8 Crc8(const U8 *pD, int n)
     return c;
 }
 
+/** Fake bus creation; fails when kv sht.busfail is set. */
 esp_err_t i2c_new_master_bus(const i2c_master_bus_config_t *pC, i2c_master_bus_handle_t *pOut)
 {
     (void)pC;
@@ -242,6 +293,8 @@ esp_err_t i2c_new_master_bus(const i2c_master_bus_config_t *pC, i2c_master_bus_h
     *pOut = &s_bus;
     return ESP_OK;
 }
+
+/** Fake device add: records the device address. */
 esp_err_t i2c_master_bus_add_device(i2c_master_bus_handle_t b, const i2c_device_config_t *pC, i2c_master_dev_handle_t *pOut)
 {
     (void)b;
@@ -249,9 +302,15 @@ esp_err_t i2c_master_bus_add_device(i2c_master_bus_handle_t b, const i2c_device_
     *pOut = &s_sht;
     return ESP_OK;
 }
+
+/** Fake bus reset: logs it and counts kv sht.resets. */
 esp_err_t i2c_master_bus_reset(i2c_master_bus_handle_t b) { (void)b; SimEmit("I2C bus reset"); SimKvSet("sht.resets", K("sht.resets") + 1); return ESP_OK; }
 
-/* sht.mode: 0 ok, 1 nak, 2 timeout (bus stuck low), 3 crc, 4 stuck value, 5 intermittent nak (sht.p %), 6 absent */
+/**
+ * Injected SHT40 fault for one transfer, from kv sht.mode: 0 ok, 1 NAK, 2 timeout (bus stuck low:
+ * blocks for timeoutMs, then ESP_ERR_TIMEOUT), 3 CRC error, 4 stuck value, 5 intermittent NAK
+ * (sht.p %, default 50), 6 absent. Modes 3 and 4 are applied by the receive path.
+ */
 static esp_err_t ShtFault(int timeoutMs)
 {
     int m = (int)K("sht.mode");
@@ -261,6 +320,7 @@ static esp_err_t ShtFault(int timeoutMs)
     return ESP_OK;
 }
 
+/** SHT40 write: the 0xFD command starts a high-precision measurement. Anything not at 0x44 fails. */
 esp_err_t i2c_master_transmit(i2c_master_dev_handle_t d, const U8 *pBuf, size_t n, int timeoutMs)
 {
     if (d->addr != 0x44 || n < 1) return ESP_FAIL;
@@ -270,6 +330,11 @@ esp_err_t i2c_master_transmit(i2c_master_dev_handle_t d, const U8 *pBuf, size_t 
     return ESP_OK;
 }
 
+/**
+ * SHT40 read of a 6-byte result: NAKs until 8.3 ms after the measurement command, then returns
+ * the room model temperature and room.rh (0.01 %RH) with ±2/±8 LSB noise (kv sht.noise, default on),
+ * or a frozen value (mode 4) or bad CRC (mode 3). Counts kv sht.reads.
+ */
 esp_err_t i2c_master_receive(i2c_master_dev_handle_t d, U8 *pBuf, size_t n, int timeoutMs)
 {
     if (d->addr != 0x44 || n != 6) return ESP_FAIL;
@@ -300,6 +365,8 @@ esp_err_t i2c_master_receive(i2c_master_dev_handle_t d, U8 *pBuf, size_t n, int 
 #define EPD_W 128
 #define EPD_H 296
 #define EPD_BYTES (EPD_W / 8 * EPD_H)
+
+/** Fake SPI device handle for the e-paper (no state). */
 struct SimSpiDev { int dummy; };
 static struct SimSpiDev s_epd;
 static U8 s_ram24[EPD_BYTES], s_ram26[EPD_BYTES], s_glass[EPD_BYTES];
@@ -308,17 +375,23 @@ static size_t s_cursor;
 static U64 s_busyUntil;
 static int s_refreshes;
 
+/**
+ * e-paper BUSY: high until the current reset/refresh time has elapsed, or forever with kv epd.busy_stuck.
+ */
 int EpdBusyLevel(void)
 {
     if (K("epd.busy_stuck")) return 1;
     return SimNowUs() < s_busyUntil;
 }
 
+/** Fake SPI bus init; kv epd.init_fail gives ESP_ERR_INVALID_STATE. */
 esp_err_t spi_bus_initialize(spi_host_device_t h, const spi_bus_config_t *pC, spi_dma_chan_t dma)
 {
     (void)h; (void)pC; (void)dma;
     return K("epd.init_fail") ? ESP_ERR_INVALID_STATE : ESP_OK;
 }
+
+/** Fake device add; always the e-paper. */
 esp_err_t spi_bus_add_device(spi_host_device_t h, const spi_device_interface_config_t *pC, spi_device_handle_t *pOut)
 {
     (void)h; (void)pC;
@@ -326,6 +399,10 @@ esp_err_t spi_bus_add_device(spi_host_device_t h, const spi_device_interface_con
     return ESP_OK;
 }
 
+/**
+ * Write the panel image as <outdir>/fb_<n>.pbm and emit an "EPD refresh" line with the mode,
+ * ink (black pixel count) and an FNV-1a hash of the image.
+ */
 static void EpdDump(const char *pWhy)
 {
     char path[512];
@@ -342,6 +419,12 @@ static void EpdDump(const char *pWhy)
     SimEmit("EPD refresh n=%d mode=0x%02x ink=%d crc=%08x file=%s why=%s", s_refreshes, s_updMode, ink, crc, path, pWhy);
 }
 
+/**
+ * SSD1680 model. With DC (GPIO 21) low the 1-byte command is decoded: 0x12 SW reset (BUSY 3 ms),
+ * 0x24/0x26 start a RAM write, 0x20 activation (copy RAM 0x24 to the glass, BUSY 0.6 s for update
+ * mode 0xFF else 2 s, dump a PBM). Data bytes fill RAM or set the 0x22 update mode.
+ * Faults: kv epd.spi_fail fails, epd.hang blocks forever.
+ */
 esp_err_t spi_device_polling_transmit(spi_device_handle_t d, spi_transaction_t *pT)
 {
     (void)d;
@@ -373,10 +456,15 @@ esp_err_t spi_device_polling_transmit(spi_device_handle_t d, spi_transaction_t *
 
 /* ================= NVS ================= */
 #define NVS_MAX 64
+
+/** Fake NVS entry (namespace, key, up to 512 value bytes); persisted in the sim state file. */
 static struct { bool used; char ns[16], key[16]; U8 v[512]; size_t n; } s_nvs[NVS_MAX];
 static bool s_nvsInited;
+
+/** Open NVS handles (handle = index + 1); an empty ns marks a free slot. */
 static struct { char ns[16]; bool rw; } s_handles[8];
 
+/** Write every NVS entry to the state file as `nvs <ns> <key> <hex>` ("-" for empty). */
 void SimNvsSave(FILE *pF)
 {
     for (int i = 0; i < NVS_MAX; i++) {
@@ -387,6 +475,7 @@ void SimNvsSave(FILE *pF)
     }
 }
 
+/** Index of entry ns/key, creating an empty one when `create` is set. @return -1 when missing or full */
 static int NvsFind(const char *pNs, const char *pKey, bool create)
 {
     for (int i = 0; i < NVS_MAX; i++) if (s_nvs[i].used && !strcmp(s_nvs[i].ns, pNs) && !strcmp(s_nvs[i].key, pKey)) return i;
@@ -397,6 +486,7 @@ static int NvsFind(const char *pNs, const char *pKey, bool create)
     return -1;
 }
 
+/** Set entry ns/key from a hex string ("-" = empty value). */
 static void NvsPutHex(const char *pNs, const char *pKey, const char *pHex)
 {
     int i = NvsFind(pNs, pKey, true);
@@ -408,6 +498,7 @@ static void NvsPutHex(const char *pNs, const char *pKey, const char *pHex)
     }
 }
 
+/** Restore one `nvs ...` state-file line. @return false if the line is not an NVS entry */
 bool SimNvsLoadLine(const char *pLine)
 {
     char ns[16], key[16], hex[1100];
@@ -416,7 +507,10 @@ bool SimNvsLoadLine(const char *pLine)
     return true;
 }
 
-/* nvs.init: 0 ok, 1 no_free_pages until erased, 2 new_version until erased, 3 partition missing (NOT_FOUND, erase fails too), 4 generic fail */
+/**
+ * Fake nvs_flash_init(), kv nvs.init: 0 ok, 1 NO_FREE_PAGES and 2 NEW_VERSION_FOUND until erased,
+ * 3 partition missing (NOT_FOUND, the erase fails too), 4 generic failure.
+ */
 esp_err_t nvs_flash_init(void)
 {
     switch (K("nvs.init")) {
@@ -427,6 +521,8 @@ esp_err_t nvs_flash_init(void)
     default: s_nvsInited = true; return ESP_OK;
     }
 }
+
+/** Erase every entry and clear nvs.init modes 1/2; modes 3 and 4 make it fail. */
 esp_err_t nvs_flash_erase(void)
 {
     int m = (int)K("nvs.init");
@@ -437,6 +533,11 @@ esp_err_t nvs_flash_erase(void)
     SimEmit("NVS erased");
     return ESP_OK;
 }
+
+/**
+ * Fake nvs_open(): needs nvs_flash_init(); kv nvs.open_fail fails it; read-only opens of an empty
+ * namespace give ESP_ERR_NVS_NOT_FOUND; at most 8 open handles.
+ */
 esp_err_t nvs_open(const char *pNs, nvs_open_mode_t mode, nvs_handle_t *pOut)
 {
     if (!s_nvsInited) return ESP_ERR_NVS_NOT_INITIALIZED;
@@ -451,9 +552,16 @@ esp_err_t nvs_open(const char *pNs, nvs_open_mode_t mode, nvs_handle_t *pOut)
     }
     return ESP_ERR_NO_MEM;
 }
+
+/** Free the handle slot. */
 void nvs_close(nvs_handle_t h) { if (h >= 1 && h <= 8) s_handles[h - 1].ns[0] = 0; }
+
+/** Namespace of handle h ("" when invalid). */
 static const char *Hns(nvs_handle_t h) { return (h >= 1 && h <= 8) ? s_handles[h - 1].ns : ""; }
 
+/**
+ * Fake nvs_get_blob(): size query with pOut == NULL; INVALID_LENGTH when *pLen is too small. kv nvs.read_fail fails it.
+ */
 esp_err_t nvs_get_blob(nvs_handle_t h, const char *pKey, void *pOut, size_t *pLen)
 {
     if (K("nvs.read_fail")) return ESP_FAIL;
@@ -465,6 +573,8 @@ esp_err_t nvs_get_blob(nvs_handle_t h, const char *pKey, void *pOut, size_t *pLe
     *pLen = s_nvs[i].n;
     return ESP_OK;
 }
+
+/** Common write check: a read-write handle, and the nvs.write_fail / nvs.full faults. */
 static esp_err_t WriteCheck(nvs_handle_t h)
 {
     if (h < 1 || h > 8 || !s_handles[h - 1].rw) return ESP_ERR_INVALID_ARG;
@@ -472,6 +582,8 @@ static esp_err_t WriteCheck(nvs_handle_t h)
     if (K("nvs.full")) return ESP_ERR_NVS_NOT_ENOUGH_SPACE;
     return ESP_OK;
 }
+
+/** Fake nvs_set_blob() (up to 512 bytes), logged as "NVS set". Stored immediately; commit is not needed. */
 esp_err_t nvs_set_blob(nvs_handle_t h, const char *pKey, const void *pV, size_t len)
 {
     esp_err_t e = WriteCheck(h);
@@ -482,6 +594,8 @@ esp_err_t nvs_set_blob(nvs_handle_t h, const char *pKey, const void *pV, size_t 
     SimEmit("NVS set %s/%s %zu bytes", Hns(h), pKey, len);
     return ESP_OK;
 }
+
+/** Fake nvs_get_u8(): the entry must be exactly 1 byte. */
 esp_err_t nvs_get_u8(nvs_handle_t h, const char *pKey, U8 *pOut)
 {
     size_t n = 1;
@@ -493,7 +607,11 @@ esp_err_t nvs_get_u8(nvs_handle_t h, const char *pKey, U8 *pOut)
     *pOut = s_nvs[i].v[0];
     return ESP_OK;
 }
+
+/** Stored as a 1-byte blob. */
 esp_err_t nvs_set_u8(nvs_handle_t h, const char *pKey, U8 v) { return nvs_set_blob(h, pKey, &v, 1); }
+
+/** Remove one key. */
 esp_err_t nvs_erase_key(nvs_handle_t h, const char *pKey)
 {
     esp_err_t e = WriteCheck(h);
@@ -503,6 +621,8 @@ esp_err_t nvs_erase_key(nvs_handle_t h, const char *pKey)
     s_nvs[i].used = false;
     return ESP_OK;
 }
+
+/** Remove every key in the handle's namespace. */
 esp_err_t nvs_erase_all(nvs_handle_t h)
 {
     esp_err_t e = WriteCheck(h);
@@ -511,6 +631,8 @@ esp_err_t nvs_erase_all(nvs_handle_t h)
     SimEmit("NVS erase_all %s", Hns(h));
     return ESP_OK;
 }
+
+/** No-op unless kv nvs.commit_fail is set. */
 esp_err_t nvs_commit(nvs_handle_t h) { (void)h; return K("nvs.commit_fail") ? ESP_FAIL : ESP_OK; }
 
 /* ================= OTA ================= */
@@ -519,11 +641,21 @@ esp_err_t nvs_commit(nvs_handle_t h) { (void)h; return K("nvs.commit_fail") ? ES
  * (bytes, 0 = off), ota.setboot_fail. */
 static const esp_partition_t kPart[2] = {{"ota_0", 0x20000, 0x300000, 0}, {"ota_1", 0x320000, 0x300000, 1}};
 static U32 s_otaWritten; static U8 s_otaFirst; static bool s_otaOpen;
+
+/** otadata state of slot i (kv ota.st0/1; default VALID for slot 0 and UNDEFINED for slot 1). */
 static I64 Ost(int i) { return SimKvGet(i ? "ota.st1" : "ota.st0", i ? ESP_OTA_IMG_UNDEFINED : ESP_OTA_IMG_VALID); }
+
+/** Set the otadata state of slot i. */
 static void SetOst(int i, I64 v) { SimKvSet(i ? "ota.st1" : "ota.st0", v); }
+
+/** Whether slot i holds a bootable image (kv ota.img0/1; default slot 0 only). */
 static I64 Oimg(int i) { return SimKvGet(i ? "ota.img1" : "ota.img0", i ? 0 : 1); }
 
-/* bootloader with CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE */
+/**
+ * The bootloader's rollback logic (CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE), run on every sim boot:
+ * a slot still PENDING_VERIFY is ABORTED and the other slot is booted if usable; NEW becomes
+ * PENDING_VERIFY; an INVALID/ABORTED/empty slot falls back to the other one. Sets ota.boot/ota.run.
+ */
 static void OtaBootloader(void)
 {
     int b = (int)SimKvGet("ota.boot", 0), o = !b;
@@ -541,13 +673,18 @@ static void OtaBootloader(void)
     SimEmit("BOOTLOADER running slot %d state %lld", b, (long long)Ost(b));
 }
 
+/** Running slot (kv ota.run). */
 const esp_partition_t *esp_ota_get_running_partition(void) { return &kPart[SimKvGet("ota.run", 0)]; }
+
+/** The other slot; NULL with kv ota.nopart. */
 const esp_partition_t *esp_ota_get_next_update_partition(const esp_partition_t *pS)
 {
     (void)pS;
     if (K("ota.nopart")) return NULL;
     return &kPart[!SimKvGet("ota.run", 0)];
 }
+
+/** otadata state of the slot; ESP_ERR_NOT_FOUND when UNDEFINED. */
 esp_err_t esp_ota_get_state_partition(const esp_partition_t *pP, esp_ota_img_states_t *pSt)
 {
     I64 v = Ost(pP->index);
@@ -555,17 +692,25 @@ esp_err_t esp_ota_get_state_partition(const esp_partition_t *pP, esp_ota_img_sta
     *pSt = (esp_ota_img_states_t)v;
     return ESP_OK;
 }
+
+/** Mark the running slot VALID. */
 esp_err_t esp_ota_mark_app_valid_cancel_rollback(void)
 {
     SetOst((int)SimKvGet("ota.run", 0), ESP_OTA_IMG_VALID);
     SimEmit("OTA mark valid slot %lld", (long long)SimKvGet("ota.run", 0));
     return ESP_OK;
 }
+
+/** Whether the other slot has an image that isn't INVALID/ABORTED. */
 bool esp_ota_check_rollback_is_possible(void)
 {
     int o = !(int)SimKvGet("ota.run", 0);
     return Oimg(o) && Ost(o) != ESP_OTA_IMG_INVALID && Ost(o) != ESP_OTA_IMG_ABORTED;
 }
+
+/**
+ * Mark the running slot INVALID and reboot into the other one; fails if there is no usable image. Does not return on success.
+ */
 esp_err_t esp_ota_mark_app_invalid_rollback_and_reboot(void)
 {
     int r = (int)SimKvGet("ota.run", 0), o = !r;
@@ -577,6 +722,8 @@ esp_err_t esp_ota_mark_app_invalid_rollback_and_reboot(void)
     SimKvSet("ota.boot", o);
     SimReset("OTA_ROLLBACK");
 }
+
+/** Start writing an image; kv ota.begin_fail gives ESP_ERR_OTA_PARTITION_CONFLICT. */
 esp_err_t esp_ota_begin(const esp_partition_t *pP, size_t size, esp_ota_handle_t *pOut)
 {
     (void)size;
@@ -587,6 +734,8 @@ esp_err_t esp_ota_begin(const esp_partition_t *pP, size_t size, esp_ota_handle_t
     SimEmit("OTA begin slot %d", pP->index);
     return ESP_OK;
 }
+
+/** Count image bytes and remember the first one; kv ota.write_fail_after = N fails past N bytes. */
 esp_err_t esp_ota_write(esp_ota_handle_t h, const void *pD, size_t n)
 {
     if (h != 1 || !s_otaOpen) return ESP_ERR_INVALID_ARG;
@@ -596,6 +745,8 @@ esp_err_t esp_ota_write(esp_ota_handle_t h, const void *pD, size_t n)
     s_otaWritten += (U32)n;
     return ESP_OK;
 }
+
+/** Validate the image (first byte 0xE9, at least 1024 bytes) and mark the other slot as holding an image. */
 esp_err_t esp_ota_end(esp_ota_handle_t h)
 {
     if (h != 1 || !s_otaOpen) return ESP_ERR_INVALID_ARG;
@@ -605,7 +756,11 @@ esp_err_t esp_ota_end(esp_ota_handle_t h)
     SimEmit("OTA end ok %u bytes", s_otaWritten);
     return ESP_OK;
 }
+
+/** Close the image write. */
 esp_err_t esp_ota_abort(esp_ota_handle_t h) { (void)h; s_otaOpen = false; SimEmit("OTA abort"); return ESP_OK; }
+
+/** Select slot for the next boot and mark it NEW; kv ota.setboot_fail fails it. */
 esp_err_t esp_ota_set_boot_partition(const esp_partition_t *pP)
 {
     if (K("ota.setboot_fail")) return ESP_FAIL;
@@ -615,12 +770,17 @@ esp_err_t esp_ota_set_boot_partition(const esp_partition_t *pP)
 }
 
 /* ================= reset, watchdogs ================= */
+/** Software reset (reason SW). Does not return. */
 void esp_restart(void) { SimReset("SW"); }
 
 static TaskHandle_t s_twdtTask;
 static U64 s_twdtFed;
 static U64 s_hangAt = UINT64_MAX;
 
+/**
+ * Watch task t (or the caller). Also arms the injected app hang: kv hang.boots = N hangs the next N
+ * boots hang.after ms (default 2000) after this call.
+ */
 esp_err_t esp_task_wdt_add(TaskHandle_t t)
 {
     s_twdtTask = t ? t : xTaskGetCurrentTaskHandle();
@@ -630,6 +790,8 @@ esp_err_t esp_task_wdt_add(TaskHandle_t t)
     if (hb > 0) { SimKvSet("hang.boots", hb - 1); s_hangAt = SimNowUs() + (U64)SimKvGet("hang.after", 2000) * 1000u; }
     return ESP_OK;
 }
+
+/** Feed the task watchdog; once the injected hang time has passed the watched task blocks here forever. */
 esp_err_t esp_task_wdt_reset(void)
 {
     if (xTaskGetCurrentTaskHandle() == s_twdtTask && SimNowUs() >= s_hangAt) {
@@ -646,6 +808,7 @@ static U64 s_wdiEdge;
 static bool s_wdArmed;
 #define STWD_TWD_US 1600000u
 
+/** Sample the STWD100 pins: ~EN (11) low arms it (restarting the timeout), any WDI (10) edge feeds it. */
 static void StwdPoll(void)
 {
     int en = Pad(11), wdi = Pad(10);
@@ -655,6 +818,9 @@ static void StwdPoll(void)
     if (wdi != s_wdiLast) { s_wdiLast = wdi; s_wdiEdge = SimNowUs(); }
 }
 
+/**
+ * Next virtual time (us) at which a watchdog could fire: STWD100 tWD 1.6 s after the last edge, task WDT 5 s after the last feed.
+ */
 U64 SimPeriphNextDeadlineUs(void)
 {
     U64 d = UINT64_MAX;
@@ -663,6 +829,9 @@ U64 SimPeriphNextDeadlineUs(void)
     return d;
 }
 
+/**
+ * Reset the chip if the armed STWD100 saw no WDI edge for 1.6 s (STWD100) or the task watchdog was not fed for 5 s (TASK_WDT).
+ */
 void SimPeriphCheck(void)
 {
     StwdPoll();
@@ -671,10 +840,17 @@ void SimPeriphCheck(void)
     if (s_twdtTask && now - s_twdtFed >= 5000000u) { SimEmit("task_wdt: app task did not reset the watchdog"); SimReset("TASK_WDT"); }
 }
 
+/** Poll the STWD100 right after a write to its pins, so no edge is missed. */
 static void StwdPollEdge(void) { StwdPoll(); }
+
+/** Poll the STWD100 before a script command changes anything. */
 static void GpioHook(void) { StwdPoll(); }
 
 /* ================= boot ================= */
+/**
+ * Power-on state of the fake hardware: outputs low, the bootloader picks the OTA slot, the reset
+ * pad levels are traced, the room model starts from room.t, and the esp_timer task is created.
+ */
 void SimPeriphBoot(void)
 {
     memset(s_out, 0, sizeof s_out);
@@ -687,8 +863,14 @@ void SimPeriphBoot(void)
 }
 
 /* ================= script commands ================= */
+/** Parse a script number (decimal, 0x hex or 0 octal). */
 static I64 Num(const char *pS) { return strtoll(pS, NULL, 0); }
 
+/**
+ * Run a hardware script command: set <kv> <n>, temp <0.01 °C>, btn <mode|m|up|down>
+ * <press|release|bounce ms>, nvs <ns> <key> <hex>, ota pending <other_valid|...>, power cycle, dump, end.
+ * @return false for an unknown command
+ */
 bool SimPeriphCmd(char **pA, int n)
 {
     GpioHook();

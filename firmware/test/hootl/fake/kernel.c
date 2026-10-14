@@ -19,6 +19,7 @@
 #define MAX_TASKS 32
 #define NEVER UINT64_MAX
 
+/** One simulated FreeRTOS task, backed by a pthread that only runs while it holds the baton (s_pCur). */
 struct SimTask {
     pthread_t th;
     pthread_cond_t cv;
@@ -33,6 +34,9 @@ struct SimTask {
     bool notifyWait;
 };
 
+/**
+ * A queue (ring buffer of `len` items of `item` bytes), or a mutex when isMutex (then `owner` is the holder).
+ */
 struct SimQueue {
     size_t item, len, count, head;
     U8 *pBuf;
@@ -47,12 +51,26 @@ static U64 s_nowUs;
 static U64 s_endUs = NEVER;
 static int s_nextId;
 
+/** See sim.h. */
 U64 SimNowUs(void) { return s_nowUs; }
+
+/** See sim.h. */
 U64 SimNowMs(void) { return s_nowUs / 1000; }
+
+/** See sim.h. */
 void SimSetNowUs(U64 t) { s_nowUs = t; }
+
+/** See sim.h. */
 void SimSetEndUs(U64 t) { s_endUs = t; }
+
+/** See sim.h. */
 const char *SimCurTaskName(void) { return s_pCur ? s_pCur->name : "-"; }
 
+/**
+ * Choose the next task to run: the highest-priority ready task, first found after the current one
+ * among equals (round-robin). With none ready, jump virtual time to the earliest timeout and wake
+ * those tasks. Ends the run on deadlock (nothing will ever wake) or when --until is reached.
+ */
 static struct SimTask *Pick(void)
 {
     for (;;) {
@@ -80,7 +98,9 @@ static struct SimTask *Pick(void)
     }
 }
 
-/* hand the baton to the next task and wait until it comes back to `self` */
+/**
+ * Hand the baton to Pick()'s task and block until it comes back to pSelf; a dead pSelf exits its thread instead.
+ */
 static void SwitchAway(struct SimTask *pSelf)
 {
     struct SimTask *pN = Pick();
@@ -91,6 +111,7 @@ static void SwitchAway(struct SimTask *pSelf)
     while (s_pCur != pSelf) pthread_cond_wait(&pSelf->cv, &s_big);
 }
 
+/** Block the current task on pObj (or none) for timeoutUs (NEVER = forever) and switch away. */
 static void Block(U64 timeoutUs, void *pObj)
 {
     struct SimTask *pSelf = s_pCur;
@@ -100,6 +121,7 @@ static void Block(U64 timeoutUs, void *pObj)
     SwitchAway(pSelf);
 }
 
+/** Make pT ready and clear its timeout and wait state. */
 static void Wake(struct SimTask *pT)
 {
     pT->ready = true;
@@ -108,11 +130,13 @@ static void Wake(struct SimTask *pT)
     pT->notifyWait = false;
 }
 
+/** Switch to pWoken right away if it outranks the running task (the current task stays ready). */
 static void MaybePreempt(struct SimTask *pWoken)
 {
     if (pWoken && s_pCur && s_pCur->used && pWoken->prio > s_pCur->prio) SwitchAway(s_pCur);   /* we stay ready */
 }
 
+/** pthread body: wait for the baton, run the task function, delete the task when it returns. */
 static void *Trampoline(void *pP)
 {
     struct SimTask *pT = pP;
@@ -123,6 +147,10 @@ static void *Trampoline(void *pP)
     return NULL;
 }
 
+/**
+ * Fake xTaskCreate(): takes a free slot, honours the kv fault.task.<name> injection, starts the
+ * thread (1 MiB stack; the requested size is ignored) and preempts if the new task outranks the caller.
+ */
 BaseType_t xTaskCreate(TaskFunction_t fn, const char *pName, U32 stack, void *pArg, UBaseType_t prio, TaskHandle_t *pOut)
 {
     (void)stack;
@@ -145,6 +173,7 @@ BaseType_t xTaskCreate(TaskFunction_t fn, const char *pName, U32 stack, void *pA
     return pdPASS;
 }
 
+/** Fake vTaskDelete(): marks the task dead; does not return when deleting the caller. */
 void vTaskDelete(TaskHandle_t h)
 {
     struct SimTask *pT = h ? h : s_pCur;
@@ -153,11 +182,15 @@ void vTaskDelete(TaskHandle_t h)
     if (pT == s_pCur) SwitchAway(pT);   /* does not return for the current task */
 }
 
+/** Fake vTaskDelay(): block for `ticks` ms (1 tick = 1 ms). */
 void vTaskDelay(TickType_t ticks)
 {
     Block((U64)ticks * 1000u, NULL);
 }
 
+/**
+ * Fake vTaskDelayUntil(): block until *pPrev + inc ticks and advance *pPrev; yields even when already late.
+ */
 void vTaskDelayUntil(TickType_t *pPrev, TickType_t inc)
 {
     U64 target = ((U64)*pPrev + inc) * 1000u;
@@ -166,9 +199,15 @@ void vTaskDelayUntil(TickType_t *pPrev, TickType_t inc)
     else Block(0, NULL);   /* still let others run */
 }
 
+/** Virtual time in ticks (ms). */
 TickType_t xTaskGetTickCount(void) { return (TickType_t)(s_nowUs / 1000u); }
+
+/** The running task. */
 TaskHandle_t xTaskGetCurrentTaskHandle(void) { return s_pCur; }
 
+/**
+ * Fake ulTaskNotifyTake(): wait up to `wait` ticks for a notification; clear the count or decrement it. @return the count before
+ */
 U32 ulTaskNotifyTake(BaseType_t clear, TickType_t wait)
 {
     struct SimTask *pSelf = s_pCur;
@@ -181,6 +220,9 @@ U32 ulTaskNotifyTake(BaseType_t clear, TickType_t wait)
     return v;
 }
 
+/**
+ * Fake xTaskNotifyGive(): increment t's count and wake it if it is waiting (preempting if it outranks the caller).
+ */
 BaseType_t xTaskNotifyGive(TaskHandle_t t)
 {
     t->notify++;
@@ -190,6 +232,7 @@ BaseType_t xTaskNotifyGive(TaskHandle_t t)
 
 /* ---------------- queues / mutexes ---------------- */
 
+/** Fake xQueueCreate() (never fails). */
 QueueHandle_t xQueueCreate(UBaseType_t len, UBaseType_t item)
 {
     struct SimQueue *pQ = calloc(1, sizeof *pQ);
@@ -198,6 +241,7 @@ QueueHandle_t xQueueCreate(UBaseType_t len, UBaseType_t item)
     return pQ;
 }
 
+/** Wake the first task blocked on pObj (by slot order). */
 static void WakeWaiters(void *pObj)
 {
     for (int i = 0; i < MAX_TASKS; i++) {
@@ -206,6 +250,7 @@ static void WakeWaiters(void *pObj)
     }
 }
 
+/** Fake xQueueSend(): copy to the tail, blocking up to `wait` ticks while full. */
 BaseType_t xQueueSend(QueueHandle_t q, const void *pItem, TickType_t wait)
 {
     U64 deadline = wait == portMAX_DELAY ? NEVER : s_nowUs + (U64)wait * 1000u;
@@ -219,6 +264,7 @@ BaseType_t xQueueSend(QueueHandle_t q, const void *pItem, TickType_t wait)
     return pdPASS;
 }
 
+/** Fake xQueueReceive(): copy from the head, blocking up to `wait` ticks while empty. */
 BaseType_t xQueueReceive(QueueHandle_t q, void *pItem, TickType_t wait)
 {
     U64 deadline = wait == portMAX_DELAY ? NEVER : s_nowUs + (U64)wait * 1000u;
@@ -233,6 +279,7 @@ BaseType_t xQueueReceive(QueueHandle_t q, void *pItem, TickType_t wait)
     return pdPASS;
 }
 
+/** Fake mutex: a queue with an owner (no recursion, no priority inheritance). */
 SemaphoreHandle_t xSemaphoreCreateMutex(void)
 {
     struct SimQueue *pQ = xQueueCreate(1, 0);
@@ -240,6 +287,7 @@ SemaphoreHandle_t xSemaphoreCreateMutex(void)
     return pQ;
 }
 
+/** Take the mutex, blocking up to `wait` ticks while another task owns it. */
 BaseType_t xSemaphoreTake(SemaphoreHandle_t s, TickType_t wait)
 {
     U64 deadline = wait == portMAX_DELAY ? NEVER : s_nowUs + (U64)wait * 1000u;
@@ -251,6 +299,7 @@ BaseType_t xSemaphoreTake(SemaphoreHandle_t s, TickType_t wait)
     return pdPASS;
 }
 
+/** Release the mutex (any task may) and wake one waiter. */
 BaseType_t xSemaphoreGive(SemaphoreHandle_t s)
 {
     s->owner = NULL;
@@ -258,12 +307,15 @@ BaseType_t xSemaphoreGive(SemaphoreHandle_t s)
     return pdPASS;
 }
 
+/** See sim.h. */
 bool SimMutexHeld(void *pM) { return pM && ((struct SimQueue *)pM)->owner != NULL; }
 
 /* ---------------- start ---------------- */
 
+/** Body of the "main" task: calls the entry function passed in pArg. */
 static void MainTask(void *pArg) { ((void (*)(void))pArg)(); }
 
+/** See sim.h. */
 void SimKernelRun(void (*first)(void))
 {
     pthread_mutex_lock(&s_big);

@@ -14,6 +14,9 @@ static CtrlSettings s_st;
 static U64 s_now;
 static CtrlOutput s_out;
 
+/**
+ * Fresh controller with default parameters but a 0.3 °C swing (the legacy tests' value), time 0, fan Auto.
+ */
 static void Setup(CtrlMode mode, I16 heat, I16 cool)
 {
     s_p = (CtrlParams)CTRL_PARAMS_DEFAULT();
@@ -23,7 +26,10 @@ static void Setup(CtrlMode mode, I16 heat, I16 cool)
     s_st = (CtrlSettings){.mode = mode, .fan = kCtrlFanAuto, .heatSp = heat, .coolSp = cool};
 }
 
-/* advance `ms` in 1 s steps feeding temperature `t` (or an invalid read) */
+/**
+ * Advance `ms` in 1 s steps, feeding temperature t (0.01 °C, or an invalid read) and stepping the
+ * controller each second. Fails the test if W and Y are ever requested together.
+ */
 static void Run(U64 ms, I16 t, bool valid)
 {
     U64 end = s_now + ms;
@@ -36,6 +42,7 @@ static void Run(U64 ms, I16 t, bool valid)
     }
 }
 
+/** Boot starts in failsafe (all off) and needs 3 good samples to recover. */
 static void BootFailsafeUntilGoodSamples(void)
 {
     Setup(kCtrlModeHeat, 2000, 2400);
@@ -49,6 +56,7 @@ static void BootFailsafeUntilGoodSamples(void)
     CHECK_EQ(s_out.fault, kCtrlFaultNone);
 }
 
+/** Heat turns on at SP - swing and off at SP + swing, holding inside the band. */
 static void HeatHysteresis(void)
 {
     Setup(kCtrlModeHeat, 2000, 2400);
@@ -63,6 +71,7 @@ static void HeatHysteresis(void)
     CHECK(!s_out.y);
 }
 
+/** A satisfied heat call is held for exactly the minimum on-time. */
 static void HeatMinOnTime(void)
 {
     Setup(kCtrlModeHeat, 2000, 2400);
@@ -77,6 +86,7 @@ static void HeatMinOnTime(void)
     CHECK(s_now - onAt <= s_p.heatMinOnMs + 1000);
 }
 
+/** Boot counts as "just turned off": the compressor waits its min off-time, and G runs with Y. */
 static void CompressorMinOffAfterBoot(void)
 {
     Setup(kCtrlModeCool, 2000, 2400);
@@ -90,6 +100,7 @@ static void CompressorMinOffAfterBoot(void)
     CHECK(s_out.g);                       /* fan runs with the compressor */
 }
 
+/** After a cooling cycle the compressor waits its min off-time (reporting waiting) before restarting. */
 static void CompressorMinOffBetweenCycles(void)
 {
     Setup(kCtrlModeCool, 2000, 2400);
@@ -106,6 +117,7 @@ static void CompressorMinOffBetweenCycles(void)
     CHECK(s_now - offAt >= s_p.compMinOffMs);
 }
 
+/** A satisfied cooling call keeps Y on for the compressor min on-time. */
 static void CompressorMinOnTime(void)
 {
     Setup(kCtrlModeCool, 2000, 2400);
@@ -118,6 +130,9 @@ static void CompressorMinOnTime(void)
     CHECK(s_now - onAt >= s_p.compMinOnMs);
 }
 
+/**
+ * 30 s without valid readings forces everything off despite min on-time; after recovery min off-time still applies.
+ */
 static void FailsafeSensorTimeoutOverridesMinOn(void)
 {
     Setup(kCtrlModeCool, 2000, 2400);
@@ -137,6 +152,7 @@ static void FailsafeSensorTimeoutOverridesMinOn(void)
     CHECK(s_now - offAt >= s_p.compMinOffMs);
 }
 
+/** An implausible reading (60 °C / -10 °C) is an immediate fault; recovery needs several good samples. */
 static void FailsafeOutOfRangeIsImmediate(void)
 {
     Setup(kCtrlModeHeat, 2000, 2400);
@@ -154,6 +170,7 @@ static void FailsafeOutOfRangeIsImmediate(void)
     CHECK_EQ(s_out.fault, kCtrlFaultNone);
 }
 
+/** Failsafe also stops a fan that runs because the fan mode is On. */
 static void FailsafeKillsFanOnAndRunon(void)
 {
     Setup(kCtrlModeHeat, 2000, 2400);
@@ -164,6 +181,7 @@ static void FailsafeKillsFanOnAndRunon(void)
     CHECK(!s_out.g);
 }
 
+/** Switching the mode to Off stops a running compressor immediately (beats min on-time). */
 static void ModeOffIsImmediate(void)
 {
     Setup(kCtrlModeCool, 2000, 2400);
@@ -174,6 +192,7 @@ static void ModeOffIsImmediate(void)
     CHECK(!s_out.y && !s_out.w);
 }
 
+/** Gas furnace: no G with W, then G run-on of fanRunonHeatMs after W drops. */
 static void FanRunonAfterHeat(void)
 {
     Setup(kCtrlModeHeat, 2000, 2400);
@@ -190,6 +209,7 @@ static void FanRunonAfterHeat(void)
     CHECK(s_now - offAt <= s_p.fanRunonHeatMs + 1000);
 }
 
+/** Fan mode On runs G with no demand; back to Auto turns it off. */
 static void FanOnMode(void)
 {
     Setup(kCtrlModeOff, 2000, 2400);
@@ -201,6 +221,7 @@ static void FanOnMode(void)
     CHECK(!s_out.g);
 }
 
+/** Switching from heat to cool waits changeoverMs after W dropped before Y starts. */
 static void HeatToCoolChangeoverDelay(void)
 {
     Setup(kCtrlModeHeat, 2000, 2400);
@@ -216,6 +237,7 @@ static void HeatToCoolChangeoverDelay(void)
     CHECK(s_now - wOff >= s_p.changeoverMs);
 }
 
+/** Mode switch with immediate cool demand: W drops at once and Y waits for the changeover. */
 static void HeatToCoolModeSwitchNeverOverlaps(void)
 {
     Setup(kCtrlModeHeat, 2000, 2400);
@@ -231,6 +253,9 @@ static void HeatToCoolModeSwitchNeverOverlaps(void)
     CHECK(s_out.y);
 }
 
+/**
+ * Invalid mode/fan values are fixed, setpoints clamped, and heat/cool setpoints stay independent (no deadband).
+ */
 static void SanitizeSettings(void)
 {
     s_p = (CtrlParams)CTRL_PARAMS_DEFAULT();
@@ -251,6 +276,7 @@ static void SanitizeSettings(void)
     CHECK_EQ(s.coolSp, s_p.maxSp);
 }
 
+/** Mode button cycle Off -> Heat -> Cool -> Off; Auto (0x01) and 0x02 are invalid. */
 static void ModeCycle(void)
 {
     CHECK_EQ(CtrlNextMode(kCtrlModeOff), kCtrlModeHeat);
@@ -261,6 +287,7 @@ static void ModeCycle(void)
     CHECK(CtrlModeValid(kCtrlModeOff) && CtrlModeValid(kCtrlModeHeat) && CtrlModeValid(kCtrlModeCool));
 }
 
+/** HvacInterlock(): W+Y drops both and flags a fault; every other combination passes unchanged. */
 static void InterlockRule(void)
 {
     bool f;
@@ -278,8 +305,15 @@ static void InterlockRule(void)
 /* Random long-running soak: random temperatures, setpoints, mode changes and
  * sensor dropouts. Checks the safety invariants on every step. */
 static U32 s_rng = 12345;
+
+/** @return the next value of a fixed-seed LCG (deterministic soak tests). */
 static U32 Rnd(void) { s_rng = s_rng * 1103515245u + 12345u; return s_rng >> 8; }
 
+/**
+ * One simulated week of random temperatures, setpoints, modes, fan modes, dropouts and garbage
+ * readings, checking the safety invariants (no W+Y, failsafe all off, mode rules, compressor
+ * min off/on) on every 1 s step.
+ */
 static void FuzzSafetyInvariants(void)
 {
     Setup(kCtrlModeHeat, 2000, 2400);
@@ -329,6 +363,7 @@ static void FuzzSafetyInvariants(void)
 
 /* ---------------------------- boost ---------------------------- */
 
+/** Boost-to-target (Auto) heats above the normal setpoint, ends when reached and returns to normal. */
 static void BoostTargetHeatReachesAndReturns(void)
 {
     Setup(kCtrlModeHeat, 2000, 2400);
@@ -349,6 +384,9 @@ static void BoostTargetHeatReachesAndReturns(void)
     CHECK(!s_out.w);                           /* back to normal: 22.5 >> 20.0 */
 }
 
+/**
+ * Auto boost-to-target picks cooling when the room is above the target; Y still honours its min on-time after the target is reached.
+ */
 static void BoostTargetCoolAutoDirection(void)
 {
     Setup(kCtrlModeOff, 2000, 2400);
@@ -367,6 +405,9 @@ static void BoostTargetCoolAutoDirection(void)
     CHECK(s_now - onAt <= s_p.compMinOnMs + 1000);
 }
 
+/**
+ * Boost start rejects: no reading yet, already at target, bad timed minutes, bad kind; the target is clamped; timed Auto with nothing to do.
+ */
 static void BoostTargetRejectsBadRequests(void)
 {
     Setup(kCtrlModeHeat, 2000, 2400);
@@ -387,6 +428,7 @@ static void BoostTargetRejectsBadRequests(void)
     CHECK_EQ(CtrlBoostStart(&s_c, &s_st, kBoostTimed, kBoostDirAuto, 0, 10, s_now), kBoostErrNoDirection);
 }
 
+/** Boost-to-target expires after BOOST_TARGET_MAX_MIN. */
 static void BoostTargetGivesUpAfterMax(void)
 {
     Setup(kCtrlModeOff, 2000, 2400);
@@ -399,6 +441,7 @@ static void BoostTargetGivesUpAfterMax(void)
     CHECK(!s_out.w);                           /* mode OFF again */
 }
 
+/** Timed boost forces the call for N minutes (remaining time counts down) and then expires. */
 static void BoostTimedRunsNMinutesAndEnds(void)
 {
     Setup(kCtrlModeHeat, 2000, 2400);
@@ -418,6 +461,7 @@ static void BoostTimedRunsNMinutesAndEnds(void)
     CHECK(!s_out.w);
 }
 
+/** A timed cool boost cannot bypass the compressor min off-time. */
 static void BoostTimedCoolRespectsCompressorMinOff(void)
 {
     Setup(kCtrlModeCool, 2000, 2400);
@@ -434,6 +478,7 @@ static void BoostTimedCoolRespectsCompressorMinOff(void)
     CHECK(s_now - offAt >= s_p.compMinOffMs);
 }
 
+/** Cancel ends the boost (kBoostEndCancelled) and is idempotent. */
 static void BoostCancelReturnsToNormal(void)
 {
     Setup(kCtrlModeOff, 2000, 2400);
@@ -449,6 +494,7 @@ static void BoostCancelReturnsToNormal(void)
     CHECK_EQ(CtrlGetBoostStatus(&s_c, s_now).kind, kBoostNone);
 }
 
+/** Changing the system mode ends a running boost (kBoostEndModeChanged). */
 static void BoostModeChangeCancels(void)
 {
     Setup(kCtrlModeHeat, 2000, 2400);
@@ -462,6 +508,7 @@ static void BoostModeChangeCancels(void)
     CHECK(!s_out.w && !s_out.y);
 }
 
+/** A cool boost during heating never overlaps W and Y and respects min-on plus changeover. */
 static void BoostOppositeDirectionNeverOverlaps(void)
 {
     Setup(kCtrlModeHeat, 2000, 2400);
@@ -474,6 +521,7 @@ static void BoostOppositeDirectionNeverOverlaps(void)
     CHECK(s_c.yOnAt - s_c.wOffAt >= s_p.changeoverMs);
 }
 
+/** A sensor fault (implausible reading or timeout) kills the outputs and ends the boost for good. */
 static void BoostFailsafeKillsAndCancels(void)
 {
     Setup(kCtrlModeOff, 2000, 2400);
@@ -496,6 +544,7 @@ static void BoostFailsafeKillsAndCancels(void)
     CHECK_EQ(CtrlGetBoostStatus(&s_c, s_now).lastEnd, kBoostEndFault);
 }
 
+/** A timed heat boost stops at maxSp (kBoostEndLimit) and can't be restarted there. */
 static void BoostTimedComfortLimit(void)
 {
     Setup(kCtrlModeOff, 2000, 2400);
@@ -509,6 +558,7 @@ static void BoostTimedComfortLimit(void)
     CHECK_EQ(CtrlBoostStart(&s_c, &s_st, kBoostTimed, kBoostDirHeat, 0, 60, s_now), kBoostErrAtTarget);
 }
 
+/** A boost does not survive a controller re-init ("reboot"). */
 static void BoostNotPersistedAcrossReboot(void)
 {
     Setup(kCtrlModeOff, 2000, 2400);
@@ -524,6 +574,9 @@ static void BoostNotPersistedAcrossReboot(void)
     CHECK(!s_out.w);                           /* mode OFF: nothing runs */
 }
 
+/**
+ * Three simulated days of random boosts, cancels, mode changes and faults, checking the safety invariants and the boost deadline.
+ */
 static void FuzzWithBoosts(void)
 {
     Setup(kCtrlModeHeat, 2000, 2400);
@@ -563,6 +616,7 @@ static void FuzzWithBoosts(void)
     CHECK(boosts > 20);
 }
 
+/** Default swing is 0.5 °C; CtrlClampSwing()/CtrlSetSwing() clamp to CTRL_SWING_MIN..MAX. */
 static void SwingDefaultAndClamp(void)
 {
     CtrlParams d = CTRL_PARAMS_DEFAULT();
@@ -576,6 +630,7 @@ static void SwingDefaultAndClamp(void)
     CHECK_EQ(s_c.p.hysteresis, CTRL_SWING_MAX);
 }
 
+/** A 1.0 °C swing moves the heat on/off thresholds to SP -/+ 1.0 °C. */
 static void HeatSwing1c(void)
 {
     Setup(kCtrlModeHeat, 2000, 2400);
@@ -590,6 +645,7 @@ static void HeatSwing1c(void)
     CHECK(!s_out.w);
 }
 
+/** Cooling uses the mirror image of the swing band (on at SP + swing, off at SP - swing). */
 static void CoolSwingMirror(void)
 {
     Setup(kCtrlModeCool, 2000, 2400);
@@ -604,6 +660,7 @@ static void CoolSwingMirror(void)
     CHECK(!s_out.y);
 }
 
+/** Narrowing the swing while heating ends the call against the new off threshold. */
 static void SwingChangeWhileRunning(void)
 {
     Setup(kCtrlModeHeat, 2000, 2400);
@@ -617,6 +674,7 @@ static void SwingChangeWhileRunning(void)
     CHECK(!s_out.w);
 }
 
+/** Even with the smallest swing, W is held for its minimum on-time. */
 static void SwingStillHonoursMinOn(void)
 {
     Setup(kCtrlModeHeat, 2000, 2400);
@@ -630,6 +688,9 @@ static void SwingStillHonoursMinOn(void)
     CHECK(s_now - onAt >= s_p.heatMinOnMs);
 }
 
+/**
+ * Cool setpoint below heat setpoint with a 1.0 °C swing and alternating modes never energises W and Y together.
+ */
 static void WideSwingOverlappingSetpointsNeverOverlap(void)
 {
     /* No deadband any more: cool SP below heat SP, 1.0 °C swing, alternating modes */
@@ -643,6 +704,7 @@ static void WideSwingOverlappingSetpointsNeverOverlap(void)
     CHECK(!(s_out.w && s_out.y));
 }
 
+/** Fan On runs G without heat/cool demand in every mode and never drives W/Y. */
 static void FanOnWithoutDemand(void)
 {
     /* Fan ON runs G with no heat/cool demand in every mode, and never drives W/Y */
@@ -659,6 +721,7 @@ static void FanOnWithoutDemand(void)
     }
 }
 
+/** Run every control and interlock test; exit status 1 if any failed (tinytest DONE()). */
 int main(void)
 {
     RUN(BootFailsafeUntilGoodSamples);

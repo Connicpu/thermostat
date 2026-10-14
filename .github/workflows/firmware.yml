@@ -50,8 +50,8 @@ jobs:
         run: CMAKE_GENERATOR=Ninja tools/run_host_tests.sh
       - name: HOOTL scenarios (simulated hardware, virtual time)
         run: tools/run_hootl.sh --junit hootl.xml
-      - name: Naming conventions (libclang: checker self-test, then host/HOOTL/production DBs + variant config)
-        run: . $IDF_PATH/export.sh && pip install libclang==18.1.1 && python tools/test_check_naming.py && python tools/check_naming.py
+      - name: Naming conventions + doc comments (libclang: checker self-test, then host/HOOTL/production DBs + variant config)
+        run: . $IDF_PATH/export.sh && pip install libclang==18.1.1 && python tools/test_check_naming.py && python tools/check_naming.py && python tools/check_docs.py
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with: { name: hootl-results, path: "firmware/hootl.xml" }

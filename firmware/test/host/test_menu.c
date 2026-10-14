@@ -10,6 +10,9 @@ static Menu s_m;
 static MenuCtx s_c;
 static U64 s_t;
 
+/**
+ * Fresh menu at the main screen, t = 1 s, and a fixed live context (Heat, joined, °C, default schedule, sample sensor/uptime values).
+ */
 static void Reset(void)
 {
     MenuInit(&s_m);
@@ -19,12 +22,23 @@ static void Reset(void)
                      .rawValid = true, .rawTemp = 2263, .rawRh = 4512, .uptimeS = 2 * 86400 + 3 * 3600 + 7 * 60,
                      .sched = SCHED_CFG_DEFAULT()};
 }
+
+/** Send one key event 300 ms after the previous one. @return the menu action */
 static MenuAction Key(MenuKey k, BtnEvent ev) { s_t += 300; return MenuOnKey(&s_m, &s_c, k, ev, s_t); }
+
+/** Short UP press. @return the menu action */
 static MenuAction Up(void)   { return Key(kMenuKeyUp, kBtnEvPress); }
+
+/** Short DOWN press. @return the menu action */
 static MenuAction Down(void) { return Key(kMenuKeyDown, kBtnEvPress); }
+
+/** Short M press. @return the menu action */
 static MenuAction Sel(void)  { return Key(kMenuKeyM, kBtnEvPress); }
+
+/** Open the menu (from the main screen) and move the cursor down to main-list row i. */
 static void GotoItem(int i) { Sel(); for (int k = 0; k < i; k++) Down(); }
 
+/** On the main screen UP/DOWN/combo are returned to the caller; short M opens the menu. */
 static void HomeKeysPassThrough(void)
 {
     Reset();
@@ -38,6 +52,7 @@ static void HomeKeysPassThrough(void)
     CHECK(!MenuIsHome(&s_m));
 }
 
+/** The main list wraps both ways, and Back returns home with a full refresh and no action. */
 static void NavigationWrapsAndBack(void)
 {
     Reset();
@@ -54,6 +69,7 @@ static void NavigationWrapsAndBack(void)
     CHECK_EQ(a.kind, kMaNone);
 }
 
+/** MENU_TIMEOUT_MS without a key returns home without saving the edit; MenuTick() at home is a no-op. */
 static void TimeoutDiscardsEdit(void)
 {
     Reset();
@@ -71,8 +87,9 @@ static void TimeoutDiscardsEdit(void)
     CHECK_EQ(MenuTick(&s_m, s_t + 3 * MENU_TIMEOUT_MS).kind, kMaNone);   /* no-op at home */
 }
 
-/* Regression (found by HOOTL menu_navigation_buttons): opening the menu long after
- * the last menu key must not time out on the very next tick. */
+/**
+ * Regression (HOOTL menu_navigation_buttons): opening the menu long after the last key must not time out on the next tick.
+ */
 static void OpenAfterLongIdleDoesNotTimeOut(void)
 {
     Reset();
@@ -85,6 +102,7 @@ static void OpenAfterLongIdleDoesNotTimeOut(void)
     CHECK_EQ(s_m.st, kMsEditMode);
 }
 
+/** The mode editor cycles Heat -> Cool -> Off (no Auto), wraps, and saves with M. */
 static void EditModeSaves(void)
 {
     Reset();
@@ -103,6 +121,7 @@ static void EditModeSaves(void)
     CHECK_EQ(Sel().value, kCtrlModeCool);
 }
 
+/** The fan editor toggles Auto/On, saves, and reopens at the current value. */
 static void EditFanToggles(void)
 {
     Reset();
@@ -128,8 +147,10 @@ static void EditFanToggles(void)
     CHECK_EQ(Sel().value, kCtrlFanAuto);
 }
 
+/** Open the Schedule submenu and the editor for schedule item `it`. */
 static void OpenSchedItem(int it) { GotoItem(kMiSched); Sel(); for (int k = 0; k < it; k++) Down(); Sel(); }
 
+/** The schedule list shows all 10 items with formatted values plus Back, and wraps to Back. */
 static void ScheduleListShowsAllKnobs(void)
 {
     Reset();
@@ -149,6 +170,7 @@ static void ScheduleListShowsAllKnobs(void)
     CHECK_EQ(s_m.st, kMsList);
 }
 
+/** Start times step by 15 min, snap odd stored minutes to the grid and wrap around midnight both ways. */
 static void ScheduleTimeStepsWrap(void)
 {
     Reset();
@@ -176,6 +198,9 @@ static void ScheduleTimeStepsWrap(void)
     CHECK_EQ(s_m.edit, 1425);
 }
 
+/**
+ * Schedule temperatures step 0.5 °C (1 °F) within 10..32 °C; boost minutes and offset clamp to their ranges; °F shows the offset converted.
+ */
 static void ScheduleTempAndBoostClamps(void)
 {
     Reset();
@@ -221,6 +246,7 @@ static void ScheduleTempAndBoostClamps(void)
     CHECK(strcmp(v.big, "0.9") == 0);       /* 0.5 °C = 0.9 °F difference */
 }
 
+/** Timing out in a schedule editor returns home without an action. */
 static void ScheduleEditTimeoutDiscards(void)
 {
     Reset();
@@ -231,7 +257,9 @@ static void ScheduleEditTimeoutDiscards(void)
     CHECK(MenuIsHome(&s_m));
 }
 
-/* menu action applied the way main.c does it: values stay within the Zigbee clamps */
+/**
+ * Every schedule editor driven to its maximum yields a value SchedSanitize() leaves unchanged (the menu never produces an out-of-range value).
+ */
 static void ScheduleActionRoundtrip(void)
 {
     CtrlParams p = CTRL_PARAMS_DEFAULT();
@@ -249,6 +277,7 @@ static void ScheduleActionRoundtrip(void)
     }
 }
 
+/** The swing editor clamps to CTRL_SWING_MIN..MAX in 0.1 °C steps and saves. */
 static void EditSwingClamps(void)
 {
     Reset();
@@ -263,6 +292,7 @@ static void EditSwingClamps(void)
     CHECK_EQ(a.value, 20);
 }
 
+/** The units editor toggles to °F and saves value 1. */
 static void EditUnits(void)
 {
     Reset();
@@ -273,6 +303,9 @@ static void EditUnits(void)
     CHECK_EQ(a.value, 1);
 }
 
+/**
+ * Boost to target (0.5 °C / 1 °F steps) and boost for N minutes (15 min grid, 15..120) start the right actions and return home.
+ */
 static void BoostTargetAndTimed(void)
 {
     Reset();
@@ -306,6 +339,7 @@ static void BoostTargetAndTimed(void)
     CHECK_EQ(a.value, 30);
 }
 
+/** "Cancel boost" is only listed while a boost runs; without one the third row is Back. */
 static void BoostCancelOnlyWhenActive(void)
 {
     Reset();
@@ -322,6 +356,9 @@ static void BoostCancelOnlyWhenActive(void)
     CHECK(MenuIsHome(&s_m));
 }
 
+/**
+ * Holding M on the Zigbee screen pairs once and swallows the rest of that hold; a short M just goes back.
+ */
 static void ZigbeeHoldToPair(void)
 {
     Reset();
@@ -344,6 +381,7 @@ static void ZigbeeHoldToPair(void)
     CHECK_EQ(s_m.st, kMsList);
 }
 
+/** Device info shows firmware, raw temperature/humidity and uptime, formatted. */
 static void InfoScreen(void)
 {
     Reset();
@@ -359,7 +397,11 @@ static void InfoScreen(void)
     CHECK_EQ(s_m.st, kMsList);
 }
 
-/* Drive the real button debouncer with a held MODE key and feed its events to the menu. */
+/**
+ * Drive the real button debouncer with MODE held for `ms` (released afterwards if `release`) and
+ * feed its events to the menu, counting pair and factory-reset actions.
+ * @return the last action that did something or asked for a redraw
+ */
 static MenuAction HoldM(int ms, bool release, int *pNPair, int *pNReset)
 {
     Btn b; BtnInit(&b, false);
@@ -377,6 +419,9 @@ static MenuAction HoldM(int ms, bool release, int *pNPair, int *pNReset)
     return last;
 }
 
+/**
+ * MODE hold thresholds on the main screen: menu, nothing, pair banner, pair at release, reset warning, cancel, factory reset; holds inside the menu are harmless.
+ */
 static void ModeHoldTimings(void)
 {
     int p, r;
@@ -417,6 +462,7 @@ static void ModeHoldTimings(void)
     CHECK(p == 0 && r == 0 && s_m.st == kMsList);
 }
 
+/** MenuStepTemp() snaps to the 0.5 °C grid and steps 1 °F in Fahrenheit. */
 static void StepTemp(void)
 {
     CHECK_EQ(MenuStepTemp(2010, 1, false), 2050);
@@ -425,6 +471,10 @@ static void StepTemp(void)
 }
 
 /* ---- previews ---- */
+
+/**
+ * Write the frame as a plain PBM (P1) image for visual review; silently skipped if the file can't be opened.
+ */
 static void WritePbm(const GfxFb *pFb, const char *pName)
 {
     FILE *pF = fopen(pName, "w");
@@ -434,6 +484,7 @@ static void WritePbm(const GfxFb *pFb, const char *pName)
     fclose(pF);
 }
 
+/** Render the current menu view over a fixed home model and save it as a PBM preview. */
 static void Shot(const char *pName)
 {
     static GfxFb s_fb;
@@ -448,6 +499,9 @@ static void Shot(const char *pName)
     WritePbm(&s_fb, pName);
 }
 
+/**
+ * Render PBM previews of every menu screen (written to the working directory) and check the main list row count.
+ */
 static void RenderMenuPreviews(void)
 {
     Reset();
@@ -477,6 +531,7 @@ static void RenderMenuPreviews(void)
     CHECK_EQ(v.nRows, kMiCount);
 }
 
+/** Run every menu test; exit status 1 if any failed (tinytest DONE()). */
 int main(void)
 {
     RUN(HomeKeysPassThrough);

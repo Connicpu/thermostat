@@ -1,7 +1,7 @@
 /* settings_codec.c - pure (de)serialisation of the settings blob.
  * No ESP-IDF dependencies: host-tested in test/host/test_settings.c. NVS I/O is in settings.c.
  *
- * Blob = {uint8_t version; Persist p}, at most SETTINGS_BLOB_MAX bytes.
+ * Blob = {U8 version; Persist p}, at most SETTINGS_BLOB_MAX bytes.
  *
  * DESIGN RULE (Connie): every NVS layout change must be one-version backward AND
  * forward compatible, so an OTA rollback keeps working:
@@ -20,9 +20,11 @@
 #include "settings.h"
 #include <string.h>
 
+/** On-flash layout: the layout version byte followed by the raw Persist struct (memcpy, native padding). */
 typedef struct { U8 version; Persist p; } Blob;
 _Static_assert(sizeof(Blob) <= SETTINGS_BLOB_MAX, "settings blob outgrew SETTINGS_BLOB_MAX");
 
+/** See settings.h. */
 void SettingsDefaults(Persist *pP, bool fahrenheit)
 {
     memset(pP, 0, sizeof *pP);
@@ -35,12 +37,13 @@ void SettingsDefaults(Persist *pP, bool fahrenheit)
     pP->sched = (SchedCfg)SCHED_CFG_DEFAULT();
 }
 
+/** Same or newer layout only; known prefix. See settings.h. */
 bool SettingsDecode(const void *pData, size_t n, Persist *pP)
 {
     Blob b;
     /* Same or newer layout (version >= ours, at least our size): read the known prefix,
      * ignore appended fields. Newer firmware adds migration branches for older, shorter
-     * blobs here (e.g. version 1 with sizeof(blob_v1_t) -> defaults for new fields). */
+     * blobs here (e.g. version 1 with the v1 sizeof(Blob) -> defaults for new fields). */
     if (n < sizeof b) return false;
     memcpy(&b, pData, sizeof b);
     if (b.version < SETTINGS_VERSION) return false;
@@ -48,6 +51,7 @@ bool SettingsDecode(const void *pData, size_t n, Persist *pP)
     return true;
 }
 
+/** See settings.h. */
 void SettingsSanitize(Persist *pP, bool fahrenheitDefault)
 {
     CtrlParams prm = CTRL_PARAMS_DEFAULT();
@@ -61,6 +65,7 @@ void SettingsSanitize(Persist *pP, bool fahrenheitDefault)
     if (pP->swing < CTRL_SWING_MIN || pP->swing > CTRL_SWING_MAX) pP->swing = CTRL_SWING_DEFAULT;
 }
 
+/** See settings.h. */
 size_t SettingsEncode(const Persist *pP, void *pBuf, size_t n)
 {
     Blob b;

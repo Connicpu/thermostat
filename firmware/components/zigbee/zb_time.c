@@ -2,6 +2,7 @@
 #include "core.h"
 #include "zb_time.h"
 
+/** Range check, then the TimeStatus check. See zb_time.h. */
 bool ZbTimeAcceptable(bool haveStatus, U8 status, U32 secs)
 {
     if (secs < ZB_TIME_MIN_PLAUSIBLE || secs >= ZB_TIME_MAX_PLAUSIBLE) return false;
@@ -9,6 +10,7 @@ bool ZbTimeAcceptable(bool haveStatus, U8 status, U32 secs)
     return true;
 }
 
+/** See zb_time.h. */
 U32 ZbTimeNextDelayMs(U8 fails, bool known)
 {
     static const U32 kBackoff[] = {60u * 1000u, 2u * 60u * 1000u, 5u * 60u * 1000u};

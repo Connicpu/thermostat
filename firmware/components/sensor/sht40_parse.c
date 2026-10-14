@@ -1,6 +1,7 @@
 #include "core.h"
 #include "sht40_parse.h"
 
+/** Sensirion CRC-8. See sht40_parse.h. */
 U8 Sht40Crc8(const U8 *pD, int len)
 {
     U8 crc = 0xFF;                       /* poly 0x31, init 0xFF (Sensirion) */
@@ -11,6 +12,7 @@ U8 Sht40Crc8(const U8 *pD, int len)
     return crc;
 }
 
+/** CRC-check both words and convert to 0.01 °C / 0.01 %RH. See sht40_parse.h. */
 bool Sht40Parse(const U8 f[6], I16 *pTempC100, U16 *pRhC100)
 {
     if (Sht40Crc8(f, 2) != f[2] || Sht40Crc8(f + 3, 2) != f[5]) return false;

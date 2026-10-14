@@ -13,12 +13,17 @@ static const char *kTag = "epd";
 static spi_device_handle_t s_spi;
 static esp_err_t s_err;   /* first SPI error since the start of the current refresh */
 
+/**
+ * Run one SPI transaction (polling). The first error since the start of the current refresh is
+ * kept in s_err and reported by Ssd1680Show(); later transfers still run.
+ */
 static void Xfer(spi_transaction_t *pT)
 {
     esp_err_t e = spi_device_polling_transmit(s_spi, pT);
     if (e != ESP_OK && s_err == ESP_OK) s_err = e;
 }
 
+/** Send one command byte (DC low). */
 static void Cmd(U8 c)
 {
     gpio_set_level(BOARD_GPIO_EPD_DC, 0);
@@ -26,6 +31,7 @@ static void Cmd(U8 c)
     Xfer(&t);
 }
 
+/** Send data bytes (DC high), in chunks of at most 2048 bytes (the bus max_transfer_sz). */
 static void Data(const U8 *pD, size_t n)
 {
     gpio_set_level(BOARD_GPIO_EPD_DC, 1);
@@ -38,9 +44,16 @@ static void Data(const U8 *pD, size_t n)
     }
 }
 
+/** Send a command followed by its data bytes. CMD(c, ...) wraps this for constant byte lists. */
 static void CmdData(U8 c, const U8 *pD, size_t n) { Cmd(c); Data(pD, n); }
 #define CMD(c, ...) do { static const U8 _d[] = {__VA_ARGS__}; CmdData((c), _d, sizeof _d); } while (0)
 
+/**
+ * Wait for the panel's BUSY line to go low, polling every 10 ms with vTaskDelay (other tasks keep
+ * running).
+ * @param timeoutMs  give up after this long
+ * @return ESP_OK, or ESP_ERR_TIMEOUT (logged)
+ */
 static esp_err_t WaitBusy(int timeoutMs)
 {
     /* BUSY high = busy. Poll with vTaskDelay so other tasks keep running. */
@@ -54,6 +67,7 @@ static esp_err_t WaitBusy(int timeoutMs)
     return ESP_OK;
 }
 
+/** Configure DC/RST/BUSY and SPI2 (4 MHz, mode 0, write-only). See ssd1680.h. */
 esp_err_t Ssd1680BusInit(void)
 {
     gpio_config_t out = {
@@ -84,6 +98,11 @@ esp_err_t Ssd1680BusInit(void)
     return spi_bus_add_device(SPI2_HOST, &dev, &s_spi);
 }
 
+/**
+ * Hardware-reset the panel (wakes it from deep sleep), SW-reset it, and program the RAM window
+ * (128 x 296, X+/Y+), border waveform, update control and internal temperature sensor.
+ * @return ESP_ERR_TIMEOUT if BUSY never clears, else ESP_OK
+ */
 static esp_err_t PanelInit(void)
 {
     gpio_set_level(BOARD_GPIO_EPD_RST, 0);
@@ -103,12 +122,14 @@ static esp_err_t PanelInit(void)
     return ESP_OK;
 }
 
+/** Point the RAM address counters at (0,0) before writing a frame. */
 static void SetCursor(void)
 {
     CMD(0x4E, 0x00);
     CMD(0x4F, 0x00, 0x00);
 }
 
+/** Init, load both RAMs, run the update, deep-sleep the panel. See ssd1680.h. */
 esp_err_t Ssd1680Show(const GfxFb *pFb, const GfxFb *pPrev, bool full)
 {
     s_err = ESP_OK;

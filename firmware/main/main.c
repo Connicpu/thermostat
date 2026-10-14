@@ -69,18 +69,24 @@ static QueueHandle_t s_btnQ;
 static volatile U16 s_identifyS;
 static volatile int s_otaPct = -1;
 
+/** A button event as queued from the esp_timer callback to the app task: which = UiButton, ev = BtnEvent. */
 typedef struct { U8 which, ev; } BtnMsg;
 static QueueHandle_t s_boostQ;      /* U8 kZbBoostCmd* from Zigbee or the UP+DOWN combo */
 static U8 s_boostResult;       /* kZbBoostResult* last outcome, reported to HA */
 static bool s_boostActive;          /* mirror for the UI combo */
 
+/** @return monotonic time in ms (esp_timer). */
 static U64 NowMs(void) { return (U64)(esp_timer_get_time() / 1000); }
 
 /* ---------------- shared settings ---------------- */
 
-/* Mode / fan / main setpoints. A heat or cool setpoint that differs from the
- * current program setpoint is stored in the CURRENT program period (day or
- * night, see schedule.h); with no clock that is the day period. */
+/**
+ * Apply new mode/fan/main setpoints to the persisted settings (mutex-protected; any task).
+ * A heat or cool setpoint that differs from the current program setpoint is stored in the CURRENT
+ * program period (day or night, see schedule.h); with no clock that is the day period. Marks the
+ * settings dirty, so they are saved SAVE_DELAY_MS later.
+ * @param keepHeat  ignored (kept for API compatibility)
+ */
 static void SettingsUpdate(const CtrlSettings *pS, bool keepHeat)
 {
     (void)keepHeat;
@@ -101,7 +107,10 @@ static void SettingsUpdate(const CtrlSettings *pS, bool keepHeat)
     xSemaphoreGive(s_mtx);
 }
 
-/* Snapshot; s.heatSp / s.coolSp are the current program setpoints (no morning boost). */
+/**
+ * @return a snapshot of the persisted settings (mutex-protected; any task), with s.heatSp / s.coolSp
+ * replaced by the current program setpoints (without the morning boost).
+ */
 static Persist SettingsGet(void)
 {
     U16 minute = 0;
@@ -116,6 +125,7 @@ static Persist SettingsGet(void)
 static const char *s_pBanner;
 static U64 s_bannerUntil;
 
+/** Show a short message in the status bar for BANNER_MS (app task only). */
 static void Banner(const char *pB)
 {
     s_pBanner = pB;
@@ -125,6 +135,11 @@ static void Banner(const char *pB)
 
 /* ---------------- Zigbee callbacks (Zigbee task) ---------------- */
 
+/**
+ * Zigbee onSettings callback (Zigbee task). Starts from the live program setpoints, so a mode/fan
+ * write can never copy a stale setpoint into a period that just started, then applies mode, fan and
+ * only the one setpoint that was written.
+ */
 static void ZbOnSettings(const CtrlSettings *pS, U8 what)
 {
     /* Start from the live program setpoints so a mode/fan write can never copy a
@@ -138,6 +153,9 @@ static void ZbOnSettings(const CtrlSettings *pS, U8 what)
     SettingsUpdate(&n, what != kZbSetCoolSp);
 }
 
+/**
+ * Zigbee onCalibration callback: store LocalTemperatureCalibration (0.1 °C, clamped to ±2.5 °C) and mark dirty.
+ */
 static void ZbOnCalib(I8 c)
 {
     if (c > 25) c = 25;
@@ -149,6 +167,9 @@ static void ZbOnCalib(I8 c)
     xSemaphoreGive(s_mtx);
 }
 
+/**
+ * Zigbee onBoostParams callback: store the boost preferences (already clamped by the Zigbee layer) and mark dirty.
+ */
 static void ZbOnBoostParams(I16 sp, U16 minutes, U8 dir)
 {
     xSemaphoreTake(s_mtx, portMAX_DELAY);
@@ -160,6 +181,7 @@ static void ZbOnBoostParams(I16 sp, U16 minutes, U8 dir)
     xSemaphoreGive(s_mtx);
 }
 
+/** Zigbee onSwing callback: store the swing (0.01 °C, clamped) and mark dirty. */
 static void ZbOnSwing(I16 sw)
 {
     xSemaphoreTake(s_mtx, portMAX_DELAY);
@@ -169,6 +191,7 @@ static void ZbOnSwing(I16 sw)
     xSemaphoreGive(s_mtx);
 }
 
+/** Zigbee onSched callback: store the sanitized program schedule and mark dirty. */
 static void ZbOnSched(const SchedCfg *pC)
 {
     CtrlParams prm = CTRL_PARAMS_DEFAULT();
@@ -180,8 +203,12 @@ static void ZbOnSched(const SchedCfg *pC)
     xSemaphoreGive(s_mtx);
 }
 
+/**
+ * Zigbee onBoostCommand callback: queue the kZbBoostCmd* for the app task (dropped if the queue is full).
+ */
 static void ZbOnBoostCmd(U8 cmd) { xQueueSend(s_boostQ, &cmd, 0); }
 
+/** @return the kZbBoostResult* code reported to HA for why a boost ended. */
 static U8 EndToResult(CtrlBoostEnd e)
 {
     switch (e) {
@@ -195,6 +222,7 @@ static U8 EndToResult(CtrlBoostEnd e)
     }
 }
 
+/** @return the kZbBoostResult* code reported to HA for a CtrlBoostStart() result. */
 static U8 StartToResult(CtrlBoostResult r)
 {
     switch (r) {
@@ -206,6 +234,10 @@ static U8 StartToResult(CtrlBoostResult r)
     }
 }
 
+/**
+ * Execute a queued boost command (app task): cancel, or start to-target / timed with the persisted
+ * boost preferences. Records the result for HA and shows a banner when a start is rejected.
+ */
 static void HandleBoostCmd(Ctrl *pCtl, U8 cmd, U64 now)
 {
     Persist p = SettingsGet();
@@ -234,21 +266,34 @@ static void HandleBoostCmd(Ctrl *pCtl, U8 cmd, U64 now)
                               r == kBoostErrNoDirection ? "Boost: set mode HEAT/COOL" : "Boost: invalid");
 }
 
+/** Zigbee onIdentify callback: blink the LED for `secs` seconds. */
 static void ZbOnIdentify(U16 secs) { s_identifyS = secs; }
 static volatile U64 s_otaPctAt;
+
+/**
+ * Zigbee onOtaProgress callback: remember the percentage (-1 = finished/aborted) and when it arrived, for the banner.
+ */
 static void ZbOnOta(int pct) { s_otaPct = pct; s_otaPctAt = NowMs(); }
 #define OTA_STALE_MS (5 * 60 * 1000)   /* no OTA progress for this long: the transfer is dead */
+
+/** Zigbee beforeOtaReboot callback (Zigbee task): all outputs off before the restart. */
 static void ZbBeforeReboot(void) { HvacOutputsAllOff(); }
 
 /* ---------------- buttons (esp_timer task -> queue) ---------------- */
 
+/** UI callback (esp_timer task): queue the event for the app task; dropped if the queue is full. */
 static void OnButton(UiButton which, BtnEvent ev)
 {
     BtnMsg m = {(U8)which, (U8)ev};
     xQueueSend(s_btnQ, &m, 0);
 }
 
-/* returns true if the display should refresh promptly */
+/**
+ * Main-screen key handling. UP/DOWN nudge the active mode's setpoint by one display unit (with the
+ * mode Off, a banner explains how to change it). UP+DOWN toggles a timed boost and undoes the nudge
+ * that the first of the two presses caused (if within 1.5 s).
+ * @return true if the display should refresh promptly
+ */
 static bool HandleHomeKey(const BtnMsg *pM)
 {
     Persist p = SettingsGet();
@@ -284,6 +329,10 @@ static bool HandleHomeKey(const BtnMsg *pM)
     return false;
 }
 
+/**
+ * Factory reset (app task): outputs off, settings erased, "FACTORY RESET" shown for ~3 s while both
+ * watchdogs are fed, then the Zigbee network data is erased and the chip restarts. Does not return.
+ */
 static void FactoryReset(void)
 {
     ESP_LOGW(kTag, "factory reset");
@@ -302,6 +351,7 @@ static void FactoryReset(void)
     esp_restart();
 }
 
+/** Apply one edit function to the persisted settings under the mutex and mark them dirty. */
 static void PersistEdit(void (*fn)(Persist *, I32), I32 v)
 {
     xSemaphoreTake(s_mtx, portMAX_DELAY);
@@ -310,11 +360,22 @@ static void PersistEdit(void (*fn)(Persist *, I32), I32 v)
     s_dirtyAt = NowMs();
     xSemaphoreGive(s_mtx);
 }
+
+/** PersistEdit() setter: boost-to-target setpoint, 0.01 °C. */
 static void SetBoostSp(Persist *pP, I32 v)  { pP->boostSp = (I16)v; }
+
+/** PersistEdit() setter: timed boost length, minutes. */
 static void SetBoostMin(Persist *pP, I32 v) { pP->boostMinutes = (U16)v; }
+
+/** PersistEdit() setter: swing, 0.01 °C (clamped). */
 static void SetSwing(Persist *pP, I32 v)     { pP->swing = CtrlClampSwing(v); }
+
+/** PersistEdit() setter: display units, non-zero = °F. */
 static void SetUnits(Persist *pP, I32 v)     { pP->fahrenheit = v ? 1 : 0; }
 
+/**
+ * @return the menu's live data, built from a settings snapshot plus boost, link, firmware, raw sensor and uptime state.
+ */
 static MenuCtx BuildMenuCtx(const Persist *pP, U64 now)
 {
     return (MenuCtx){
@@ -326,6 +387,11 @@ static MenuCtx BuildMenuCtx(const Persist *pP, U64 now)
     };
 }
 
+/**
+ * Carry out a menu action (app task): settings edits, boost commands (queued), pairing, factory
+ * reset. Bumps the full-refresh epoch when the menu asks for one.
+ * @return true if the display should refresh promptly
+ */
 static bool ApplyMenuAction(const MenuAction *pA)
 {
     U8 cmd;
@@ -375,7 +441,11 @@ static bool ApplyMenuAction(const MenuAction *pA)
     return pA->redraw || pA->fullRefresh;
 }
 
-/* returns true if the display should refresh promptly */
+/**
+ * Route one button event (app task) through the menu; main-screen keys go to HandleHomeKey().
+ * While UP+DOWN are held together inside the menu, their single events are ignored.
+ * @return true if the display should refresh promptly
+ */
 static bool HandleButton(const BtnMsg *pM)
 {
     static const MenuKey kKeys[] = {kMenuKeyUp, kMenuKeyDown, kMenuKeyM, kMenuKeyCombo};
@@ -390,6 +460,9 @@ static bool HandleButton(const BtnMsg *pM)
 
 /* ---------------- LED ---------------- */
 
+/**
+ * Drive the status LED: 2 Hz while identifying, fast blink on a control fault, a short blip while pairing, otherwise off (no heat near the sensor).
+ */
 static void LedUpdate(U64 now, const CtrlOutput *pO, LinkState link)
 {
     bool on;
@@ -402,16 +475,21 @@ static void LedUpdate(U64 now, const CtrlOutput *pO, LinkState link)
 
 /* ---------------- boot-loop guard ---------------- */
 
-/* Count boots that did not reach BOOT_STABLE_MS of uptime (NVS "boot"/"n").
- * Whatever keeps resetting the chip (watchdog, panic, brown-out), after
- * BOOT_LOOP_LIMIT of them the thermostat stays up in safe mode instead:
- * outputs off, STWD100 not armed, the fault on screen and on Zigbee.
- * Deliberate software restarts (ESP_RST_SW: OTA reboot/rollback, factory reset,
- * safe-mode retry) are not counted. Power-on resets ARE counted, because an
- * STWD100 reset pulls CHIP_EN and reports as ESP_RST_POWERON; so 5 quick power
- * cycles also enter safe mode (it ends by itself after SAFE_MODE_RETRY_MS).
- * The counter lives in its own NVS namespace and survives a factory reset. */
-static U8 BootCountRw(int op)   /* op: 1 = increment, 0 = clear, -1 = read, else 0x100|n = set n */
+/**
+ * Read/modify the boot-loop counter (NVS namespace "boot", key "n").
+ *
+ * Counts boots that did not reach BOOT_STABLE_MS of uptime. Whatever keeps resetting the chip
+ * (watchdog, panic, brown-out), after BOOT_LOOP_LIMIT of them the thermostat stays up in safe mode
+ * instead: outputs off, STWD100 not armed, the fault on screen and on Zigbee. Deliberate software
+ * restarts (ESP_RST_SW: OTA reboot/rollback, factory reset, safe-mode retry) are not counted.
+ * Power-on resets ARE counted, because an STWD100 reset pulls CHIP_EN and reports as
+ * ESP_RST_POWERON, so 5 quick power cycles also enter safe mode (it ends by itself after
+ * SAFE_MODE_RETRY_MS). The counter lives in its own NVS namespace and survives a factory reset.
+ *
+ * @param op  1 = increment (saturating), 0 = clear, -1 = read only, 0x100|n = set to n
+ * @return the counter after the operation; 0 if NVS is unavailable
+ */
+static U8 BootCountRw(int op)
 {
     nvs_handle_t h;
     U8 n = 0;
@@ -427,6 +505,13 @@ static U8 BootCountRw(int op)   /* op: 1 = increment, 0 = clear, -1 = read, else
 
 /* ---------------- main loop ---------------- */
 
+/**
+ * App task (priority 6), every LOOP_MS (250 ms): sensor read (every CONFIG_THERMO_SENSOR_PERIOD_MS,
+ * with stuck detection) -> buttons, menu and boost commands -> schedule and control step -> outputs
+ * -> Zigbee publish -> display -> delayed NVS save -> LED -> health check and watchdog kicks ->
+ * boot-loop guard -> OTA image confirmation or rollback. Emits "EVT ..." log lines on every state
+ * change (used by HOOTL).
+ */
 static void AppTask(void *pArg)
 {
     CtrlParams prm = CTRL_PARAMS_DEFAULT();
@@ -651,6 +736,12 @@ static void AppTask(void *pArg)
     }
 }
 
+/**
+ * ESP-IDF entry point: outputs off and the external watchdog configured (disarmed) first, then NVS,
+ * power management, boot-loop accounting, settings, sensor, display and buttons. Then the app task,
+ * and finally Zigbee, so local control never waits for the radio. No failure here aborts or
+ * reboot-loops; faults are logged and shown instead.
+ */
 void app_main(void)
 {
     /* Outputs first: guarantee a known-off state before anything else. */

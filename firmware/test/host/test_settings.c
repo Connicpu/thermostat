@@ -4,6 +4,7 @@
 #include "settings.h"
 #include <string.h>
 
+/** Factory defaults have the expected values and are left unchanged by SettingsSanitize(). */
 static void DefaultsSane(void)
 {
     Persist p, q;
@@ -18,6 +19,9 @@ static void DefaultsSane(void)
     CHECK(memcmp(&p, &q, sizeof p) == 0);
 }
 
+/**
+ * Encode/decode round-trips a modified Persist; the blob starts with version 1; a too-small buffer encodes 0 bytes.
+ */
 static void Roundtrip(void)
 {
     Persist p, q;
@@ -35,6 +39,7 @@ static void Roundtrip(void)
     CHECK_EQ(SettingsEncode(&p, buf, 4), 0u);   /* buffer too small */
 }
 
+/** An older version, a truncated or an empty blob is rejected and leaves the output untouched. */
 static void UnknownVersionOrSizeRejected(void)
 {
     Persist p, q;
@@ -52,8 +57,10 @@ static void UnknownVersionOrSizeRejected(void)
     CHECK(memcmp(&before, &q, sizeof q) == 0);   /* untouched -> caller keeps defaults */
 }
 
-/* Forward compatibility (design rule in settings_codec.c): a blob from the next firmware
- * version (higher version, extra fields appended) loads its known prefix. */
+/**
+ * Forward compatibility (design rule in settings_codec.c): a blob from the next firmware version
+ * (higher version, fields appended) loads its known prefix, and re-encoding gives our own shorter layout.
+ */
 static void NewerLongerBlobLoadsKnownPrefix(void)
 {
     Persist p, q;
@@ -78,6 +85,7 @@ static void NewerLongerBlobLoadsKnownPrefix(void)
     CHECK_EQ(out[0], SETTINGS_VERSION);
 }
 
+/** SettingsSanitize() resets every out-of-range field to its default (or clamps it). */
 static void SanitizeBadValues(void)
 {
     Persist p; SettingsDefaults(&p, false);
@@ -95,6 +103,7 @@ static void SanitizeBadValues(void)
     CHECK_EQ(p.boostSp, 2200);
 }
 
+/** Run every settings codec test; exit status 1 if any failed (tinytest DONE()). */
 int main(void)
 {
     RUN(DefaultsSane);

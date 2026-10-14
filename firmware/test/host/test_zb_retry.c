@@ -5,6 +5,9 @@
 
 #define MIN 60000u
 
+/**
+ * Failed joins back off 10 s, 30 s, 1, 2, 5 min, then every 15 min forever; the counter saturates at 255.
+ */
 static void JoinNeverSucceedsBacksOffAndNeverGivesUp(void)
 {
     ZbRetry r = {0};
@@ -17,6 +20,7 @@ static void JoinNeverSucceedsBacksOffAndNeverGivesUp(void)
     CHECK_EQ(r.fails, 255);
 }
 
+/** A join does not reset the backoff by itself; losing a link that was up for ZB_RETRY_STABLE_MS does. */
 static void StableJoinResetsBackoffAfterLoss(void)
 {
     ZbRetry r = {0};
@@ -28,6 +32,7 @@ static void StableJoinResetsBackoffAfterLoss(void)
     CHECK_EQ(ZbRetryFailed(&r), 30000u);
 }
 
+/** A link that drops 30 s after every join climbs to the 15 min backoff (at most 10 attempts in an hour). */
 static void FlappingLinkDoesNotHammer(void)
 {
     ZbRetry r = {0};
@@ -46,6 +51,7 @@ static void FlappingLinkDoesNotHammer(void)
     CHECK(totalAttemptsInHour <= 10);                         /* vs 120 with a fixed 10 s retry */
 }
 
+/** A loss without a preceding join counts as a plain failure. */
 static void LostWithoutJoinCountsAsFailure(void)
 {
     ZbRetry r = {0};
@@ -53,6 +59,9 @@ static void LostWithoutJoinCountsAsFailure(void)
     CHECK_EQ(ZbRetryLost(&r, 99 * MIN), 30000u);
 }
 
+/**
+ * ZbRetryStalled() fires at exactly ZB_RETRY_STALL_MS and never when the heartbeat is ahead of the reader.
+ */
 static void StallDetection(void)
 {
     CHECK(!ZbRetryStalled(1000, 1000));
@@ -61,6 +70,7 @@ static void StallDetection(void)
     CHECK(!ZbRetryStalled(5000, 1000));                        /* heartbeat ahead of reader: not stalled */
 }
 
+/** Run every test in this file; exit status 1 if any failed (tinytest DONE()). */
 int main(void)
 {
     RUN(JoinNeverSucceedsBacksOffAndNeverGivesUp);

@@ -43,7 +43,10 @@ typedef enum { kMiMode, kMiFan, kMiBoost, kMiSched, kMiSwing, kMiUnits, kMiZigbe
 /* Boost-list items; kMbCancel is only present while a boost runs. */
 typedef enum { kMbTarget, kMbTimed, kMbCancel, kMbBack } MenuBoostItem;
 
-/* Live data the menu shows / starts edits from. */
+/**
+ * Live data the menu shows and starts edits from. Filled by the app task (BuildMenuCtx() in
+ * main.c) before every MenuOnKey()/MenuGetView() call; the menu never modifies it.
+ */
 typedef struct {
     CtrlMode  mode;
     CtrlFan   fan;
@@ -76,6 +79,11 @@ typedef enum {
     kMaFactoryReset,
 } MenuActionKind;
 
+/**
+ * What the caller should do after a key or tick. kind/value/item: the request (see
+ * MenuActionKind). redraw: the screen changed, so post the display urgently. fullRefresh: the
+ * menu or the warning was left, so force a full (de-ghosting) refresh.
+ */
 typedef struct {
     MenuActionKind kind;
     I32 value;
@@ -84,6 +92,11 @@ typedef struct {
     bool fullRefresh;   /* leaving the menu / warning: full refresh to clear ghosting */
 } MenuAction;
 
+/**
+ * Menu state machine. Zero-initialise with MenuInit(). Owned by one task; not locked.
+ * edit holds the value being edited, in the unit of the current editor (index, 0/1, 0.01 °C,
+ * minutes); lastKeyMs is the time of the last key, for MENU_TIMEOUT_MS.
+ */
 typedef struct {
     MenuState st;
     U8  cursor;          /* main list */
@@ -94,11 +107,48 @@ typedef struct {
     bool     swallowM;       /* ignore M events until the current hold is released */
 } Menu;
 
+/** Reset to the main screen. */
 void          MenuInit(Menu *pM);
+
+/**
+ * Handle one button event.
+ *
+ * Main screen (and the hold banners): UP/DOWN/combo are returned as kMaHomeKey for the caller.
+ * M follows the hold sequence described at the top of this file. In the menu: UP/DOWN (press or
+ * repeat) move or change, a short M press selects or saves, and M hold on the Zigbee screen pairs.
+ * After a hold action, M events are swallowed until M is released. Every handled key restarts
+ * the idle timeout.
+ *
+ * @param pC     current live data (for opening editors and boost list contents)
+ * @param k      which key
+ * @param ev     the button event (buttons.h)
+ * @param nowMs  monotonic time, ms
+ * @return the action to perform (kMaNone with redraw set if only the screen changed)
+ */
 MenuAction MenuOnKey(Menu *pM, const MenuCtx *pC, MenuKey k, BtnEvent ev, U64 nowMs);
-MenuAction MenuTick(Menu *pM, U64 nowMs);   /* timeout */
-bool          MenuIsHome(const Menu *pM);           /* main screen showing (incl. hold banners) */
+
+/**
+ * Idle timeout: MENU_TIMEOUT_MS with no key anywhere in the menu returns to the main screen
+ * without saving (full refresh). Call periodically.
+ * @return the action (kMaNone; redraw/fullRefresh set when it timed out)
+ */
+MenuAction MenuTick(Menu *pM, U64 nowMs);
+
+/** @return true while the main screen is showing, including the pair/reset hold banners. */
+bool          MenuIsHome(const Menu *pM);
+
+/**
+ * Describe what should be on screen for the current state (pure). kViewHome on the main
+ * screen; otherwise title, rows or the big value, and a hint line.
+ * @param pV  out: fully overwritten
+ */
 void          MenuGetView(const Menu *pM, const MenuCtx *pC, MenuView *pV);
 
-/* Step a temperature one display unit (0.5 °C, or 1 °F), snapping to the grid. */
+/**
+ * Step a temperature by one display unit, snapping to that unit's grid: 0.5 °C, or 1 °F
+ * (converted back to the nearest 0.01 °C). dir = 0 just snaps.
+ * @param c100  temperature, 0.01 °C
+ * @param dir   +1, -1 or 0
+ * @return the new temperature, 0.01 °C (not range-clamped)
+ */
 I16 MenuStepTemp(I16 c100, int dir, bool fahrenheit);

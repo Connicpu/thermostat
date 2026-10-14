@@ -10,6 +10,10 @@
 #define EPD_ROTATION 1
 #endif
 
+/**
+ * Map a landscape pixel to native RAM coordinates for the panel mounting given by EPD_ROTATION.
+ * @return false if (x,y) is off the canvas
+ */
 static inline bool Map(int x, int y, int *pNx, int *pNy)
 {
     if (x < 0 || y < 0 || x >= GFX_W || y >= GFX_H) return false;
@@ -23,8 +27,10 @@ static inline bool Map(int x, int y, int *pNx, int *pNy)
     return true;
 }
 
+/** See gfx.h. */
 void GfxClear(GfxFb *pFb) { memset(pFb->buf, 0xFF, sizeof pFb->buf); }
 
+/** See gfx.h. */
 void GfxPixel(GfxFb *pFb, int x, int y, bool black)
 {
     int nx, ny;
@@ -34,6 +40,7 @@ void GfxPixel(GfxFb *pFb, int x, int y, bool black)
     if (black) *pB &= (U8)~m; else *pB |= m;
 }
 
+/** See gfx.h. */
 bool GfxGet(const GfxFb *pFb, int x, int y)
 {
     int nx, ny;
@@ -41,15 +48,20 @@ bool GfxGet(const GfxFb *pFb, int x, int y)
     return !(pFb->buf[ny * (EPD_NATIVE_W / 8) + nx / 8] & (0x80 >> (nx & 7)));
 }
 
+/** See gfx.h. */
 void GfxFillRect(GfxFb *pFb, int x, int y, int w, int h, bool black)
 {
     for (int j = y; j < y + h; j++)
         for (int i = x; i < x + w; i++) GfxPixel(pFb, i, j, black);
 }
 
+/** See gfx.h. */
 void GfxHline(GfxFb *pFb, int x, int y, int w) { GfxFillRect(pFb, x, y, w, 1, true); }
+
+/** See gfx.h. */
 void GfxVline(GfxFb *pFb, int x, int y, int h) { GfxFillRect(pFb, x, y, 1, h, true); }
 
+/** @return the glyph for c: '?' for chars outside 32..127, the space glyph for chars the font lacks. */
 static const FontGlyph *Glyph(const Font *pF, char c)
 {
     unsigned u = (unsigned char)c;
@@ -59,6 +71,7 @@ static const FontGlyph *Glyph(const Font *pF, char c)
     return pG;
 }
 
+/** See gfx.h. */
 int GfxTextWidth(const Font *pF, const char *pS)
 {
     int w = 0;
@@ -66,6 +79,7 @@ int GfxTextWidth(const Font *pF, const char *pS)
     return w;
 }
 
+/** See gfx.h. */
 int GfxText(GfxFb *pFb, const Font *pF, int x, int y, const char *pS, bool black)
 {
     for (; *pS; pS++) {

@@ -5,6 +5,7 @@
 
 #define Y2026 ((U32)26 * 365u * 86400u + 7u * 86400u)   /* ~2026-01-01 since 2000 */
 
+/** ZbTimeAcceptable(): year range check, and TimeStatus must say Master or Synchronized when present. */
 static void PlausibilityAndStatus(void)
 {
     CHECK(ZbTimeAcceptable(false, 0, Y2026));                          /* no status attr: year check only */
@@ -20,6 +21,7 @@ static void PlausibilityAndStatus(void)
     CHECK(!ZbTimeAcceptable(true, 0x03, 0xFFFFFFFFu));
 }
 
+/** ZbTimeNextDelayMs(): 1, 2, 5 min, then hourly while unknown; hourly once known. */
 static void RetryBackoff(void)
 {
     CHECK_EQ(ZbTimeNextDelayMs(0, false), 60000u);
@@ -32,6 +34,7 @@ static void RetryBackoff(void)
     CHECK_EQ(ZbTimeNextDelayMs(9, true), 3600000u);
 }
 
+/** Run every test in this file; exit status 1 if any failed (tinytest DONE()). */
 int main(void)
 {
     RUN(PlausibilityAndStatus);

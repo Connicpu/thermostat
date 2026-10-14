@@ -8,8 +8,11 @@
 
 static CtrlParams s_p;
 static SchedCfg s_c;
+
+/** Default control parameters and default schedule. */
 static void Reset(void) { s_p = (CtrlParams)CTRL_PARAMS_DEFAULT(); s_c = (SchedCfg)SCHED_CFG_DEFAULT(); }
 
+/** Default schedule values, and the default morning boost window is exactly 06:00..07:59. */
 static void DefaultsMatchSpec(void)
 {
     Reset();
@@ -23,6 +26,7 @@ static void DefaultsMatchSpec(void)
     CHECK(!SchedBoostWindow(&s_c, HM(8, 0)));
 }
 
+/** SchedPeriodAt() for a day period inside one calendar day (06:00..22:00). */
 static void PeriodSameDay(void)
 {
     /* day 06:00, night 22:00 */
@@ -35,6 +39,9 @@ static void PeriodSameDay(void)
     CHECK_EQ(SchedPeriodAt(HM(6, 0), HM(22, 0), 0), kSchedNight);
 }
 
+/**
+ * SchedPeriodAt() for periods crossing midnight, equal starts (always day), and exactly two transitions per day.
+ */
 static void PeriodCrossingMidnight(void)
 {
     /* night shift: "day" 20:00 -> 04:00 crosses midnight */
@@ -60,6 +67,7 @@ static void PeriodCrossingMidnight(void)
     }
 }
 
+/** The heating and cooling programs switch periods independently. */
 static void HeatAndCoolProgramsIndependent(void)
 {
     Reset();
@@ -75,6 +83,9 @@ static void HeatAndCoolProgramsIndependent(void)
     CHECK_EQ(c, s_c.nightCool);
 }
 
+/**
+ * Morning boost only in HEAT with a known time; disabled by 0 minutes or 0 offset; window across midnight; clamped to maxSp.
+ */
 static void BoostWindowAndMode(void)
 {
     Reset();
@@ -117,6 +128,9 @@ static void BoostWindowAndMode(void)
     CHECK_EQ(s.heatSp, s_p.maxSp);
 }
 
+/**
+ * SchedEditCurrent() changes only the current period of the right program (DAY when the time is unknown), clamps, and edits the base value during a boost.
+ */
 static void EditChangesCurrentPeriodOnly(void)
 {
     Reset();
@@ -157,6 +171,7 @@ static void EditChangesCurrentPeriodOnly(void)
     CHECK_EQ(s_c.nightHeat, 1800);
 }
 
+/** The boost window is cut short at nightHeatStart, also across midnight. */
 static void BoostClampedToNightStart(void)
 {
     Reset();
@@ -179,6 +194,7 @@ static void BoostClampedToNightStart(void)
     CHECK_EQ(SchedBoostLength(&s_c), 120);
 }
 
+/** With equal day/night heat starts (program off) there is no morning boost. */
 static void BoostOffWhenStartsEqual(void)
 {
     Reset();
@@ -190,6 +206,9 @@ static void BoostOffWhenStartsEqual(void)
     CHECK_EQ(s.heatSp, s_c.dayHeat);
 }
 
+/**
+ * In OFF the reported period follows the heating program, with no morning boost; COOL follows the cooling program.
+ */
 static void OffModeReportsHeatingProgram(void)
 {
     Reset();
@@ -203,6 +222,7 @@ static void OffModeReportsHeatingProgram(void)
     CHECK_EQ(SchedApply(&s_p, &s_c, true, HM(23, 0), &s), kSchedStateNight);
 }
 
+/** SchedSanitize() clamps start times, temperatures, boost minutes and offset. */
 static void SanitizeRanges(void)
 {
     Reset();
@@ -221,8 +241,9 @@ static void SanitizeRanges(void)
     CHECK_EQ(s_c.boostOffset, SCHED_BOOST_OFS_MAX);
 }
 
-/* End to end with the controller: heat mode at 05:59 holds night SP, the 06:00
- * boost raises it by 0.5 °C and the furnace starts, 08:00 drops back. */
+/**
+ * End to end with the controller: night setpoint at 05:59, the 06:00 boost starts the furnace, and 08:00 drops back to the day setpoint.
+ */
 static void ControllerFollowsSchedule(void)
 {
     Reset();
@@ -251,6 +272,7 @@ static void ControllerFollowsSchedule(void)
     }
 }
 
+/** Run every schedule test; exit status 1 if any failed (tinytest DONE()). */
 int main(void)
 {
     RUN(DefaultsMatchSpec);

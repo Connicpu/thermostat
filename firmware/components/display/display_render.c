@@ -3,8 +3,10 @@
 #include <stdio.h>
 #include <string.h>
 
+/** @return v / d rounded to nearest, halves away from zero (d > 0). */
 static I32 RoundDiv(I32 v, I32 d) { return v >= 0 ? (v + d / 2) / d : -((-v + d / 2) / d); }
 
+/** See display_model.h. */
 int TempToDisplay(I16 c100, bool f, int *pTenths)
 {
     I32 v = f ? (I32)c100 * 9 / 5 + 3200 : c100;  /* hundredths of the display unit */
@@ -13,6 +15,7 @@ int TempToDisplay(I16 c100, bool f, int *pTenths)
     return (int)(t / 10);
 }
 
+/** See display_model.h. */
 void FormatTemp(char *pOut, int n, I16 c100, bool f, bool withTenths)
 {
     I32 v = f ? (I32)c100 * 9 / 5 + 3200 : c100;
@@ -25,6 +28,7 @@ void FormatTemp(char *pOut, int n, I16 c100, bool f, bool withTenths)
     }
 }
 
+/** @return the mode name shown on the home screen ("HEAT", "COOL", "OFF"). */
 static const char *ModeStr(CtrlMode m)
 {
     switch (m) {
@@ -34,6 +38,7 @@ static const char *ModeStr(CtrlMode m)
     }
 }
 
+/** @return the bottom-bar text for a Zigbee link state. */
 static const char *LinkStr(LinkState l)
 {
     switch (l) {
@@ -53,6 +58,7 @@ static const char *LinkStr(LinkState l)
 #define ROWS_VIS  4
 #define HINT_Y    108
 
+/** Draw an inverted title bar with pT on the left and optional pRight right-aligned. */
 static void TitleBar(GfxFb *pFb, const char *pT, const char *pRight)
 {
     GfxFillRect(pFb, 0, 0, GFX_W, TITLE_H, true);
@@ -60,12 +66,17 @@ static void TitleBar(GfxFb *pFb, const char *pT, const char *pRight)
     if (pRight) GfxText(pFb, &kFontSmall, GFX_W - 6 - GfxTextWidth(&kFontSmall, pRight), 2, pRight, false);
 }
 
+/** Draw a separator line and the hint text at the bottom of a menu view. */
 static void HintLine(GfxFb *pFb, const char *pH)
 {
     GfxHline(pFb, 0, HINT_Y - 4, GFX_W);
     GfxText(pFb, &kFontSmall, 6, HINT_Y, pH, true);
 }
 
+/**
+ * Draw up to ROWS_VIS label/value rows. With select, scroll so pV->sel is visible, invert the
+ * selected row and draw scroll marks when rows are hidden above/below.
+ */
 static void RenderRows(GfxFb *pFb, const MenuView *pV, bool select)
 {
     int first = 0;
@@ -83,6 +94,7 @@ static void RenderRows(GfxFb *pFb, const MenuView *pV, bool select)
     if (select && first + ROWS_VIS < pV->nRows) GfxFillRect(pFb, GFX_W - 4, ROW_Y0 + ROWS_VIS * ROW_H - 8, 3, 6, true);
 }
 
+/** Clear the frame and draw a non-home menu view (list, text, value editor or full-screen warning). */
 static void RenderView(GfxFb *pFb, const MenuView *pV)
 {
     char pos[8];
@@ -126,6 +138,7 @@ static void RenderView(GfxFb *pFb, const MenuView *pV)
     if (pV->hint[0]) HintLine(pFb, pV->hint);
 }
 
+/** Menu view or home screen. See display_model.h. */
 void DisplayRender(GfxFb *pFb, const DisplayModel *pM)
 {
     if (pM->view.kind != kViewHome && pM->view.kind != kViewHomeBanner) { RenderView(pFb, &pM->view); return; }

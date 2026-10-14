@@ -34,6 +34,11 @@ extern "C" {
 #define SCHED_BOOST_MAX_MIN    240      /* morning boost duration 0..240 min */
 #define SCHED_BOOST_OFS_MAX    300      /* morning boost offset 0..3.0 °C */
 
+/**
+ * The user's day/night program and morning boost. Times are minutes after local midnight
+ * (0..1439); temperatures in 0.01 °C. Persisted as part of Persist; fill with SCHED_CFG_DEFAULT()
+ * and keep sane with SchedSanitize().
+ */
 typedef struct {
     U16 dayCoolStart, nightCoolStart;     /* minutes after midnight */
     I16  dayCool, nightCool;                 /* c°C */
@@ -69,38 +74,80 @@ typedef enum {
     kSchedItCount,
 } SchedItem;
 typedef enum { kSchedKindTime, kSchedKindTemp, kSchedKindMinutes, kSchedKindDelta } SchedKind;
+
+/**
+ * @return how a schedule item is displayed and stepped (time of day, temperature, minutes, temperature delta).
+ */
 SchedKind SchedItemKind(SchedItem it);
+
+/**
+ * @return the raw value of one schedule item (minutes or 0.01 °C, by SchedItemKind()); 0 for an
+ * unknown item.
+ */
 I32      SchedGet(const SchedCfg *pC, SchedItem it);
+
+/**
+ * Store a raw value into one schedule item, saturated to the field's U16/I16 range only.
+ * Call SchedSanitize() afterwards to apply the real limits. Unknown items are ignored.
+ */
 void         SchedSet(SchedCfg *pC, SchedItem it, I32 v);   /* raw store; call SchedSanitize after */
 
-/* Clamp everything into range (times 0..1439, temps minSp..maxSp, boost limits). */
+/**
+ * Clamp everything into range: start times to 0..1439, temperatures to pP->minSp..maxSp,
+ * boostMin to 0..SCHED_BOOST_MAX_MIN and boostOffset to 0..SCHED_BOOST_OFS_MAX.
+ */
 void SchedSanitize(const CtrlParams *pP, SchedCfg *pC);
 
-/* Which period `minute` falls in for a day_start/night_start pair. */
+/**
+ * Which period `minute` falls in for one start-time pair. DAY is [dayStart, nightStart) and
+ * either period may cross midnight; equal starts mean the program is disabled (always DAY).
+ * @param minute  minutes after midnight (taken modulo 1440)
+ */
 SchedPeriod SchedPeriodAt(U16 dayStart, U16 nightStart, U16 minute);
 
-/* Effective morning boost length in minutes (0 = off), after the clamps above. */
+/**
+ * @return the effective morning boost length in minutes: boostMin, cut short at nightHeatStart;
+ * 0 if boostMin or boostOffset is 0 or the heating program is disabled (equal starts).
+ */
 U16 SchedBoostLength(const SchedCfg *pC);
-/* Morning boost window active at `minute` (ignores mode). */
+
+/**
+ * @param minute  minutes after midnight
+ * @return true if `minute` is inside the morning boost window that starts at dayHeatStart
+ * (ignores the system mode and whether the time is known).
+ */
 bool SchedBoostWindow(const SchedCfg *pC, U16 minute);
 
-/* Current period for a mode (HEAT uses the heating program, everything else the
- * cooling program). Unknown time -> kSchedDay. */
+/**
+ * @return the current period for a mode: HEAT uses the heating program, every other mode the
+ * cooling program; kSchedDay when the time is unknown.
+ */
 SchedPeriod SchedCurrent(const SchedCfg *pC, CtrlMode mode, bool timeKnown, U16 minute);
 
-/* The program setpoints for the current periods (no morning boost). This is
- * what the user sees and edits as "the" setpoint. */
+/**
+ * The program setpoints for the current periods, without the morning boost: what the user sees
+ * and edits as "the" setpoint. The heat setpoint follows the heating program and the cool
+ * setpoint the cooling program, independently.
+ * @param pHeat  out: heating setpoint, 0.01 °C
+ * @param pCool  out: cooling setpoint, 0.01 °C
+ */
 void SchedProgramSp(const SchedCfg *pC, bool timeKnown, U16 minute, I16 *pHeat, I16 *pCool);
 
-/* Fill s->heatSp / s->coolSp with the setpoints the controller should use:
- * the program setpoints plus the morning boost (HEAT mode, time known, inside
- * the window; clamped to maxSp). Returns the state to report: the period of the
- * cooling program in COOL mode, of the heating program in HEAT and OFF. */
+/**
+ * Fill pS->heatSp / pS->coolSp with the setpoints the controller should use: the program
+ * setpoints, plus boostOffset on the heat setpoint (clamped to maxSp) in HEAT mode inside the
+ * morning window when the time is known. Only the setpoints in *pS are written.
+ * @return the state to report: kSchedStateTimeUnknown, kSchedStateDayBoost, or the period of the
+ * cooling program in COOL mode and of the heating program in HEAT and OFF.
+ */
 SchedState SchedApply(const CtrlParams *pP, const SchedCfg *pC, bool timeKnown, U16 minute,
                           CtrlSettings *pS);
 
-/* The user moved the main setpoint: store it in the CURRENT period of the
- * heating (`heat` true) or cooling program. Clamped. Returns true if changed. */
+/**
+ * The user moved the main setpoint: store it (clamped) in the CURRENT period of the heating
+ * (`heat` true) or cooling program; DAY when the time is unknown.
+ * @return true if the stored value changed
+ */
 bool SchedEditCurrent(const CtrlParams *pP, SchedCfg *pC, bool heat, bool timeKnown, U16 minute,
                         I16 sp);
 

@@ -3,9 +3,13 @@
 #include "schedule.h"
 #include <stddef.h>
 
+/** @return v clamped into lo..hi. */
 static I16 Clamp16(I32 v, I16 lo, I16 hi) { return v < lo ? lo : (v > hi ? hi : (I16)v); }
+
+/** @return a minute-of-day clamped to 0..1439. */
 static U16 ClampMin(U16 m) { return m >= SCHED_MIN_PER_DAY ? SCHED_MIN_PER_DAY - 1 : m; }
 
+/** See schedule.h. */
 void SchedSanitize(const CtrlParams *pP, SchedCfg *pC)
 {
     pC->dayCoolStart = ClampMin(pC->dayCoolStart);
@@ -20,6 +24,7 @@ void SchedSanitize(const CtrlParams *pP, SchedCfg *pC)
     pC->boostOffset = Clamp16(pC->boostOffset, 0, SCHED_BOOST_OFS_MAX);
 }
 
+/** Same-day or midnight-crossing DAY period. See schedule.h. */
 SchedPeriod SchedPeriodAt(U16 day, U16 night, U16 minute)
 {
     minute %= SCHED_MIN_PER_DAY;
@@ -29,6 +34,7 @@ SchedPeriod SchedPeriodAt(U16 day, U16 night, U16 minute)
     return (minute >= day || minute < night) ? kSchedDay : kSchedNight;
 }
 
+/** boostMin capped to the length of the heating DAY period. See schedule.h. */
 U16 SchedBoostLength(const SchedCfg *pC)
 {
     if (!pC->boostMin || !pC->boostOffset) return 0;
@@ -38,6 +44,7 @@ U16 SchedBoostLength(const SchedCfg *pC)
     return pC->boostMin < dayLen ? pC->boostMin : dayLen;   /* never runs into the night period */
 }
 
+/** See schedule.h. */
 bool SchedBoostWindow(const SchedCfg *pC, U16 minute)
 {
     U16 len = SchedBoostLength(pC);
@@ -47,6 +54,7 @@ bool SchedBoostWindow(const SchedCfg *pC, U16 minute)
     return since < len;
 }
 
+/** See schedule.h. */
 SchedPeriod SchedCurrent(const SchedCfg *pC, CtrlMode mode, bool timeKnown, U16 minute)
 {
     if (!timeKnown) return kSchedDay;
@@ -54,12 +62,14 @@ SchedPeriod SchedCurrent(const SchedCfg *pC, CtrlMode mode, bool timeKnown, U16 
                                   : SchedPeriodAt(pC->dayCoolStart, pC->nightCoolStart, minute);
 }
 
+/** See schedule.h. */
 void SchedProgramSp(const SchedCfg *pC, bool known, U16 minute, I16 *pHeat, I16 *pCool)
 {
     *pHeat = SchedCurrent(pC, kCtrlModeHeat, known, minute) == kSchedDay ? pC->dayHeat : pC->nightHeat;
     *pCool = SchedCurrent(pC, kCtrlModeCool, known, minute) == kSchedDay ? pC->dayCool : pC->nightCool;
 }
 
+/** Program setpoints plus morning boost, and the state to report. See schedule.h. */
 SchedState SchedApply(const CtrlParams *pP, const SchedCfg *pC, bool known, U16 minute,
                           CtrlSettings *pS)
 {
@@ -74,6 +84,7 @@ SchedState SchedApply(const CtrlParams *pP, const SchedCfg *pC, bool known, U16 
     return per == kSchedDay ? kSchedStateDay : kSchedStateNight;
 }
 
+/** See schedule.h. */
 bool SchedEditCurrent(const CtrlParams *pP, SchedCfg *pC, bool heat, bool known, U16 minute, I16 sp)
 {
     sp = Clamp16(sp, pP->minSp, pP->maxSp);
@@ -85,6 +96,7 @@ bool SchedEditCurrent(const CtrlParams *pP, SchedCfg *pC, bool heat, bool known,
     return true;
 }
 
+/** See schedule.h. */
 SchedKind SchedItemKind(SchedItem it)
 {
     switch (it) {
@@ -96,6 +108,10 @@ SchedKind SchedItemKind(SchedItem it)
     }
 }
 
+/**
+ * @return a pointer to the SchedCfg field behind a menu item (U16 for times/minutes, I16
+ * otherwise), or NULL for an unknown item. Casts away const: SchedGet() only reads through it.
+ */
 static void *ItemPtr(const SchedCfg *pC, SchedItem it)
 {
     SchedCfg *pM = (SchedCfg *)pC;
@@ -114,12 +130,14 @@ static void *ItemPtr(const SchedCfg *pC, SchedItem it)
     }
 }
 
+/** @return true if the item's field is a U16 (times and minutes), false for I16 temperatures. */
 static bool ItemUnsigned(SchedItem it)
 {
     SchedKind k = SchedItemKind(it);
     return k == kSchedKindTime || k == kSchedKindMinutes;
 }
 
+/** See schedule.h. */
 I32 SchedGet(const SchedCfg *pC, SchedItem it)
 {
     void *pP = ItemPtr(pC, it);
@@ -127,6 +145,7 @@ I32 SchedGet(const SchedCfg *pC, SchedItem it)
     return ItemUnsigned(it) ? *(U16 *)pP : *(I16 *)pP;
 }
 
+/** See schedule.h. */
 void SchedSet(SchedCfg *pC, SchedItem it, I32 v)
 {
     void *pP = ItemPtr(pC, it);
