@@ -50,6 +50,23 @@ try {
     console.log(out);
     await page.close();
   }
+  // Close-ups of the boost sections, light and dark, while a timed boost runs.
+  for (const theme of ['light', 'dark']) {
+    const page = await browser.newPage({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2, colorScheme: theme });
+    await page.goto(`${base}?theme=${theme}&scenario=cool-night`);
+    await page.waitForSelector('body[data-ready]');
+    await page.locator('connie-thermostat-card').evaluate(async (c) => {
+      c._open = { boost: true, morning: true, schedule: false, status: false };
+      await c.updateComplete;
+    });
+    for (const [h, f] of [['Boost', 'boost'], ['Morning heating boost', 'morning-boost']]) {
+      const out = join(outDir, `closeup-${f}-${theme}.png`);
+      await page.locator('section').filter({ has: page.locator('h3', { hasText: new RegExp(`^${h}$`) }) }).screenshot({ path: out });
+      console.log(out);
+    }
+    await page.close();
+  }
+
   // Geometry check: every tooltip, opened in turn, stays inside the card and covers none of
   // the controls in its own row (or, for the setpoint, the setpoint box). Phone and narrow widths.
   for (const width of [412, 320]) {
@@ -65,14 +82,17 @@ try {
         const box = root.querySelector('ha-card').getBoundingClientRect();
         const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
         const out = [];
-        const ids = [...root.querySelectorAll('.info-w')].map((w) => w.dataset.tip);
+        const ids = [...root.querySelectorAll('.info-b')].map((w) => w.dataset.tip);
         for (const id of ids) {
           card._tip = { id, pinned: true };
           await card.updateComplete;
-          const w = root.querySelector(`.info-w[data-tip="${id}"]`);
+          const w = root.querySelector(`.info-b[data-tip="${id}"]`);
           const t = root.getElementById(`tip-${id}`).getBoundingClientRect();
           if (t.left < box.left || t.right > box.right || t.top < box.top) out.push(`${id}: outside the card`);
-          const own = w.closest('.row') ?? w.closest('.setpoint') ?? w.closest('.legend');
+          // Nothing else in the card that's visible text or a control may sit under an overlay tooltip.
+          if (!root.getElementById(`tip-${id}`).classList.contains('inline'))
+            for (const c of root.querySelectorAll('.sub, .room, .period')) if (hit(t, c.getBoundingClientRect())) out.push(`${id}: covers ${c.className}`);
+          const own = w.closest('.tile') ?? w.closest('.row') ?? w.closest('.setpoint') ?? w.closest('.legend');
           for (const c of own.querySelectorAll('button, input, select, [role="slider"]')) {
             if (w.contains(c)) continue;
             if (hit(t, c.getBoundingClientRect())) out.push(`${id}: covers ${c.getAttribute('aria-label') || c.className}`);

@@ -19,14 +19,16 @@ number tiles with a single card that covers everything the quirk exposes.
   with a dotted underline, and screen readers hear "sending…". The value is a keyboard slider: arrows ±1 step,
   PageUp/PageDown ±5, Home/End min/max.
 * **Mode:** Off / Heat / Cool only (any Auto / heat_cool is filtered out), plus a **Fan On / Auto** toggle.
-* **Boost** (first, open by default): target, timed length, direction, To target / Timed / Cancel, and the live state with time left.
-* **Morning heating boost:** duration and offset.
+* **Boost** (first, open by default): a Direction switch (Auto / Heat / Cool), then one tile per boost.
+  *Boost to target* holds the target stepper and its Start button on one line; *Timed boost* does the same with the
+  length. A running boost outlines its tile, shows the time left there, and its button turns into Stop.
+* **Morning heating boost:** two tiles, Duration and Offset, each with its own stepper.
 * **Program schedule:** a 24 h timeline for heating and cooling (day solid, night light, morning boost
   hatched, a marker for now). Below it, Day and Night tiles for each mode with the start time and target;
   the tile in use is outlined and tagged NOW.
 * **Tuning & status:** temperature swing, program period, last boost result.
 * **Help text** sits behind small (i) buttons, so the card stays quiet. Each opens on hover, focus or tap,
-  closes on Esc (consumed only when a tooltip was open) or a click elsewhere, opens above its row, and is linked with `aria-describedby`.
+  closes on Esc (consumed only when a tooltip was open) or a click elsewhere, opens above its row (the setpoint one opens in place and pushes the value down), and is linked with `aria-describedby`.
 * **Warnings** always stay visible: device unavailable, no clock yet (holding the day program), and failed boosts (rejected, failsafe, limit).
 
 ### Units
@@ -87,9 +89,14 @@ firmware release workflow should attach it the same way `card-release.yml` does.
 npm ci
 npm test              # vitest + happy-dom, mocked hass (test/mock-hass.js)
 npm run build         # esbuild -> dist/connie-thermostat-card.js (commit it; CI checks it's up to date)
-npm run screenshots   # headless system Chrome renders demo/ to screenshots/*.png (light + dark), then opens every
-                      # tooltip at 412 and 320 px and fails if one leaves the card or covers its own row's controls
+CHROME_PATH=/usr/bin/google-chrome npm run screenshots
+                      # headless Chrome renders demo/ to screenshots/*.png (light + dark, plus boost close-ups),
+                      # then opens every tooltip at 412 and 320 px and fails if one leaves the card or
+                      # covers its own row's controls
 ```
+
+`npm run screenshots` (and its geometry check) needs a local Chrome or Chromium. It uses `CHROME_PATH`, or
+`--chrome /path`, and falls back to `/usr/bin/google-chrome`. playwright-core never downloads a browser.
 
 `demo/index.html` loads the built card with the mock hass and HA's default light/dark theme variables.
 Serve this folder and open `demo/?theme=dark&scenario=cool-night`. The scenarios are `heat-day`,

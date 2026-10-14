@@ -55,7 +55,7 @@ export class ConnieThermostatCard extends LitElement {
     /** Open tooltip: { id, pinned } (pinned = opened by click/tap, survives mouseleave/blur). */
     this._tip = null;
     this._onDocClick = (ev) => {
-      if (this._tip && !ev.composedPath().some((n) => n.classList?.contains('info-w') && n.dataset.tip === this._tip.id)) this._tip = null;
+      if (this._tip && !ev.composedPath().some((n) => n.dataset?.tip === this._tip.id)) this._tip = null;
     };
     this._onDocKey = (ev) => {
       if (ev.key !== 'Escape' || !this._tip) return;
@@ -287,25 +287,33 @@ export class ConnieThermostatCard extends LitElement {
   /**
    * Small (i) button with a tooltip. Opens on hover and focus (closes on leave/blur) and
    * pins on click/tap; Esc or a click elsewhere closes it. The text stays in the DOM so
-   * aria-describedby works even while hidden.
+   * aria-describedby works even while hidden. The tip is positioned against the nearest
+   * .row/.tile/.legend and opens above it, so it never covers that row's own controls.
    */
-  _info(id, text, { align = 'row', label = 'More info' } = {}) {
+  _info(id, text, { label = 'More info' } = {}) {
+    return html`<span class="info-w" data-tip=${id}>${this._infoBtn(id, label)}${this._infoTip(id, text)}</span>`;
+  }
+
+  /** The (i) button alone (see _info); pair it with _infoTip(id) placed elsewhere. */
+  _infoBtn(id, label) {
     const open = this._tip?.id === id;
-    const show = (pinned) => {
-      if (!this._tip || this._tip.id !== id || pinned) this._tip = { id, pinned: pinned || (this._tip?.id === id && this._tip.pinned) };
+    const show = () => {
+      if (this._tip?.id !== id) this._tip = { id, pinned: false };
     };
     const hide = () => {
       if (this._tip?.id === id && !this._tip.pinned) this._tip = null;
     };
-    return html`<span class="info-w ${align}" data-tip=${id} @mouseenter=${() => show(false)} @mouseleave=${hide}>
-      <button class="info" type="button" aria-label=${label} aria-describedby="tip-${id}" aria-expanded=${open ? 'true' : 'false'}
-        @focus=${() => show(false)} @blur=${hide}
-        @click=${(e) => {
-          e.stopPropagation();
-          this._tip = open && this._tip.pinned ? null : { id, pinned: true };
-        }}>${icon(I.mdiInformationOutline, 'xs')}</button>
-      <span class="tip ${open ? 'open' : ''}" role="tooltip" id="tip-${id}">${text}</span>
-    </span>`;
+    return html`<span class="info-b" data-tip=${id} @mouseenter=${show} @mouseleave=${hide}><button class="info" type="button"
+      aria-label=${label} aria-describedby="tip-${id}" aria-expanded=${open ? 'true' : 'false'} @focus=${show} @blur=${hide}
+      @click=${(e) => {
+        e.stopPropagation();
+        this._tip = open && this._tip.pinned ? null : { id, pinned: true };
+      }}>${icon(I.mdiInformationOutline, 'xs')}</button></span>`;
+  }
+
+  /** The tooltip text for _infoBtn(id). `inline` puts it in the flow (pushes content down, covers nothing). */
+  _infoTip(id, text, { inline = false } = {}) {
+    return html`<span class="tip ${inline ? 'inline' : ''} ${this._tip?.id === id ? 'open' : ''}" role="tooltip" id="tip-${id}" data-tip=${id}>${text}</span>`;
   }
 
   _section(id, title, meta, body) {
@@ -413,7 +421,8 @@ export class ConnieThermostatCard extends LitElement {
     const periodName = period === 'boost' ? `Morning boost${this._boostOffsetText()}` : period === 'noclock' ? 'Day (no clock)' : info.day ? 'Day' : 'Night';
     return html`<div class="setpoint">
       <span class="period-row"><span class="period">${icon(periodIcon, 'sm')}${periodName}${info.span ? html` · ${info.span}` : nothing}</span>
-        ${this._info('setpoint', `Changes the ${info.label} program setpoint${period === 'boost' ? ' (the morning boost is added on top)' : ''}.`, { align: 'band', label: 'About the setpoint' })}</span>
+        ${this._infoBtn('setpoint', 'About the setpoint')}</span>
+      ${this._infoTip('setpoint', `Changes the ${info.label} program setpoint${period === 'boost' ? ' (the morning boost is added on top)' : ''}.`, { inline: true })}
       <div class="sp-row">
         <button class="round" aria-label="Lower setpoint" ?disabled=${unavailable || v <= a.min_temp} @click=${() => this._stepSetpoint(-1)}>${icon(I.mdiMinus)}</button>
         <span class="sp-val ${'climate' in this._pending ? 'pending' : ''}" role="slider" tabindex=${unavailable ? -1 : 0}
@@ -488,12 +497,32 @@ export class ConnieThermostatCard extends LitElement {
       </div>`);
   }
 
+  /**
+   * One self-contained unit: a header (icon, label, optional (i) and status) with the value's
+   * stepper directly under it and, for boosts, the button that applies that value on the same line.
+   */
+  _tile(id, { title, iconPath, help, helpLabel, status = nothing, body, cls = '' }) {
+    return html`<div class="tile ${cls}" role="group" aria-labelledby="tile-${id}">
+      <div class="tile-h">${iconPath ? icon(iconPath, 'sm') : nothing}<span id="tile-${id}">${title}</span>${help ? this._info(`tile-${id}`, help, { label: helpLabel ?? `About ${title}` }) : nothing}${status}</div>
+      <div class="tile-c">${body}</div>
+    </div>`;
+  }
+
   _renderMorning(period) {
     const dur = num(this._st('morning_boost_duration'));
     const meta = period === 'boost' ? 'Running now' : dur ? `${dur} min` : 'Off';
-    return this._section('morning', 'Morning heating boost', meta, () => html`<div class="rows">
-      <div class="row"><span class="l">Duration${this._info('mb-duration', 'Runs from the day heating start for this long; 0 = off.', { label: 'About morning boost duration' })}</span>${this._numStepper('morning_boost_duration', { label: 'morning boost duration' })}</div>
-      <div class="row"><span class="l">Offset${this._info('mb-offset', 'Added to the day heating target while the morning boost runs.', { label: 'About morning boost offset' })}</span>${this._numStepper('morning_boost_offset', { delta: true, label: 'morning boost offset' })}</div>
+    const on = period === 'boost';
+    return this._section('morning', 'Morning heating boost', meta, () => html`<div class="tile-pair">
+      ${this._tile('mb-duration', {
+        title: 'Duration', iconPath: I.mdiTimerOutline, cls: on ? 'running' : '',
+        help: 'Runs from the day heating start for this long; 0 = off.', helpLabel: 'About morning boost duration',
+        body: this._numStepper('morning_boost_duration', { label: 'morning boost duration' }),
+      })}
+      ${this._tile('mb-offset', {
+        title: 'Offset', iconPath: I.mdiThermometerPlus, cls: on ? 'running' : '',
+        help: 'Added to the day heating target while the morning boost runs.', helpLabel: 'About morning boost offset',
+        body: this._numStepper('morning_boost_offset', { delta: true, label: 'morning boost offset' }),
+      })}
     </div>`);
   }
 
@@ -501,23 +530,36 @@ export class ConnieThermostatCard extends LitElement {
     const active = this._st('boost_active')?.state === 'on';
     const state = this._st('boost_state')?.state;
     const rem = num(this._st('boost_remaining'));
+    const st = String(state ?? '').toLowerCase();
+    const kind = !active ? null : st.includes('timed') ? 'timed' : st.includes('target') ? 'target' : null;
     const meta = active ? `${humanize(state)}${rem ? ` · ${Math.round(rem)} min left` : ''}` : 'Idle';
     const sel = this._st('boost_mode');
+    const dirIcon = { auto: I.mdiThermostatAuto, heat: I.mdiFire, cool: I.mdiSnowflake };
+    const sp = this._st('boost_setpoint');
+    const spText = sp ? this._fmtNum(num(sp) ?? 0, decimalsOf(sp.attributes?.step), sp.attributes?.unit_of_measurement ?? '') : '';
+    const mins = num(this._st('boost_duration'));
+    const runChip = (k) => (kind === k ? html`<span class="run-chip">${icon(I.mdiPlay, 'xs')}${k === 'timed' && rem ? `${Math.round(rem)} min left` : 'Running'}</span>` : nothing);
+    const go = (k, key, startLabel) =>
+      kind === k
+        ? html`<button class="go stop" ?disabled=${!this._e.boost_cancel} aria-label="Stop boost" @click=${() => this._press('boost_cancel')}>${icon(I.mdiStop, 'sm')}Stop</button>`
+        : html`<button class="go" ?disabled=${!this._e[key]} aria-label=${startLabel} @click=${() => this._press(key)}>${icon(I.mdiPlay, 'sm')}Start</button>`;
     return this._section('boost', 'Boost', meta, () => html`
-      ${active ? html`<div class="boost-live">${icon(I.mdiThermometerChevronUp)}<span>${humanize(state)}${rem ? ` — ${Math.round(rem)} min left` : ''}</span></div>` : nothing}
-      <div class="rows">
-        <div class="row"><span>Target</span>${this._numStepper('boost_setpoint', { label: 'boost target' })}</div>
-        <div class="row"><span>Timed length</span>${this._numStepper('boost_duration', { label: 'boost duration' })}</div>
-        <div class="row"><span>Direction</span>${sel
-          ? html`<select aria-label="Boost direction" @change=${(e) => this._call('select', 'select_option', { entity_id: this._e.boost_mode, option: e.target.value })}>
-              ${(sel.attributes?.options ?? []).map((o) => html`<option .value=${o} ?selected=${o === sel.state}>${humanize(o)}</option>`)}</select>`
-          : html`<span class="missing">n/a</span>`}</div>
-      </div>
-      <div class="btns">
-        <button class="btn" ?disabled=${!this._e.boost_start_target} @click=${() => this._press('boost_start_target')}>${icon(I.mdiThermometerChevronUp)}To target</button>
-        <button class="btn" ?disabled=${!this._e.boost_start_timed} @click=${() => this._press('boost_start_timed')}>${icon(I.mdiTimerPlayOutline)}Timed</button>
-        <button class="btn" ?disabled=${!this._e.boost_cancel || !active} @click=${() => this._press('boost_cancel')}>${icon(I.mdiCancel)}Cancel</button>
-      </div>`);
+      <div class="dir-row"><span id="boost-dir-l">Direction</span>${sel
+        ? html`<div class="seg mini-seg" role="group" aria-labelledby="boost-dir-l">${(sel.attributes?.options ?? []).map((o) => html`<button
+            aria-pressed=${o === sel.state ? 'true' : 'false'} @click=${() => this._call('select', 'select_option', { entity_id: this._e.boost_mode, option: o })}>${dirIcon[o.toLowerCase()] ? icon(dirIcon[o.toLowerCase()], 'xs') : nothing}${humanize(o)}</button>`)}</div>`
+        : html`<span class="missing">n/a</span>`}</div>
+      ${this._tile('boost-target', {
+        title: 'Boost to target', iconPath: I.mdiThermometerChevronUp, cls: kind === 'target' ? 'running' : '', status: runChip('target'),
+        help: 'Heats or cools (per Direction) until the room reaches this temperature.',
+        body: html`${this._numStepper('boost_setpoint', { label: 'boost target' })}${go('target', 'boost_start_target', `Start boost to ${spText}`)}`,
+      })}
+      ${this._tile('boost-timed', {
+        title: 'Timed boost', iconPath: I.mdiTimerPlayOutline, cls: kind === 'timed' ? 'running' : '', status: runChip('timed'),
+        help: 'Runs heating or cooling (per Direction) for this long, then returns to the program.',
+        body: html`${this._numStepper('boost_duration', { label: 'boost duration' })}${go('timed', 'boost_start_timed', `Start timed boost for ${mins ?? '—'} min`)}`,
+      })}
+      ${active && !kind ? html`<div class="boost-live">${icon(I.mdiThermometerChevronUp)}<span>${humanize(state)}</span>
+        <button class="go stop" aria-label="Stop boost" @click=${() => this._press('boost_cancel')}>${icon(I.mdiStop, 'sm')}Stop</button></div>` : nothing}`);
   }
 
   _renderStatus() {

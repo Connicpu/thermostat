@@ -104,8 +104,8 @@ export const cardStyles = css`
   /* The tooltip is positioned against its row (.row / .legend / .setpoint), not the (i): it sits
      above that whole row and is at most as wide as it, so it never covers the row's own controls
      and can't leave the card. */
-  .info-w { position: static; display: inline-flex; vertical-align: middle; }
-  .row, .legend { position: relative; }
+  .info-w, .info-b { position: static; display: inline-flex; vertical-align: middle; }
+  .row, .legend, .tile { position: relative; }
   .info { border: none; background: none; padding: 4px; margin: -4px 0; border-radius: 50%; color: var(--secondary-text-color); cursor: pointer; display: grid; place-items: center; }
   .info:hover, .info[aria-expanded='true'] { color: var(--primary-color); }
   .info:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 0; }
@@ -117,8 +117,9 @@ export const cardStyles = css`
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); visibility: hidden; opacity: 0; transition: opacity 0.12s;
   }
   .tip.open { visibility: visible; opacity: 1; }
-  /* band (setpoint): spans the setpoint box, centred, above it */
-  .info-w.band .tip { left: 8px; right: 8px; width: auto; max-width: none; text-align: center; }
+  /* inline (setpoint): in the flow under the badge, so it pushes the value down instead of covering anything */
+  .tip.inline { position: static; display: none; width: auto; max-width: 100%; text-align: center; box-shadow: none; transition: none; }
+  .tip.inline.open { display: block; }
   .legend { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--secondary-text-color); }
 
   /* timeline */
@@ -161,6 +162,27 @@ export const cardStyles = css`
   .btn { border: none; border-radius: var(--ct-radius); background: var(--ct-tile); color: var(--primary-text-color); font: inherit; font-size: 13px; font-weight: 500; padding: 10px 6px; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; }
   .btn svg { color: var(--primary-color); }
   .btn:disabled { opacity: 0.4; cursor: default; }
+  /* boost + morning boost tiles: label, value stepper and its button form one unit */
+  .tile-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .tile { border-radius: var(--ct-radius); padding: 10px 12px; background: var(--ct-tile); border: 2px solid transparent; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .tile.running { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 10%, transparent); }
+  .tile-h { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500; color: var(--primary-text-color); min-height: 24px; }
+  .tile-h > svg { color: var(--primary-color); }
+  .tile-c { display: flex; align-items: center; gap: 8px; }
+  .tile-pair .tile-c { justify-content: center; }
+  .tile .mini { background: var(--card-background-color, var(--ha-card-background, #fff)); }
+  .run-chip { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 600; color: var(--primary-color); }
+  .go {
+    margin-left: auto; height: 36px; padding: 0 14px 0 10px; border: none; border-radius: 18px; cursor: pointer; font: inherit; font-size: 14px; font-weight: 500;
+    display: inline-flex; align-items: center; gap: 4px; color: var(--text-primary-color, #fff); background: var(--primary-color);
+  }
+  .go.stop { background: var(--error-color, #db4437); }
+  .go:disabled { opacity: 0.4; cursor: default; }
+  .go:focus-visible, .mini-seg button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+  .go.stop:focus-visible { outline-color: var(--error-color, #db4437); }
+  .dir-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; color: var(--primary-text-color); }
+  .mini-seg { flex: 0 1 auto; grid-template-columns: repeat(3, auto); padding: 3px; }
+  .mini-seg button { height: 32px; padding: 0 10px; font-size: 13px; }
   .boost-live { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; font-size: 14px; color: var(--primary-text-color); background: color-mix(in srgb, var(--primary-color) 14%, transparent); }
   .boost-live svg { color: var(--primary-color); }
   .missing { font-size: 13px; color: var(--secondary-text-color); font-style: italic; }

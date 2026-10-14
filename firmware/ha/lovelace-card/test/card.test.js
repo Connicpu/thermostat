@@ -16,6 +16,9 @@ async function mount(config = {}, hassOpts = {}) {
 const $ = (el, sel) => el.shadowRoot.querySelector(sel);
 const $$ = (el, sel) => [...el.shadowRoot.querySelectorAll(sel)];
 const text = (el) => el.shadowRoot.textContent.replace(/\s+/g, ' ');
+const flushAsync = async () => {
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+};
 const button = (el, label) => $$(el, 'button').find((b) => b.getAttribute('aria-label') === label || b.textContent.trim() === label);
 
 describe('card', () => {
@@ -44,7 +47,7 @@ describe('card', () => {
 
   it('shows only Off / Heat / Cool and the running state', async () => {
     const el = await mount({}, { patch: { [`climate.${PREFIX}`]: { attributes: { hvac_modes: ['off', 'heat_cool', 'heat', 'cool', 'auto'] } } } });
-    expect($$(el, '.seg button').map((b) => b.textContent.trim())).toEqual(['Off', 'Heat', 'Cool']);
+    expect($$(el, '.controls .seg button').map((b) => b.textContent.trim())).toEqual(['Off', 'Heat', 'Cool']);
     expect($(el, '.chip.heat').classList.contains('on')).toBe(true);
     expect($(el, '.chip.cool').classList.contains('on')).toBe(false);
     expect($(el, '.seg .heat').getAttribute('aria-pressed')).toBe('true');
@@ -100,7 +103,7 @@ describe('card', () => {
   it('puts help text in tooltips: hover, focus, click to pin, Esc and outside click close', async () => {
     const el = await mount();
     expect($(el, '.caption')).toBeNull();
-    const w = $(el, '.info-w[data-tip="setpoint"]');
+    const w = $(el, '.info-b[data-tip="setpoint"]');
     const btn = w.querySelector('button.info');
     const tip = $(el, '#tip-setpoint');
     expect(tip.getAttribute('role')).toBe('tooltip');
@@ -147,10 +150,10 @@ describe('card', () => {
 
     btn.click();
     await el.updateComplete;
-    $(el, '.info-w[data-tip="mb-offset"] button.info').click(); // opening another closes the first
+    $(el, '.info-w[data-tip="tile-mb-offset"] button.info').click(); // opening another closes the first
     await el.updateComplete;
     expect(isOpen()).toBe(false);
-    expect($(el, '#tip-mb-offset').classList.contains('open')).toBe(true);
+    expect($(el, '#tip-tile-mb-offset').classList.contains('open')).toBe(true);
   });
 
   it('Esc stops propagation only when it closed a tooltip', async () => {
@@ -161,7 +164,7 @@ describe('card', () => {
     const esc = () => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     esc();
     expect(seen).toBe(1); // nothing open: HA still gets Esc
-    $(el, '.info-w[data-tip="setpoint"] button.info').click();
+    $(el, '.info-b[data-tip="setpoint"] button.info').click();
     await el.updateComplete;
     expect(el._tip).not.toBeNull();
     esc();
@@ -172,11 +175,15 @@ describe('card', () => {
     window.removeEventListener('keydown', later);
   });
 
-  it('tooltips open upward above their row; the setpoint one spans the setpoint box', async () => {
+  it('the setpoint tooltip is in the flow; the others sit in a row or tile', async () => {
     const el = await mount();
-    expect($(el, '.info-w[data-tip="setpoint"]').classList.contains('band')).toBe(true);
-    expect($(el, '.info-w[data-tip="setpoint"]').closest('.setpoint')).not.toBeNull();
-    expect($$(el, '.info-w').every((w) => w.classList.contains('band') || w.classList.contains('row'))).toBe(true);
+    const tip = $(el, '#tip-setpoint');
+    expect(tip.classList.contains('inline')).toBe(true);
+    expect(tip.parentElement.classList.contains('setpoint')).toBe(true);
+    // sits between the badge and the value, so opening it pushes the value down
+    expect(tip.previousElementSibling.classList.contains('period-row')).toBe(true);
+    expect(tip.nextElementSibling.classList.contains('sp-row')).toBe(true);
+    for (const w of $$(el, '.info-w')) expect(w.closest('.row, .tile, .legend')).not.toBeNull();
   });
 
   it('keeps warnings visible, not in tooltips', async () => {
@@ -190,7 +197,7 @@ describe('card', () => {
   it('puts boost controls above the schedule', async () => {
     const el = await mount();
     expect($$(el, 'section h3').map((h) => h.textContent)).toEqual(['Boost', 'Morning heating boost', 'Program schedule', 'Tuning & status']);
-    expect($(el, 'section .btns')).not.toBeNull(); // Boost is open by default
+    expect($(el, '.tile[aria-labelledby="tile-boost-target"]')).not.toBeNull(); // Boost is open by default
   });
 
   it('labels the night cooling period when cooling at night', async () => {
@@ -242,33 +249,66 @@ describe('card', () => {
 
   it('shows °C differences as °F and writes °C back', async () => {
     const el = await mount();
-    const row = $$(el, '.row').find((r) => r.textContent.includes('Offset'));
+    const row = $$(el, '.tile').find((r) => r.textContent.includes('Offset'));
     expect(row.textContent).toContain('1.8°F');
     button(el, 'Increase morning boost offset').click();
     vi.advanceTimersByTime(1000);
     expect(el.hass.calls.at(-1)).toEqual({ domain: 'number', service: 'set_value', data: { entity_id: `number.${PREFIX}_morning_heating_boost_offset`, value: 1.1 } });
   });
 
-  it('starts and cancels boosts, sets the direction', async () => {
+  it('each boost tile holds its value stepper and the button that starts it', async () => {
+    const el = await mount();
+    const tile = (id) => $(el, `.tile[aria-labelledby="tile-${id}"]`);
+    const t = tile('boost-target');
+    expect(t.getAttribute('role')).toBe('group');
+    expect(el.shadowRoot.getElementById('tile-boost-target').textContent).toBe('Boost to target');
+    expect(t.querySelector('.stepper .v').textContent).toBe('72°F');
+    const go = t.querySelector('.go');
+    expect(go.getAttribute('aria-label')).toBe('Start boost to 72°F');
+    // value and button are on the same line, in the same tile
+    expect(go.parentElement).toBe(t.querySelector('.stepper').parentElement);
+    const timed = tile('boost-timed');
+    expect(timed.querySelector('.stepper .v').textContent).toBe('30 min');
+    expect(timed.querySelector('.go').getAttribute('aria-label')).toBe('Start timed boost for 30 min');
+    go.click();
+    await flushAsync();
+    expect(el.hass.calls).toEqual([{ domain: 'button', service: 'press', data: { entity_id: `button.${PREFIX}_start_boost_to_target` } }]);
+  });
+
+  it('a running boost turns its own tile button into Stop; direction is a segmented control', async () => {
     const el = await mount({}, { patch: { [`binary_sensor.${PREFIX}_boost_active`]: { state: 'on' }, [`sensor.${PREFIX}_boost`]: { state: 'Timed_heat' }, [`sensor.${PREFIX}_boost_time_remaining`]: { state: '12' } } });
     expect(text(el)).toContain('Timed heat · 12 min left');
-    button(el, 'Timed').click();
-    button(el, 'Cancel').click();
-    const sel = $(el, 'select[aria-label="Boost direction"]');
-    sel.value = 'Heat';
-    sel.dispatchEvent(new Event('change'));
+    const timed = $(el, '.tile[aria-labelledby="tile-boost-timed"]');
+    expect(timed.classList.contains('running')).toBe(true);
+    expect(timed.querySelector('.run-chip').textContent).toContain('12 min left');
+    const target = $(el, '.tile[aria-labelledby="tile-boost-target"]');
+    expect(target.classList.contains('running')).toBe(false);
+    expect(target.querySelector('.go').textContent.trim()).toBe('Start');
+    timed.querySelector('.go.stop').click();
+    const dir = $$(el, '.mini-seg button');
+    expect(dir.map((b) => b.textContent.trim())).toEqual(['Auto', 'Heat', 'Cool']);
+    expect(dir[0].getAttribute('aria-pressed')).toBe('true');
+    dir[1].click();
     expect(el.hass.calls).toEqual([
-      { domain: 'button', service: 'press', data: { entity_id: `button.${PREFIX}_start_timed_boost` } },
       { domain: 'button', service: 'press', data: { entity_id: `button.${PREFIX}_cancel_boost` } },
       { domain: 'select', service: 'select_option', data: { entity_id: `select.${PREFIX}_boost_mode`, option: 'Heat' } },
     ]);
+  });
+
+  it('morning boost: each value is a tile with its own stepper', async () => {
+    const el = await mount();
+    for (const [id, v] of [['mb-duration', '45 min'], ['mb-offset', '1.8°F']]) {
+      const t = $(el, `.tile[aria-labelledby="tile-${id}"]`);
+      expect(t.querySelector('.stepper .v').textContent).toBe(v);
+      expect(t.querySelector('.info')).not.toBeNull();
+    }
   });
 
   it('warns on faults and unavailability', async () => {
     const el = await mount({}, { patch: { [`climate.${PREFIX}`]: { state: 'unavailable' }, [`sensor.${PREFIX}_last_boost_result`]: { state: 'Stopped_by_failsafe' } } });
     expect(text(el)).toContain('Thermostat is unavailable');
     expect(text(el)).toContain('Last boost: Stopped by failsafe');
-    expect($$(el, '.seg button').every((b) => b.disabled)).toBe(true);
+    expect($$(el, '.controls .seg button').every((b) => b.disabled)).toBe(true);
   });
 
   it('explains when no device is found', async () => {
