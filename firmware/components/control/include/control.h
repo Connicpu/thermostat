@@ -260,9 +260,6 @@ extern "C"
  */
     CtrlOutput CtrlStep(Ctrl *pC, const CtrlSettings *pS, U64 nowMs);
 
-    /** Returns the next system mode for the mode button: Off -> Heat -> Cool -> Off (unknown -> Off). */
-    CtrlMode CtrlNextMode(CtrlMode m);
-
     /** Returns true if v is one of the supported CtrlMode values (Off, Cool, Heat). */
     bool CtrlModeValid(int v);
 

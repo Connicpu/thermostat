@@ -202,15 +202,6 @@ U8 HvacOutputsDriveFault(void)
 }
 
 /** See hvac_outputs.h. */
-HvacState HvacOutputsGet(void)
-{
-    portENTER_CRITICAL(&s_lock);
-    HvacState s = s_state;
-    portEXIT_CRITICAL(&s_lock);
-    return s;
-}
-
-/** See hvac_outputs.h. */
 void HvacOutputsAllOff(void)
 {
     HvacOutputsSet((HvacState){0});

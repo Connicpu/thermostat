@@ -77,16 +77,6 @@ typedef struct
 } DisplayModel;
 
 /**
- * Convert 0.01 °C to the display unit, rounded to tenths (half away from zero).
- *
- * `c100` is the temperature, 0.01 °C; `fahrenheit` selects °F; `pTenths`, if non-NULL,
- * receives the tenths digit, 0..9, of the absolute value.
- *
- * Returns the integer part (truncated toward zero after rounding).
- */
-int TempToDisplay(I16 c100, bool fahrenheit, int *pTenths);
-
-/**
  * Format 0.01 °C in the display unit into pOut (at most n bytes, NUL-terminated): "21.5" /
  * "-3.0" with tenths, or the value rounded to a whole degree without. No unit or degree sign.
  */

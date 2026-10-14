@@ -16,8 +16,7 @@
 #define BOARD_GPIO_I2C_SDA GPIO_NUM_6
 #define BOARD_GPIO_I2C_SCL GPIO_NUM_7
 
-#define BOARD_GPIO_LED  GPIO_NUM_8 /* active-low, strap pin (must be high at reset) */
-#define BOARD_GPIO_BOOT GPIO_NUM_9 /* strap, BOOT button */
+#define BOARD_GPIO_LED GPIO_NUM_8 /* active-low, strap pin (must be high at reset) */
 
 /* STWD100: WDI kick, ~EN active-low arm (10k pull-up = disarmed). */
 #define BOARD_GPIO_WD_WDI GPIO_NUM_10

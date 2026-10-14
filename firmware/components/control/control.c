@@ -272,20 +272,6 @@ CtrlOutput CtrlStep(Ctrl *pC, const CtrlSettings *pIn, U64 now)
     return o;
 }
 
-/** Off -> Heat -> Cool -> Off. See control.h. */
-CtrlMode CtrlNextMode(CtrlMode m)
-{
-    switch (m)
-    {
-    case kCtrlModeOff:
-        return kCtrlModeHeat;
-    case kCtrlModeHeat:
-        return kCtrlModeCool;
-    default:
-        return kCtrlModeOff;
-    }
-}
-
 /** See control.h. */
 bool CtrlModeValid(int v)
 {

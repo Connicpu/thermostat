@@ -10,16 +10,6 @@ static I32 RoundDiv(I32 v, I32 d)
 }
 
 /** See display_model.h. */
-int TempToDisplay(I16 c100, bool f, int *pTenths)
-{
-    I32 v = f ? (I32)c100 * 9 / 5 + 3200 : c100; /* hundredths of the display unit */
-    I32 t = RoundDiv(v, 10);
-    if (pTenths)
-        *pTenths = (int)((t < 0 ? -t : t) % 10);
-    return (int)(t / 10);
-}
-
-/** See display_model.h. */
 void FormatTemp(char *pOut, int n, I16 c100, bool f, bool withTenths)
 {
     I32 v = f ? (I32)c100 * 9 / 5 + 3200 : c100;

@@ -292,12 +292,9 @@ static void SanitizeSettings(void)
     CHECK_EQ(s.coolSp, s_p.maxSp);
 }
 
-/** Mode button cycle Off -> Heat -> Cool -> Off; Auto (0x01) and 0x02 are invalid. */
-static void ModeCycle(void)
+/** Only Off, Heat and Cool are valid modes; the old Auto (0x01) and 0x02 are rejected. */
+static void ModeValid(void)
 {
-    CHECK_EQ(CtrlNextMode(kCtrlModeOff), kCtrlModeHeat);
-    CHECK_EQ(CtrlNextMode(kCtrlModeHeat), kCtrlModeCool);
-    CHECK_EQ(CtrlNextMode(kCtrlModeCool), kCtrlModeOff);
     CHECK(!CtrlModeValid(0x01)); /* AUTO was removed */
     CHECK(!CtrlModeValid(0x02));
     CHECK(CtrlModeValid(kCtrlModeOff) && CtrlModeValid(kCtrlModeHeat) && CtrlModeValid(kCtrlModeCool));
@@ -837,7 +834,7 @@ int main(void)
     RUN(HeatToCoolChangeoverDelay);
     RUN(HeatToCoolModeSwitchNeverOverlaps);
     RUN(SanitizeSettings);
-    RUN(ModeCycle);
+    RUN(ModeValid);
     RUN(InterlockRule);
     RUN(FuzzSafetyInvariants);
     RUN(BoostTargetHeatReachesAndReturns);

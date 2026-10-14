@@ -47,9 +47,6 @@ esp_err_t HvacOutputsInit(void);
  */
 HvacState HvacOutputsSet(HvacState req);
 
-/** Returns the last commanded output state (spinlock-protected copy; safe from any task). */
-HvacState HvacOutputsGet(void);
-
 /** Command all outputs off through HvacOutputsSet() (so the normal verification still runs). */
 void HvacOutputsAllOff(void);
 
