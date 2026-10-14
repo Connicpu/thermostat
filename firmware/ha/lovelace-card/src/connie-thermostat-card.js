@@ -36,6 +36,7 @@ export class ConnieThermostatCard extends LitElement {
     _open: { state: true },
     _pending: { state: true },
     _tip: { state: true },
+    _error: { state: true },
   };
 
   static styles = cardStyles;
@@ -65,6 +66,9 @@ export class ConnieThermostatCard extends LitElement {
     this._pending = {};
     this._timers = {};
     this._sends = {};
+    /** In-flight service-call promise per key: sent by the debounce, not yet answered. */
+    this._inflight = {};
+    this._error = null;
     /** Overridable clock (minutes after local midnight), for tests and the demo. */
     this.nowMinutes = null;
   }
@@ -166,8 +170,7 @@ export class ConnieThermostatCard extends LitElement {
     this._sends = { ...this._sends, [key]: () => send(value) };
     this._timers[key] = setTimeout(() => {
       delete this._timers[key];
-      this._sends[key]?.();
-      delete this._sends[key];
+      this._sendNow(key).catch((e) => this._fail(key, e, "Couldn't save the change"));
       // If the device never echoes it, forget the local value after a while.
       setTimeout(() => {
         if (this._pending[key] === value && !this._timers[key]) {
@@ -178,16 +181,49 @@ export class ConnieThermostatCard extends LitElement {
     }, WRITE_DELAY_MS);
   }
 
-  /** Send any still-debounced writes for `keys` now (in order), so a following command uses them. */
+  /** Send the queued write for `key` now and track it in _inflight until the call settles. */
+  _sendNow(key) {
+    const send = this._sends[key];
+    delete this._sends[key];
+    if (!send) return Promise.resolve();
+    let p; // call synchronously, so the request goes out in order with any command that follows
+    try {
+      p = Promise.resolve(send());
+    } catch (e) {
+      p = Promise.reject(e);
+    }
+    this._inflight[key] = p;
+    const done = () => {
+      if (this._inflight[key] === p) delete this._inflight[key];
+    };
+    p.then(done, done);
+    return p;
+  }
+
+  /**
+   * Make sure every write for `keys` has been answered before a following command: send any
+   * still-debounced value now, and wait for one the debounce already sent. Rejects if a write fails.
+   */
   async _flush(...keys) {
     for (const k of keys) {
-      if (!this._timers[k]) continue;
-      clearTimeout(this._timers[k]);
-      delete this._timers[k];
-      const send = this._sends?.[k];
-      delete this._sends[k];
-      await send?.();
+      if (this._timers[k]) {
+        clearTimeout(this._timers[k]);
+        delete this._timers[k];
+        this._sendNow(k);
+      }
+      if (this._inflight[k]) await this._inflight[k];
     }
+  }
+
+  /** A write or command failed: drop the optimistic value for `key` and show why. */
+  _fail(key, err, what) {
+    if (key && key in this._pending) {
+      const { [key]: _, ...rest } = this._pending;
+      this._pending = rest;
+    }
+    this._error = `${what}: ${err?.message || err || 'unknown error'}`;
+    clearTimeout(this._errTimer);
+    this._errTimer = setTimeout(() => (this._error = null), 10000);
   }
 
   _call(domain, service, data) {
@@ -199,7 +235,7 @@ export class ConnieThermostatCard extends LitElement {
   }
 
   _press(key) {
-    this._call('button', 'press', { entity_id: this._e[key] });
+    return this._call('button', 'press', { entity_id: this._e[key] });
   }
 
   _setMode(mode) {
@@ -390,6 +426,7 @@ export class ConnieThermostatCard extends LitElement {
 
   _renderBanners(unavailable, period) {
     const out = [];
+    if (this._error) out.push(html`<div class="banner error" role="alert">${icon(I.mdiAlertCircleOutline)}<span>${this._error}</span></div>`);
     if (unavailable) out.push(html`<div class="banner error">${icon(I.mdiAlertCircleOutline)}<span>Thermostat is unavailable (not reporting to Zigbee).</span></div>`);
     if (period === 'noclock')
       out.push(html`<div class="banner">${icon(I.mdiClockAlertOutline)}<span>No time from Home Assistant yet: holding the day program.</span></div>`);
@@ -571,9 +608,16 @@ export class ConnieThermostatCard extends LitElement {
       return html`<button class="go ${stop ? 'stop' : ''}" ?disabled=${!ok}
         aria-label=${stop ? `Stop ${k === 'timed' ? 'timed boost' : 'boost to target'}` : `${sw ? 'Switch to' : 'Start'} ${what[k]}`}
         @click=${async () => {
-          if (stop) return this._press('boost_cancel');
-          await this._flush(valueKey);
-          this._press(key);
+          this._error = null;
+          try {
+            if (stop) await this._press('boost_cancel');
+            else {
+              await this._flush(valueKey);
+              await this._press(key);
+            }
+          } catch (e) {
+            this._fail(stop ? null : valueKey, e, stop ? "Couldn't stop the boost" : "Couldn't start the boost");
+          }
         }}>${icon(stop ? I.mdiStop : sw ? I.mdiSwapHorizontal : I.mdiPlay, 'sm')}${stop ? 'Stop' : sw ? 'Switch' : 'Start'}</button>`;
     };
     return this._section('boost', 'Boost', meta, () => html`

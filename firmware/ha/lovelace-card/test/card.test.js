@@ -303,6 +303,53 @@ describe('card', () => {
     expect(el.hass.calls).toHaveLength(2);
   });
 
+  it('Start waits for a write the debounce already sent but that is not answered yet', async () => {
+    const el = await mount();
+    const calls = el.hass.calls;
+    let release;
+    el.hass.callService = (domain, service, data) => {
+      calls.push({ domain, service, data });
+      return service === 'set_value' ? new Promise((r) => (release = r)) : Promise.resolve();
+    };
+    const timed = $(el, '.tile[aria-labelledby="tile-boost-timed"]');
+    timed.querySelector('button[aria-label="Increase boost duration"]').click();
+    vi.advanceTimersByTime(600); // debounce fired: set_value sent, still in flight
+    expect(calls.map((c) => c.service)).toEqual(['set_value']);
+    timed.querySelector('.go').click();
+    await flushAsync();
+    expect(calls.map((c) => c.service)).toEqual(['set_value']); // press must not overtake it
+    release();
+    await flushAsync();
+    expect(calls.map((c) => c.service)).toEqual(['set_value', 'press']);
+  });
+
+  it('a failed flush or press clears the pending value and shows the error', async () => {
+    const el = await mount();
+    el.hass.callService = (domain, service) => (service === 'set_value' ? Promise.reject(new Error('Zigbee timeout')) : Promise.resolve());
+    const timed = $(el, '.tile[aria-labelledby="tile-boost-timed"]');
+    timed.querySelector('button[aria-label="Increase boost duration"]').click();
+    await el.updateComplete;
+    expect(timed.querySelector('.stepper .v').textContent).toBe('31 min');
+    const pressed = [];
+    const orig = el.hass.callService;
+    el.hass.callService = (d, sv, data) => (sv === 'press' ? (pressed.push(data), Promise.resolve()) : orig(d, sv, data));
+    timed.querySelector('.go').click();
+    await flushAsync();
+    await el.updateComplete;
+    expect(pressed).toEqual([]); // never started with an unsaved length
+    expect($(el, '.banner.error[role="alert"]').textContent).toContain("Couldn't start the boost: Zigbee timeout");
+    expect($(el, '.tile[aria-labelledby="tile-boost-timed"] .stepper .v').textContent).toBe('30 min');
+
+    el.hass.callService = (d, sv) => (sv === 'press' ? Promise.reject(new Error('device busy')) : Promise.resolve());
+    $(el, '.tile[aria-labelledby="tile-boost-target"] .go').click();
+    await flushAsync();
+    await el.updateComplete;
+    expect($(el, '.banner.error[role="alert"]').textContent).toContain("Couldn't start the boost: device busy");
+    vi.advanceTimersByTime(10000);
+    await el.updateComplete;
+    expect($(el, '.banner.error[role="alert"]')).toBeNull();
+  });
+
   it('Start, Stop and Direction are disabled while the thermostat is unavailable', async () => {
     const el = await mount({}, { patch: { [`climate.${PREFIX}`]: { state: 'unavailable' }, [`binary_sensor.${PREFIX}_boost_active`]: { state: 'on' }, [`sensor.${PREFIX}_boost`]: { state: 'Timed_heat' } } });
     const gos = $$(el, '.tile .go');
