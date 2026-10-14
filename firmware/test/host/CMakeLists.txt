@@ -20,6 +20,7 @@ add_executable(test_schedule test_schedule.c
 add_executable(test_settings test_settings.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../main/settings_codec.c ${FW}/control/schedule.c ${FW}/control/control.c)
 add_executable(test_zb_time test_zb_time.c ${FW}/zigbee/zb_time.c)
+add_executable(test_zb_retry test_zb_retry.c ${FW}/zigbee/zb_retry.c)
 enable_testing()
 add_test(NAME control COMMAND test_control)
 add_test(NAME misc COMMAND test_misc)
@@ -27,3 +28,4 @@ add_test(NAME menu COMMAND test_menu)
 add_test(NAME schedule COMMAND test_schedule)
 add_test(NAME settings COMMAND test_settings)
 add_test(NAME zb_time COMMAND test_zb_time)
+add_test(NAME zb_retry COMMAND test_zb_retry)
