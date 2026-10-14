@@ -29,7 +29,6 @@ static const char *mode_str(ctrl_mode_t m)
     switch (m) {
     case CTRL_MODE_HEAT: return "HEAT";
     case CTRL_MODE_COOL: return "COOL";
-    case CTRL_MODE_AUTO: return "AUTO";
     default:             return "OFF";
     }
 }
@@ -151,6 +150,19 @@ void display_render(gfx_fb_t *fb, const display_model_t *m)
         gfx_text(fb, &font_small, 96, 66, b, true);
     }
 
+    /* program period (left column, under RH) */
+    if (m->s.mode != CTRL_MODE_OFF) {
+        const char *ps = NULL;
+        switch (m->sched_state) {
+        case 0:  ps = "Day (no clock)"; break;
+        case 1:  ps = "Day"; break;
+        case 2:  ps = "Night"; break;
+        case 3:  ps = "Day, morning boost"; break;
+        default: break;
+        }
+        if (ps) gfx_text(fb, &font_small, 8, 84, ps, true);
+    }
+
     /* ---- right column: mode, setpoint(s), running state ---- */
     const int rx = 176;
     gfx_vline(fb, rx - 8, 4, 92);
@@ -164,10 +176,9 @@ void display_render(gfx_fb_t *fb, const display_model_t *m)
     /* "Set 21.5°" does not fit the column in medium font: drop "Set" in °C */
     case CTRL_MODE_HEAT: snprintf(b, sizeof b, "%s%s" FONT_DEGREE, F ? "Set " : "", h); break;
     case CTRL_MODE_COOL: snprintf(b, sizeof b, "%s%s" FONT_DEGREE, F ? "Set " : "", c); break;
-    case CTRL_MODE_AUTO: snprintf(b, sizeof b, "%s - %s" FONT_DEGREE, h, c); break;
     default:             b[0] = 0; break;
     }
-    gfx_text(fb, m->s.mode == CTRL_MODE_AUTO && !F ? &font_small : &font_med, rx, 32, b, true);
+    gfx_text(fb, &font_med, rx, 32, b, true);
 
     const char *st = "Idle";
     if (m->fault != CTRL_FAULT_NONE) st = ctrl_fault_str(m->fault);

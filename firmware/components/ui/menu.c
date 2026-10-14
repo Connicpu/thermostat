@@ -6,7 +6,8 @@
 #define SP_MIN 1000
 #define SP_MAX 3200
 
-static const ctrl_mode_t MODES[] = {CTRL_MODE_OFF, CTRL_MODE_HEAT, CTRL_MODE_COOL, CTRL_MODE_AUTO};
+static const ctrl_mode_t MODES[] = {CTRL_MODE_OFF, CTRL_MODE_HEAT, CTRL_MODE_COOL};
+#define N_MODES ((int)(sizeof MODES / sizeof MODES[0]))
 
 static int32_t clamp32(int32_t v, int32_t lo, int32_t hi) { return v < lo ? lo : v > hi ? hi : v; }
 
@@ -44,7 +45,7 @@ static menu_action_t go_home(menu_t *m, menu_action_kind_t k, int32_t v)
 
 static int mode_index(ctrl_mode_t md)
 {
-    for (int i = 0; i < 4; i++) if (MODES[i] == md) return i;
+    for (int i = 0; i < N_MODES; i++) if (MODES[i] == md) return i;
     return 0;
 }
 
@@ -52,6 +53,7 @@ static void open_item(menu_t *m, const menu_ctx_t *c)
 {
     switch ((menu_item_t)m->cursor) {
     case MI_MODE:   m->st = MS_EDIT_MODE;  m->edit = mode_index(c->mode); break;
+    case MI_FAN:    m->st = MS_EDIT_FAN;   m->edit = c->fan == CTRL_FAN_ON; break;
     case MI_BOOST:  m->st = MS_BOOST;      m->bcursor = 0; break;
     case MI_SWING:  m->st = MS_EDIT_SWING; m->edit = clamp32(c->swing, CTRL_SWING_MIN, CTRL_SWING_MAX); break;
     case MI_UNITS:  m->st = MS_EDIT_UNITS; m->edit = c->fahrenheit; break;
@@ -107,8 +109,12 @@ menu_action_t menu_key(menu_t *m, const menu_ctx_t *c, menu_key_t k, btn_event_t
         }
         break;
     case MS_EDIT_MODE:
-        if (updown) { m->edit = (m->edit + 4 + dir) % 4; return redraw(); }
+        if (updown) { m->edit = (m->edit + N_MODES + dir) % N_MODES; return redraw(); }
         if (sel) { m->st = MS_LIST; return act(MA_SET_MODE, MODES[m->edit]); }
+        break;
+    case MS_EDIT_FAN:
+        if (updown) { m->edit = !m->edit; return redraw(); }
+        if (sel) { m->st = MS_LIST; return act(MA_SET_FAN, m->edit ? CTRL_FAN_ON : CTRL_FAN_AUTO); }
         break;
     case MS_EDIT_SWING:
         if (updown) { m->edit = clamp32(m->edit + dir * 10, CTRL_SWING_MIN, CTRL_SWING_MAX); return redraw(); }
@@ -183,7 +189,6 @@ static const char *mode_name(ctrl_mode_t md)
     switch (md) {
     case CTRL_MODE_HEAT: return "Heat";
     case CTRL_MODE_COOL: return "Cool";
-    case CTRL_MODE_AUTO: return "Auto";
     default:             return "Off";
     }
 }
@@ -229,6 +234,7 @@ void menu_view(const menu_t *m, const menu_ctx_t *c, menu_view_t *v)
         v->kind = VIEW_LIST;
         snprintf(v->title, sizeof v->title, "Menu");
         row(v, "Mode", mode_name(c->mode));
+        row(v, "Fan", c->fan == CTRL_FAN_ON ? "On" : "Auto");
         row(v, "Boost", c->boost_active ? "running" : "");
         fmt_swing(b, sizeof b, c->swing, F);
         { char s2[32]; snprintf(s2, sizeof s2, "+/-%s%s", b, U); row(v, "Swing", s2); }
@@ -255,6 +261,11 @@ void menu_view(const menu_t *m, const menu_ctx_t *c, menu_view_t *v)
         v->kind = VIEW_VALUE; v->big_is_text = true;
         snprintf(v->title, sizeof v->title, "Mode");
         snprintf(v->big, sizeof v->big, "%s", mode_name(MODES[m->edit]));
+        break;
+    case MS_EDIT_FAN:
+        v->kind = VIEW_VALUE; v->big_is_text = true;
+        snprintf(v->title, sizeof v->title, "Fan");
+        snprintf(v->big, sizeof v->big, "%s", m->edit ? "On" : "Auto");
         break;
     case MS_EDIT_SWING:
         v->kind = VIEW_VALUE;

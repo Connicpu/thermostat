@@ -60,6 +60,10 @@ def test_entities_declared():
         "Start boost to target", "Start timed boost", "Cancel boost",
         "Boost", "Boost active", "Boost time remaining", "Last boost result",
         "Temperature swing",
+        "Day heating start", "Night heating start", "Day cooling start", "Night cooling start",
+        "Day heating temperature", "Night heating temperature", "Day cooling temperature",
+        "Night cooling temperature", "Morning heating boost duration", "Morning heating boost offset",
+        "Schedule period",
     ])
 
 
@@ -89,3 +93,7 @@ def test_enum_values_match_firmware_header():
     assert val("ZB_BOOST_ATTR_LAST_RESULT") == attrs.boost_last_result.id
     assert val("ZB_BOOST_ATTR_REMAINING") == attrs.boost_remaining.id
     assert val("ZB_ATTR_SWING") == attrs.temperature_swing.id
+    for hdr_name, attr in (("ZB_ATTR_DAY_COOL_START", attrs.day_cool_start), ("ZB_ATTR_NIGHT_HEAT_TEMP", attrs.night_heat_temp),
+                           ("ZB_ATTR_MORNING_BOOST_MIN", attrs.morning_boost_duration),
+                           ("ZB_ATTR_MORNING_BOOST_OFS", attrs.morning_boost_offset), ("ZB_ATTR_SCHED_STATE", attrs.schedule_state)):
+        assert val(hdr_name) == attr.id

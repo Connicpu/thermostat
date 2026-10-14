@@ -25,6 +25,17 @@ const boostExtend = [
             boostRemaining: {ID: 0x0005, type: Zcl.DataType.UINT16},
             boostLastResult: {ID: 0x0006, type: Zcl.DataType.ENUM8},
             swing: {ID: 0x0010, type: Zcl.DataType.UINT16},
+            dayCoolStart: {ID: 0x0020, type: Zcl.DataType.UINT16},
+            dayCoolTemp: {ID: 0x0021, type: Zcl.DataType.INT16},
+            nightCoolStart: {ID: 0x0022, type: Zcl.DataType.UINT16},
+            nightCoolTemp: {ID: 0x0023, type: Zcl.DataType.INT16},
+            dayHeatStart: {ID: 0x0024, type: Zcl.DataType.UINT16},
+            dayHeatTemp: {ID: 0x0025, type: Zcl.DataType.INT16},
+            nightHeatStart: {ID: 0x0026, type: Zcl.DataType.UINT16},
+            nightHeatTemp: {ID: 0x0027, type: Zcl.DataType.INT16},
+            morningBoostDuration: {ID: 0x0028, type: Zcl.DataType.UINT16},
+            morningBoostOffset: {ID: 0x0029, type: Zcl.DataType.INT16},
+            scheduleState: {ID: 0x002a, type: Zcl.DataType.ENUM8},
         },
         commands: {},
         commandsResponse: {},
@@ -52,6 +63,19 @@ const boostExtend = [
         valueMin: 0.1, valueMax: 1, valueStep: 0.1, entityCategory: 'config',
         description: 'Hysteresis each side of the setpoint: heat on at setpoint - swing, off at setpoint + swing (cooling mirrored)',
         access: 'ALL'}),
+    // program schedule (start times in minutes after local midnight)
+    ...[['day_heat', 'dayHeat'], ['night_heat', 'nightHeat'], ['day_cool', 'dayCool'], ['night_cool', 'nightCool']].flatMap(([n, a]) => [
+        m.numeric({name: `${n}_start`, ...boostOpts, attribute: `${a}Start`, unit: 'min', valueMin: 0, valueMax: 1439,
+            valueStep: 15, entityCategory: 'config', description: `${n.replace('_', ' ')} start, minutes after midnight`, access: 'ALL'}),
+        m.numeric({name: `${n}_temperature`, ...boostOpts, attribute: `${a}Temp`, scale: 100, unit: '°C', valueMin: 10,
+            valueMax: 32, valueStep: 0.5, entityCategory: 'config', description: `${n.replace('_', ' ')} setpoint`, access: 'ALL'}),
+    ]),
+    m.numeric({name: 'morning_boost_duration', ...boostOpts, attribute: 'morningBoostDuration', unit: 'min', valueMin: 0,
+        valueMax: 240, valueStep: 15, entityCategory: 'config', description: 'Heat-mode boost length from day heating start (0 = off)', access: 'ALL'}),
+    m.numeric({name: 'morning_boost_offset', ...boostOpts, attribute: 'morningBoostOffset', scale: 100, unit: '°C', valueMin: 0,
+        valueMax: 3, valueStep: 0.1, entityCategory: 'config', description: 'Added to the heating setpoint during the morning boost', access: 'ALL'}),
+    m.enumLookup({name: 'schedule_state', ...boostOpts, attribute: 'scheduleState',
+        lookup: {no_clock_holding_day: 0, day: 1, night: 2, day_morning_boost: 3}, description: 'Active program period', access: 'STATE_GET'}),
 ];
 
 const definition = {
@@ -75,7 +99,7 @@ const definition = {
             .withLocalTemperature()
             .withSetpoint('occupied_heating_setpoint', 10, 30.5, 0.5)
             .withSetpoint('occupied_cooling_setpoint', 11.5, 32, 0.5)
-            .withSystemMode(['off', 'heat', 'cool', 'auto'])
+            .withSystemMode(['off', 'heat', 'cool'])
             .withRunningState(['idle', 'heat', 'cool', 'fan_only'])
             .withFanMode(['on', 'auto'])
             .withLocalTemperatureCalibration(-2.5, 2.5, 0.1),

@@ -76,15 +76,40 @@ static void edit_mode_saves(void)
     sel();
     CHECK_EQ(M.st, MS_EDIT_MODE);
     up();                                   /* Heat -> Cool */
-    up();                                   /* -> Auto */
+    up();                                   /* -> Off (no Auto any more) */
     menu_action_t a = sel();
     CHECK_EQ(a.kind, MA_SET_MODE);
-    CHECK_EQ(a.value, CTRL_MODE_AUTO);
+    CHECK_EQ(a.value, CTRL_MODE_OFF);
     CHECK_EQ(M.st, MS_LIST);
     goto_item(0); /* (already in list; sel opens Mode again) */
     CHECK_EQ(M.st, MS_EDIT_MODE);
-    up(); up(); up(); up(); up();           /* Heat -> wraps past Off */
+    up(); up(); up(); up();                 /* Heat -> wraps past Off -> Cool */
     CHECK_EQ(sel().value, CTRL_MODE_COOL);
+}
+
+static void edit_fan_toggles(void)
+{
+    reset();
+    C.fan = CTRL_FAN_AUTO;
+    goto_item(MI_FAN);
+    sel();
+    CHECK_EQ(M.st, MS_EDIT_FAN);
+    menu_view_t v;
+    menu_view(&M, &C, &v);
+    CHECK(strcmp(v.big, "Auto") == 0);
+    up();
+    menu_view(&M, &C, &v);
+    CHECK(strcmp(v.big, "On") == 0);
+    menu_action_t a = sel();
+    CHECK_EQ(a.kind, MA_SET_FAN);
+    CHECK_EQ(a.value, CTRL_FAN_ON);
+    CHECK_EQ(M.st, MS_LIST);
+    C.fan = CTRL_FAN_ON;
+    menu_view(&M, &C, &v);
+    CHECK(strcmp(v.value[MI_FAN], "On") == 0);
+    sel();                                  /* cursor still on Fan: reopen, starts at On */
+    down();
+    CHECK_EQ(sel().value, CTRL_FAN_AUTO);
 }
 
 static void edit_swing_clamps(void)
@@ -313,6 +338,7 @@ int main(void)
     RUN(navigation_wraps_and_back);
     RUN(timeout_discards_edit);
     RUN(edit_mode_saves);
+    RUN(edit_fan_toggles);
     RUN(edit_swing_clamps);
     RUN(edit_units);
     RUN(boost_target_and_timed);

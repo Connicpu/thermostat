@@ -47,6 +47,7 @@ typedef struct {
     int16_t      boost_sp;        /* c°C (to-target) */
     uint16_t     boost_min_left;  /* minutes, rounded up (timed) */
     int16_t      swing;       /* c°C each side of the setpoint; 0 = not shown */
+    uint8_t      sched_state; /* sched_state_t: 0 no clock (day), 1 day, 2 night, 3 day + morning boost */
     const char  *banner;
     menu_view_t  view;
     uint8_t      full_epoch;  /* bump to force a full (de-ghosting) refresh */      /* optional one-off message (e.g. "FACTORY RESET"), NULL = none */

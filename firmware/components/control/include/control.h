@@ -16,10 +16,11 @@
 extern "C" {
 #endif
 
-/* Values intentionally equal the ZCL Thermostat SystemMode enum (0x001C). */
+/* Values intentionally equal the ZCL Thermostat SystemMode enum (0x001C).
+ * There is deliberately no AUTO (heat/cool changeover) mode: the day/night
+ * program schedule (schedule.h) replaced it. */
 typedef enum {
     CTRL_MODE_OFF  = 0x00,
-    CTRL_MODE_AUTO = 0x01,
     CTRL_MODE_COOL = 0x03,
     CTRL_MODE_HEAT = 0x04,
 } ctrl_mode_t;
@@ -41,7 +42,6 @@ typedef struct {
     int16_t  hysteresis;          /* swing, c°C each side of the setpoint (user setting,
                                    * CTRL_SWING_MIN..MAX, default 0.5 °C)       */
     int16_t  min_sp, max_sp;      /* allowed setpoint range                    */
-    int16_t  deadband;            /* min cool_sp - heat_sp (auto changeover)   */
     int16_t  temp_min, temp_max;  /* plausible room temp; outside -> failsafe  */
     uint32_t sensor_timeout_ms;   /* no valid reading for this long -> failsafe*/
     uint8_t  recover_samples;     /* good samples needed to leave failsafe     */
@@ -66,7 +66,6 @@ typedef struct {
     .hysteresis        = CTRL_SWING_DEFAULT,             \
     .min_sp            = 1000,             \
     .max_sp            = 3200,             \
-    .deadband          = 150,              \
     .temp_min          = 0,                \
     .temp_max          = 4500,             \
     .sensor_timeout_ms = 30000,            \
@@ -150,8 +149,9 @@ typedef struct {
 
 void ctrl_init(ctrl_t *c, const ctrl_params_t *p, uint64_t now_ms);
 
-/* Clamp setpoints into range and enforce the deadband. When the two
- * setpoints collide, the one named by `keep_heat` wins and the other moves. */
+/* Validate mode/fan and clamp both setpoints into min_sp..max_sp. Heating and
+ * cooling never run from the same mode, so the two setpoints are independent
+ * (no deadband). `keep_heat` is kept for API compatibility and ignored. */
 void ctrl_sanitize_settings(const ctrl_params_t *p, ctrl_settings_t *s, bool keep_heat);
 
 /* Feed a sensor sample (call on every read attempt, valid or not). */
@@ -160,13 +160,13 @@ void ctrl_feed_sensor(ctrl_t *c, const ctrl_input_t *in, uint64_t now_ms);
 /* Run one control step; call at least once a second. */
 ctrl_output_t ctrl_step(ctrl_t *c, const ctrl_settings_t *s, uint64_t now_ms);
 
-/* Next mode for the MODE button: OFF -> HEAT -> COOL -> AUTO -> OFF. */
+/* Next mode: OFF -> HEAT -> COOL -> OFF. */
 ctrl_mode_t ctrl_next_mode(ctrl_mode_t m);
 bool ctrl_mode_valid(int v);
 
 const char *ctrl_fault_str(ctrl_fault_t f);
 
-/* Start a boost. `s` = current normal settings (used for AUTO direction of a
+/* Start a boost. `s` = current normal settings (used for the AUTO boost direction of a
  * timed boost and for detecting later mode changes). BOOST_TO_TARGET uses
  * `sp` (clamped to min_sp..max_sp) and ends when reached or after
  * BOOST_TARGET_MAX_MIN. BOOST_TIMED runs `minutes` (1..120). Starting a new

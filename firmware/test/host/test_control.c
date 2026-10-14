@@ -200,14 +200,15 @@ static void fan_on_mode(void)
     CHECK(!out.g);
 }
 
-static void auto_changeover_delay(void)
+static void heat_to_cool_changeover_delay(void)
 {
-    setup(CTRL_MODE_AUTO, 2000, 2400);
+    setup(CTRL_MODE_HEAT, 2000, 2400);
     run(MIN(2), 1800, true);
     CHECK(out.w);
-    run(MIN(3), 2600, true);            /* house overshoots into cooling range */
+    run(MIN(3), 2600, true);            /* house overshoots */
     CHECK(!out.w);
     uint64_t w_off = c.w_off_at;
+    st.mode = CTRL_MODE_COOL;           /* user switches to cooling right away */
     CHECK(!out.y);
     while (!out.y && now < w_off + MIN(10)) { CHECK(!out.w); run(S(1), 2600, true); }
     CHECK(out.y);
@@ -236,12 +237,13 @@ static void sanitize_settings(void)
     ctrl_sanitize_settings(&P, &s, true);
     CHECK_EQ(s.mode, CTRL_MODE_OFF);
     CHECK_EQ(s.fan, CTRL_FAN_AUTO);
-    CHECK_EQ(s.heat_sp, 2300);
-    CHECK_EQ(s.cool_sp, 2450);
-    s = (ctrl_settings_t){.mode = CTRL_MODE_AUTO, .fan = CTRL_FAN_ON, .heat_sp = 2300, .cool_sp = 2350};
-    ctrl_sanitize_settings(&P, &s, false);
-    CHECK_EQ(s.heat_sp, 2200);
+    CHECK_EQ(s.heat_sp, 2300);          /* no deadband any more: setpoints are independent */
     CHECK_EQ(s.cool_sp, 2350);
+    s = (ctrl_settings_t){.mode = 0x01 /* old AUTO */, .fan = CTRL_FAN_ON, .heat_sp = 2400, .cool_sp = 2200};
+    ctrl_sanitize_settings(&P, &s, false);
+    CHECK_EQ(s.mode, CTRL_MODE_OFF);
+    CHECK_EQ(s.heat_sp, 2400);
+    CHECK_EQ(s.cool_sp, 2200);
     s = (ctrl_settings_t){.mode = CTRL_MODE_HEAT, .fan = CTRL_FAN_AUTO, .heat_sp = -500, .cool_sp = 9000};
     ctrl_sanitize_settings(&P, &s, true);
     CHECK_EQ(s.heat_sp, P.min_sp);
@@ -252,8 +254,10 @@ static void mode_cycle(void)
 {
     CHECK_EQ(ctrl_next_mode(CTRL_MODE_OFF), CTRL_MODE_HEAT);
     CHECK_EQ(ctrl_next_mode(CTRL_MODE_HEAT), CTRL_MODE_COOL);
-    CHECK_EQ(ctrl_next_mode(CTRL_MODE_COOL), CTRL_MODE_AUTO);
-    CHECK_EQ(ctrl_next_mode(CTRL_MODE_AUTO), CTRL_MODE_OFF);
+    CHECK_EQ(ctrl_next_mode(CTRL_MODE_COOL), CTRL_MODE_OFF);
+    CHECK(!ctrl_mode_valid(0x01));      /* AUTO was removed */
+    CHECK(!ctrl_mode_valid(0x02));
+    CHECK(ctrl_mode_valid(CTRL_MODE_OFF) && ctrl_mode_valid(CTRL_MODE_HEAT) && ctrl_mode_valid(CTRL_MODE_COOL));
 }
 
 static void interlock_rule(void)
@@ -277,7 +281,7 @@ static uint32_t rnd(void) { rng = rng * 1103515245u + 12345u; return rng >> 8; }
 
 static void fuzz_safety_invariants(void)
 {
-    setup(CTRL_MODE_AUTO, 2000, 2400);
+    setup(CTRL_MODE_HEAT, 2000, 2400);
     int16_t t = 2200;
     bool prev_y = false, prev_w = false;
     uint64_t y_off = 0, y_on = 0, w_on = 0;
@@ -285,7 +289,7 @@ static void fuzz_safety_invariants(void)
     bool y_off_by_force = false;
     for (int i = 0; i < 7 * 24 * 3600; i++) {          /* one simulated week, 1 s steps */
         now += 1000;
-        if (rnd() % 600 == 0) st.mode = (ctrl_mode_t[]){CTRL_MODE_OFF, CTRL_MODE_AUTO, CTRL_MODE_COOL, CTRL_MODE_HEAT}[rnd() % 4];
+        if (rnd() % 600 == 0) st.mode = (ctrl_mode_t[]){CTRL_MODE_OFF, CTRL_MODE_HEAT, CTRL_MODE_COOL, CTRL_MODE_HEAT}[rnd() % 4];
         if (rnd() % 900 == 0) { st.heat_sp = 1500 + rnd() % 1000; st.cool_sp = 1800 + rnd() % 1200; }
         if (rnd() % 1800 == 0) st.fan = (rnd() & 1) ? CTRL_FAN_ON : CTRL_FAN_AUTO;
         t += (int16_t)((int)(rnd() % 21) - 10);
@@ -459,7 +463,7 @@ static void boost_mode_change_cancels(void)
 
 static void boost_opposite_direction_never_overlaps(void)
 {
-    setup(CTRL_MODE_AUTO, 2000, 2400);
+    setup(CTRL_MODE_HEAT, 2000, 2400);
     run(MIN(10), 1800, true);
     CHECK(out.w);                            /* normal heat running */
     CHECK_EQ(ctrl_boost_start(&c, &st, BOOST_TIMED, BOOST_DIR_COOL, 0, 30, now), BOOST_OK);
@@ -521,7 +525,7 @@ static void boost_not_persisted_across_reboot(void)
 
 static void fuzz_with_boosts(void)
 {
-    setup(CTRL_MODE_AUTO, 2000, 2400);
+    setup(CTRL_MODE_HEAT, 2000, 2400);
     int16_t t = 2200;
     bool prev_y = false;
     uint64_t y_off = 0, y_on = 0;
@@ -534,7 +538,7 @@ static void fuzz_with_boosts(void)
             if (ctrl_boost_start(&c, &st, k, (ctrl_boost_dir_t)(rnd() % 3), 1500 + rnd() % 1500, 1 + rnd() % 120, now) == BOOST_OK) boosts++;
         }
         if (r % 1500 == 1) ctrl_boost_cancel(&c);
-        if (r % 3000 == 2) st.mode = (ctrl_mode_t[]){CTRL_MODE_OFF, CTRL_MODE_AUTO, CTRL_MODE_COOL, CTRL_MODE_HEAT}[rnd() % 4];
+        if (r % 3000 == 2) st.mode = (ctrl_mode_t[]){CTRL_MODE_OFF, CTRL_MODE_HEAT, CTRL_MODE_COOL, CTRL_MODE_HEAT}[rnd() % 4];
         t += (int16_t)((int)(rnd() % 21) - 10);
         if (t < 1200) t = 1200;
         if (t > 3300) t = 3300;
@@ -625,16 +629,33 @@ static void swing_still_honours_min_on(void)
     CHECK(now - on_at >= P.heat_min_on_ms);
 }
 
-static void auto_wide_swing_never_overlaps(void)
+static void wide_swing_overlapping_setpoints_never_overlap(void)
 {
-    /* 1.0 °C swing on both sides with the minimum 1.5 °C deadband */
-    setup(CTRL_MODE_AUTO, 2000, 2150);
+    /* No deadband any more: cool SP below heat SP, 1.0 °C swing, alternating modes */
+    setup(CTRL_MODE_HEAT, 2200, 2000);
     ctrl_set_swing(&c, 100);
     for (int k = 0; k < 6; k++) {
+        st.mode = (k & 1) ? CTRL_MODE_COOL : CTRL_MODE_HEAT;
         for (int16_t t = 1800; t <= 2350; t += 5) run(S(20), t, true);
         for (int16_t t = 2350; t >= 1800; t -= 5) run(S(20), t, true);
     }
     CHECK(!(out.w && out.y));
+}
+
+static void fan_on_without_demand(void)
+{
+    /* Fan ON runs G with no heat/cool demand in every mode, and never drives W/Y */
+    ctrl_mode_t modes[] = {CTRL_MODE_OFF, CTRL_MODE_HEAT, CTRL_MODE_COOL};
+    for (int i = 0; i < 3; i++) {
+        setup(modes[i], 2000, 2400);
+        st.fan = CTRL_FAN_ON;
+        run(MIN(10), 2200, true);      /* between the setpoints: no demand */
+        CHECK(out.g && !out.w && !out.y);
+        CHECK(!out.heat_demand && !out.cool_demand);
+        st.fan = CTRL_FAN_AUTO;
+        run(S(1), 2200, true);
+        CHECK(!out.g);
+    }
 }
 
 int main(void)
@@ -646,7 +667,8 @@ int main(void)
     RUN(cool_swing_mirror);
     RUN(swing_change_while_running);
     RUN(swing_still_honours_min_on);
-    RUN(auto_wide_swing_never_overlaps);
+    RUN(wide_swing_overlapping_setpoints_never_overlap);
+    RUN(fan_on_without_demand);
     RUN(heat_min_on_time);
     RUN(compressor_min_off_after_boot);
     RUN(compressor_min_off_between_cycles);
@@ -657,7 +679,7 @@ int main(void)
     RUN(mode_off_is_immediate);
     RUN(fan_runon_after_heat);
     RUN(fan_on_mode);
-    RUN(auto_changeover_delay);
+    RUN(heat_to_cool_changeover_delay);
     RUN(heat_to_cool_mode_switch_never_overlaps);
     RUN(sanitize_settings);
     RUN(mode_cycle);

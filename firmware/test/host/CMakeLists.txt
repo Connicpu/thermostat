@@ -14,7 +14,10 @@ add_executable(test_misc test_misc.c
 add_executable(test_menu test_menu.c
     ${FW}/ui/menu.c ${FW}/ui/buttons.c
     ${FW}/display/gfx.c ${FW}/display/font_data.c ${FW}/display/display_render.c ${FW}/control/control.c)
+add_executable(test_schedule test_schedule.c
+    ${FW}/control/schedule.c ${FW}/control/control.c)
 enable_testing()
 add_test(NAME control COMMAND test_control)
 add_test(NAME misc COMMAND test_misc)
 add_test(NAME menu COMMAND test_menu)
+add_test(NAME schedule COMMAND test_schedule)

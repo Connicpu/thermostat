@@ -29,18 +29,19 @@ typedef enum { MENU_KEY_UP, MENU_KEY_DOWN, MENU_KEY_M, MENU_KEY_COMBO } menu_key
 
 typedef enum {
     MS_HOME = 0, MS_HOLD_PAIR, MS_HOLD_RESET,
-    MS_LIST, MS_EDIT_MODE, MS_BOOST, MS_EDIT_BOOST_SP, MS_EDIT_BOOST_MIN,
+    MS_LIST, MS_EDIT_MODE, MS_EDIT_FAN, MS_BOOST, MS_EDIT_BOOST_SP, MS_EDIT_BOOST_MIN,
     MS_EDIT_SWING, MS_EDIT_UNITS, MS_ZIGBEE, MS_INFO,
 } menu_state_t;
 
 /* Main-list items (in order). */
-typedef enum { MI_MODE, MI_BOOST, MI_SWING, MI_UNITS, MI_ZIGBEE, MI_INFO, MI_BACK, MI_COUNT } menu_item_t;
+typedef enum { MI_MODE, MI_FAN, MI_BOOST, MI_SWING, MI_UNITS, MI_ZIGBEE, MI_INFO, MI_BACK, MI_COUNT } menu_item_t;
 /* Boost-list items; MB_CANCEL is only present while a boost runs. */
 typedef enum { MB_TARGET, MB_TIMED, MB_CANCEL, MB_BACK } menu_boost_item_t;
 
 /* Live data the menu shows / starts edits from. */
 typedef struct {
     ctrl_mode_t  mode;
+    ctrl_fan_t   fan;
     bool         boost_active;
     int16_t      boost_sp;        /* c°C */
     uint16_t     boost_minutes;
@@ -58,6 +59,7 @@ typedef enum {
     MA_NONE = 0,
     MA_HOME_KEY,       /* main screen key: caller handles (setpoint / boost combo) */
     MA_SET_MODE,       /* value = ctrl_mode_t */
+    MA_SET_FAN,        /* value = ctrl_fan_t (CTRL_FAN_ON / CTRL_FAN_AUTO) */
     MA_BOOST_TARGET,   /* value = c°C */
     MA_BOOST_TIMED,    /* value = minutes */
     MA_BOOST_CANCEL,

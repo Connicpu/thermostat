@@ -88,20 +88,21 @@ static void write_pbm(const gfx_fb_t *fb, const char *name)
     fclose(f);
 }
 
-static void render_preview_auto_celsius_fault(void)
+static void render_preview_cool_celsius_fault(void)
 {
     static gfx_fb_t fb;
     display_model_t m;
     memset(&m, 0, sizeof m);
     m.temp_valid = false; m.rh_valid = false;
-    m.s = (ctrl_settings_t){.mode = CTRL_MODE_AUTO, .fan = CTRL_FAN_ON, .heat_sp = 2050, .cool_sp = 2450};
+    m.s = (ctrl_settings_t){.mode = CTRL_MODE_COOL, .fan = CTRL_FAN_ON, .heat_sp = 2050, .cool_sp = 2450};
     m.fault = CTRL_FAULT_SENSOR_TIMEOUT; m.link = LINK_PAIRING; m.fahrenheit = false; m.swing = 100;
+    m.sched_state = 0;                       /* no clock yet: holding the day program */
     display_render(&fb, &m);
     /* nothing may be drawn past the right edge: last column must be clear except the status rule */
     int edge = 0;
     for (int y = 0; y < 100; y++) edge += gfx_get(&fb, GFX_W - 1, y);
     CHECK_EQ(edge, 0);
-    write_pbm(&fb, "display_preview_auto_c.pbm");
+    write_pbm(&fb, "display_preview_cool_c.pbm");
 }
 
 static void render_preview_boosts(void)
@@ -145,7 +146,7 @@ int main(void)
     RUN(buttons_mode_short_long);
     RUN(temp_formatting);
     RUN(render_preview);
-    RUN(render_preview_auto_celsius_fault);
+    RUN(render_preview_cool_celsius_fault);
     RUN(render_preview_boosts);
     DONE();
 }

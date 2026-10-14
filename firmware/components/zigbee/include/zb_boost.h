@@ -18,7 +18,25 @@ enum {
     ZB_BOOST_ATTR_LAST_RESULT = 0x0006, /* enum8  R   see ZB_BOOST_RESULT_*                     */
     /* not boost-specific, but lives here so there is one manufacturer cluster */
     ZB_ATTR_SWING             = 0x0010, /* uint16 RW  c°C each side of setpoint, 10..100 (0.1..1.0 °C), default 50 */
+
+    /* Day/night program schedule (see components/control/include/schedule.h).
+     * Times: uint16 minutes after local midnight, 0..1439. Temps: int16 c°C, 1000..3200.
+     * All RW ones are persisted; all are reported to the coordinator when changed on the device. */
+    ZB_ATTR_DAY_COOL_START    = 0x0020, /* uint16 RW  default 480  (08:00) */
+    ZB_ATTR_DAY_COOL_TEMP     = 0x0021, /* int16  RW  default 2450 (24.5 °C) */
+    ZB_ATTR_NIGHT_COOL_START  = 0x0022, /* uint16 RW  default 1320 (22:00) */
+    ZB_ATTR_NIGHT_COOL_TEMP   = 0x0023, /* int16  RW  default 2400 (24.0 °C) */
+    ZB_ATTR_DAY_HEAT_START    = 0x0024, /* uint16 RW  default 360  (06:00) */
+    ZB_ATTR_DAY_HEAT_TEMP     = 0x0025, /* int16  RW  default 2000 (20.0 °C) */
+    ZB_ATTR_NIGHT_HEAT_START  = 0x0026, /* uint16 RW  default 1320 (22:00) */
+    ZB_ATTR_NIGHT_HEAT_TEMP   = 0x0027, /* int16  RW  default 1800 (18.0 °C) */
+    ZB_ATTR_MORNING_BOOST_MIN = 0x0028, /* uint16 RW  0..240 min from day heat start, default 120; 0 = off */
+    ZB_ATTR_MORNING_BOOST_OFS = 0x0029, /* int16  RW  0..300 c°C added in HEAT mode, default 50 (+0.5 °C) */
+    ZB_ATTR_SCHED_STATE       = 0x002A, /* enum8  R   sched_state_t: 0 no clock (day used), 1 day, 2 night, 3 day + morning boost */
 };
+
+#define ZB_SCHED_ATTR_FIRST ZB_ATTR_DAY_COOL_START
+#define ZB_SCHED_ATTR_LAST  ZB_ATTR_MORNING_BOOST_OFS
 
 enum { ZB_BOOST_CMD_CANCEL = 0, ZB_BOOST_CMD_START_TARGET = 1, ZB_BOOST_CMD_START_TIMED = 2 };
 

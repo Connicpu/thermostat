@@ -4,6 +4,7 @@
 #include "esp_check.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
+#include "esp_timer.h"
 #include "esp_zigbee_core.h"
 #include "esp_zigbee_ota.h"
 #include "freertos/FreeRTOS.h"
@@ -33,6 +34,113 @@ static uint16_t s_swing = CTRL_SWING_DEFAULT;   /* ZB_ATTR_SWING backing store *
 static ctrl_settings_t s_settings;           /* last value known to the stack */
 static volatile link_state_t s_link = LINK_OFFLINE;
 static bool s_started;
+static sched_cfg_t s_sched;                   /* schedule attribute backing store */
+static uint8_t s_sched_state;                 /* ZB_ATTR_SCHED_STATE backing store */
+static volatile bool s_force_settings;        /* republish mode/setpoints (e.g. rejected AUTO write) */
+
+/* Time sync: local seconds since midnight at s_time_at_ms (monotonic). */
+#define TIME_SYNC_PERIOD_MS (60u * 60u * 1000u)
+#define TIME_RETRY_MS       (60u * 1000u)
+static volatile bool s_time_known;
+static uint32_t s_time_local_s;               /* ZCL UTCTime-style seconds (local) at sync */
+static uint64_t s_time_at_ms;
+static portMUX_TYPE s_time_mux = portMUX_INITIALIZER_UNLOCKED;
+
+static uint64_t mono_ms(void) { return (uint64_t)(esp_timer_get_time() / 1000); }
+
+/* attribute id -> field of s_sched (NULL if not a schedule attribute) */
+static void *sched_field(sched_cfg_t *c, uint16_t id)
+{
+    switch (id) {
+    case ZB_ATTR_DAY_COOL_START:    return &c->day_cool_start;
+    case ZB_ATTR_DAY_COOL_TEMP:     return &c->day_cool;
+    case ZB_ATTR_NIGHT_COOL_START:  return &c->night_cool_start;
+    case ZB_ATTR_NIGHT_COOL_TEMP:   return &c->night_cool;
+    case ZB_ATTR_DAY_HEAT_START:    return &c->day_heat_start;
+    case ZB_ATTR_DAY_HEAT_TEMP:     return &c->day_heat;
+    case ZB_ATTR_NIGHT_HEAT_START:  return &c->night_heat_start;
+    case ZB_ATTR_NIGHT_HEAT_TEMP:   return &c->night_heat;
+    case ZB_ATTR_MORNING_BOOST_MIN: return &c->boost_min;
+    case ZB_ATTR_MORNING_BOOST_OFS: return &c->boost_offset;
+    default:                        return NULL;
+    }
+}
+static bool sched_attr_signed(uint16_t id)
+{
+    return id == ZB_ATTR_DAY_COOL_TEMP || id == ZB_ATTR_NIGHT_COOL_TEMP || id == ZB_ATTR_DAY_HEAT_TEMP ||
+           id == ZB_ATTR_NIGHT_HEAT_TEMP || id == ZB_ATTR_MORNING_BOOST_OFS;
+}
+
+/* ------------------------------------------------------------------ */
+/* time of day (Time cluster client -> coordinator)                    */
+/* ------------------------------------------------------------------ */
+
+static void time_request(uint8_t unused)
+{
+    (void)unused;
+    if (s_link == LINK_JOINED) {
+        /* LocalTime (0x0007) is what we want; Time + TimeZone + DstShift is the fallback. */
+        static uint16_t ids[] = {ESP_ZB_ZCL_ATTR_TIME_TIME_ID, ESP_ZB_ZCL_ATTR_TIME_TIME_ZONE_ID,
+                                 ESP_ZB_ZCL_ATTR_TIME_DST_SHIFT_ID, ESP_ZB_ZCL_ATTR_TIME_LOCAL_TIME_ID};
+        esp_zb_zcl_read_attr_cmd_t r = {0};
+        r.zcl_basic_cmd.dst_addr_u.addr_short = 0x0000;   /* coordinator */
+        r.zcl_basic_cmd.dst_endpoint = 1;
+        r.zcl_basic_cmd.src_endpoint = EP;
+        r.address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT;
+        r.clusterID = ESP_ZB_ZCL_CLUSTER_ID_TIME;
+        r.direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV;
+        r.attr_number = sizeof ids / sizeof ids[0];
+        r.attr_field = ids;
+        esp_zb_zcl_read_attr_cmd_req(&r);
+    }
+    /* poll again: soon if we still have no time, hourly otherwise (drift + DST changes) */
+    esp_zb_scheduler_alarm(time_request, 0, s_time_known ? TIME_SYNC_PERIOD_MS : TIME_RETRY_MS);
+}
+
+static void on_time_resp(const esp_zb_zcl_cmd_read_attr_resp_message_t *m)
+{
+    bool have_utc = false, have_local = false;
+    uint32_t utc = 0, local = 0;
+    int32_t tz = 0, dst = 0;
+    for (const esp_zb_zcl_read_attr_resp_variable_t *v = m->variables; v; v = v->next) {
+        if (v->status != ESP_ZB_ZCL_STATUS_SUCCESS || !v->attribute.data.value) continue;
+        const void *d = v->attribute.data.value;
+        switch (v->attribute.id) {
+        case ESP_ZB_ZCL_ATTR_TIME_TIME_ID:       memcpy(&utc, d, 4); have_utc = utc != 0 && utc != 0xFFFFFFFFu; break;
+        case ESP_ZB_ZCL_ATTR_TIME_TIME_ZONE_ID:  memcpy(&tz, d, 4); break;
+        case ESP_ZB_ZCL_ATTR_TIME_DST_SHIFT_ID:  memcpy(&dst, d, 4); break;
+        case ESP_ZB_ZCL_ATTR_TIME_LOCAL_TIME_ID: memcpy(&local, d, 4); have_local = local != 0 && local != 0xFFFFFFFFu; break;
+        default: break;
+        }
+    }
+    if (!have_local && have_utc) { local = (uint32_t)((int64_t)utc + tz + dst); have_local = true; }
+    if (!have_local) { ESP_LOGW(TAG, "time sync: coordinator returned no usable time"); return; }
+    portENTER_CRITICAL(&s_time_mux);
+    s_time_local_s = local;
+    s_time_at_ms = mono_ms();
+    s_time_known = true;
+    portEXIT_CRITICAL(&s_time_mux);
+    ESP_LOGI(TAG, "time sync: local %02lu:%02lu", (unsigned long)(local / 3600 % 24), (unsigned long)(local / 60 % 60));
+}
+
+/* one self-rescheduling poll chain, started on the first join */
+static void time_sync_start(void)
+{
+    static bool running;
+    if (running) return;
+    running = true;
+    esp_zb_scheduler_alarm(time_request, 0, 5000);
+}
+
+bool zb_thermostat_local_minute(uint16_t *minute)
+{
+    portENTER_CRITICAL(&s_time_mux);
+    bool known = s_time_known;
+    uint64_t secs = (uint64_t)s_time_local_s + (mono_ms() - s_time_at_ms) / 1000u;
+    portEXIT_CRITICAL(&s_time_mux);
+    if (known) *minute = (uint16_t)(secs % 86400u / 60u);
+    return known;
+}
 
 /* ------------------------------------------------------------------ */
 /* commissioning                                                      */
@@ -68,6 +176,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *sig_s)
         } else {
             ESP_LOGI(TAG, "rejoined existing network");
             s_link = LINK_JOINED;
+            time_sync_start();
         }
         break;
     case ESP_ZB_BDB_SIGNAL_STEERING:
@@ -75,6 +184,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *sig_s)
             ESP_LOGI(TAG, "joined PAN 0x%04hx ch %d addr 0x%04hx", esp_zb_get_pan_id(),
                      esp_zb_get_current_channel(), esp_zb_get_short_address());
             s_link = LINK_JOINED;
+            time_sync_start();
         } else {
             /* Keep trying, slowly. The thermostat works fine unpaired. */
             s_link = LINK_PAIRING;
@@ -128,19 +238,23 @@ static esp_err_t on_set_attr(const esp_zb_zcl_set_attr_value_message_t *m)
     if (m->info.dst_endpoint != EP || !m->attribute.data.value) return ESP_OK;
     const void *v = m->attribute.data.value;
     ctrl_settings_t s = s_settings;
-    bool keep_heat = true, changed = false;
+    uint8_t what = ZB_SET_MODE_FAN;
+    bool changed = false;
 
     switch (m->info.cluster) {
     case ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT:
         switch (m->attribute.id) {
         case ESP_ZB_ZCL_ATTR_THERMOSTAT_OCCUPIED_HEATING_SETPOINT_ID:
-            s.heat_sp = *(const int16_t *)v; keep_heat = true; changed = true; break;
+            s.heat_sp = *(const int16_t *)v; what = ZB_SET_HEAT_SP; changed = true; break;
         case ESP_ZB_ZCL_ATTR_THERMOSTAT_OCCUPIED_COOLING_SETPOINT_ID:
-            s.cool_sp = *(const int16_t *)v; keep_heat = false; changed = true; break;
+            s.cool_sp = *(const int16_t *)v; what = ZB_SET_COOL_SP; changed = true; break;
         case ESP_ZB_ZCL_ATTR_THERMOSTAT_SYSTEM_MODE_ID: {
             uint8_t mode = *(const uint8_t *)v;
             if (ctrl_mode_valid(mode)) { s.mode = (ctrl_mode_t)mode; changed = true; }
-            else ESP_LOGW(TAG, "unsupported system mode %u ignored", mode);
+            else {   /* e.g. Auto / Heat-Cool: not supported, put the real mode back */
+                ESP_LOGW(TAG, "unsupported system mode %u ignored", mode);
+                s_force_settings = true;
+            }
             break;
         }
         case ESP_ZB_ZCL_ATTR_THERMOSTAT_LOCAL_TEMPERATURE_CALIBRATION_ID:
@@ -178,7 +292,22 @@ static esp_err_t on_set_attr(const esp_zb_zcl_set_attr_value_message_t *m)
             if (s_cbs.on_swing) s_cbs.on_swing(sw);
             return ESP_OK;
         }
-        default: return ESP_OK;
+        default: {
+            void *f = sched_field(&s_sched, m->attribute.id);
+            if (!f) return ESP_OK;
+            sched_cfg_t c = s_sched;
+            f = sched_field(&c, m->attribute.id);
+            if (sched_attr_signed(m->attribute.id)) *(int16_t *)f = *(const int16_t *)v;
+            else                                    *(uint16_t *)f = *(const uint16_t *)v;
+            ctrl_params_t prm = CTRL_PARAMS_DEFAULT();
+            sched_sanitize(&prm, &c);
+            s_sched = c;
+            /* store the clamped value so a read-back shows reality */
+            esp_zb_zcl_set_manufacturer_attribute_val(EP, ZB_BOOST_CLUSTER_ID, SERVER, ZB_BOOST_MANUF_CODE,
+                                                      m->attribute.id, sched_field(&s_sched, m->attribute.id), false);
+            if (s_cbs.on_sched) s_cbs.on_sched(&s_sched);
+            return ESP_OK;
+        }
         }
         if (mins < BOOST_TIMED_MIN_MIN) mins = BOOST_TIMED_MIN_MIN;
         if (mins > BOOST_TIMED_MAX_MIN) mins = BOOST_TIMED_MAX_MIN;
@@ -192,7 +321,7 @@ static esp_err_t on_set_attr(const esp_zb_zcl_set_attr_value_message_t *m)
             s_cbs.on_identify(*(const uint16_t *)v);
         break;
     }
-    if (changed && s_cbs.on_settings) s_cbs.on_settings(&s, keep_heat);
+    if (changed && s_cbs.on_settings) s_cbs.on_settings(&s, what);
     return ESP_OK;
 }
 
@@ -294,6 +423,11 @@ static esp_err_t action_handler(esp_zb_core_action_callback_id_t id, const void 
         return on_set_attr((const esp_zb_zcl_set_attr_value_message_t *)msg);
     case ESP_ZB_CORE_OTA_UPGRADE_VALUE_CB_ID:
         return on_ota((const esp_zb_zcl_ota_upgrade_value_message_t *)msg);
+    case ESP_ZB_CORE_CMD_READ_ATTR_RESP_CB_ID: {
+        const esp_zb_zcl_cmd_read_attr_resp_message_t *r = msg;
+        if (r->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_TIME) on_time_resp(r);
+        return ESP_OK;
+    }
     case ESP_ZB_CORE_OTA_UPGRADE_QUERY_IMAGE_RESP_CB_ID: {
         const esp_zb_zcl_ota_upgrade_query_image_resp_message_t *r = msg;
         if (r->info.status == ESP_ZB_ZCL_STATUS_SUCCESS)
@@ -331,13 +465,12 @@ static esp_zb_ep_list_t *build_endpoint(const ctrl_settings_t *init, int8_t cali
         .local_temperature = (int16_t)0x8000,              /* invalid until first reading */
         .occupied_cooling_setpoint = init->cool_sp,
         .occupied_heating_setpoint = init->heat_sp,
-        .control_sequence_of_operation = 0x04,             /* cooling and heating */
+        .control_sequence_of_operation = 0x04,             /* cooling and heating (no Auto: writes of 1 are refused) */
         .system_mode = (uint8_t)init->mode,
     };
     esp_zb_attribute_list_t *th = esp_zb_thermostat_cluster_create(&th_cfg);
     ctrl_params_t p = CTRL_PARAMS_DEFAULT();
     int16_t min_sp = p.min_sp, max_sp = p.max_sp;
-    int8_t deadband = (int8_t)(p.deadband / 10);
     uint16_t running = 0;
     esp_zb_thermostat_cluster_add_attr(th, ESP_ZB_ZCL_ATTR_THERMOSTAT_ABS_MIN_HEAT_SETPOINT_LIMIT_ID, &min_sp);
     esp_zb_thermostat_cluster_add_attr(th, ESP_ZB_ZCL_ATTR_THERMOSTAT_ABS_MAX_HEAT_SETPOINT_LIMIT_ID, &max_sp);
@@ -347,7 +480,6 @@ static esp_zb_ep_list_t *build_endpoint(const ctrl_settings_t *init, int8_t cali
     esp_zb_thermostat_cluster_add_attr(th, ESP_ZB_ZCL_ATTR_THERMOSTAT_MAX_HEAT_SETPOINT_LIMIT_ID, &max_sp);
     esp_zb_thermostat_cluster_add_attr(th, ESP_ZB_ZCL_ATTR_THERMOSTAT_MIN_COOL_SETPOINT_LIMIT_ID, &min_sp);
     esp_zb_thermostat_cluster_add_attr(th, ESP_ZB_ZCL_ATTR_THERMOSTAT_MAX_COOL_SETPOINT_LIMIT_ID, &max_sp);
-    esp_zb_thermostat_cluster_add_attr(th, ESP_ZB_ZCL_ATTR_THERMOSTAT_MIN_SETPOINT_DEAD_BAND_ID, &deadband);
     esp_zb_thermostat_cluster_add_attr(th, ESP_ZB_ZCL_ATTR_THERMOSTAT_LOCAL_TEMPERATURE_CALIBRATION_ID, &calib);
     esp_zb_thermostat_cluster_add_attr(th, ESP_ZB_ZCL_ATTR_THERMOSTAT_THERMOSTAT_RUNNING_STATE_ID, &running);
     ESP_ERROR_CHECK(esp_zb_cluster_list_add_thermostat_cluster(cl, th, SERVER));
@@ -389,7 +521,18 @@ static esp_zb_ep_list_t *build_endpoint(const ctrl_settings_t *init, int8_t cali
                                                          ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, RO, &b_result));
     ESP_ERROR_CHECK(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_ATTR_SWING, ZB_BOOST_MANUF_CODE,
                                                          ESP_ZB_ZCL_ATTR_TYPE_U16, RW, &s_swing));
+    for (uint16_t id = ZB_SCHED_ATTR_FIRST; id <= ZB_SCHED_ATTR_LAST; id++)
+        ESP_ERROR_CHECK(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, id, ZB_BOOST_MANUF_CODE,
+                                                             sched_attr_signed(id) ? ESP_ZB_ZCL_ATTR_TYPE_S16 : ESP_ZB_ZCL_ATTR_TYPE_U16,
+                                                             RW, sched_field(&s_sched, id)));
+    ESP_ERROR_CHECK(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_ATTR_SCHED_STATE, ZB_BOOST_MANUF_CODE,
+                                                         ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, RO, &s_sched_state));
     ESP_ERROR_CHECK(esp_zb_cluster_list_add_custom_cluster(cl, bc, SERVER));
+
+    /* Time client: we read the coordinator's clock for the program schedule. */
+    esp_zb_time_cluster_cfg_t time_cfg = {0};
+    ESP_ERROR_CHECK(esp_zb_cluster_list_add_time_cluster(cl, esp_zb_time_cluster_create(&time_cfg),
+                                                         ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
 
     /* OTA upgrade client */
     esp_zb_ota_cluster_cfg_t ota_cfg = {
@@ -456,6 +599,7 @@ esp_err_t zb_thermostat_start(const zb_thermostat_cbs_t *cbs, const zb_thermosta
     s_boost_min = init->boost_minutes;
     s_boost_dir = init->boost_dir;
     s_swing = (uint16_t)ctrl_clamp_swing(init->swing);
+    s_sched = init->sched;
     esp_zb_platform_config_t pc = {
         .radio_config = {.radio_mode = ZB_RADIO_MODE_NATIVE},
         .host_config = {.host_connection_mode = ZB_HOST_CONNECTION_MODE_NONE},
@@ -495,7 +639,7 @@ void zb_thermostat_publish(const zb_thermostat_state_t *st)
     if (!s_started) return;
     static zb_thermostat_state_t last;
     static bool have_last;
-    if (have_last && memcmp(&last, st, sizeof *st) == 0) return;
+    if (have_last && !s_force_settings && memcmp(&last, st, sizeof *st) == 0) return;
     if (!esp_zb_lock_acquire(pdMS_TO_TICKS(100))) return;   /* never block the control loop for long */
 
     int16_t t = st->temp_valid ? st->temp : (int16_t)0x8000;
@@ -508,7 +652,8 @@ void zb_thermostat_publish(const zb_thermostat_state_t *st)
     set_attr(ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT, ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_VALUE_ID, &t);
     set_attr(ESP_ZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT, ESP_ZB_ZCL_ATTR_REL_HUMIDITY_MEASUREMENT_VALUE_ID, &h);
     set_attr(ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT, ESP_ZB_ZCL_ATTR_THERMOSTAT_THERMOSTAT_RUNNING_STATE_ID, &running);
-    if (memcmp(&st->s, &s_settings, sizeof s_settings) != 0) {
+    if (s_force_settings || memcmp(&st->s, &s_settings, sizeof s_settings) != 0) {
+        s_force_settings = false;
         set_attr(ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT, ESP_ZB_ZCL_ATTR_THERMOSTAT_SYSTEM_MODE_ID, &mode);
         set_attr(ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT, ESP_ZB_ZCL_ATTR_THERMOSTAT_OCCUPIED_HEATING_SETPOINT_ID, &hs);
         set_attr(ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT, ESP_ZB_ZCL_ATTR_THERMOSTAT_OCCUPIED_COOLING_SETPOINT_ID, &cs);
@@ -539,6 +684,22 @@ void zb_thermostat_publish(const zb_thermostat_state_t *st)
         {ZB_BOOST_ATTR_DURATION, &s_boost_min, min_ch},
         {ZB_ATTR_SWING, &s_swing, sw_ch},
     };
+    /* schedule: same rule (local changes, e.g. setpoint edits of the current period) */
+    for (uint16_t id = ZB_SCHED_ATTR_FIRST; id <= ZB_SCHED_ATTR_LAST; id++) {
+        sched_cfg_t *lc = (sched_cfg_t *)&last.sched, *nc = (sched_cfg_t *)&st->sched;
+        uint16_t a = *(uint16_t *)sched_field(nc, id), b = *(uint16_t *)sched_field(lc, id);
+        uint16_t *cur = sched_field(&s_sched, id);
+        if (!have_last || a == b || a == *cur) continue;
+        *cur = a;
+        esp_zb_zcl_set_manufacturer_attribute_val(EP, ZB_BOOST_CLUSTER_ID, SERVER, ZB_BOOST_MANUF_CODE, id, cur, false);
+        if (s_link == LINK_JOINED) report_boost_attr(id);
+    }
+    if (!have_last || st->sched_state != last.sched_state) {
+        s_sched_state = st->sched_state;
+        esp_zb_zcl_set_manufacturer_attribute_val(EP, ZB_BOOST_CLUSTER_ID, SERVER, ZB_BOOST_MANUF_CODE, ZB_ATTR_SCHED_STATE,
+                                                  &s_sched_state, false);
+        if (s_link == LINK_JOINED) report_boost_attr(ZB_ATTR_SCHED_STATE);
+    }
     for (size_t i = 0; i < sizeof sattrs / sizeof sattrs[0]; i++) {
         if (!sattrs[i].was_changed) continue;
         esp_zb_zcl_set_manufacturer_attribute_val(EP, ZB_BOOST_CLUSTER_ID, SERVER, ZB_BOOST_MANUF_CODE, sattrs[i].id,

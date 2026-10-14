@@ -28,6 +28,7 @@
 #include "sdkconfig.h"
 #include "sensor.h"
 #include "settings.h"
+#include "schedule.h"
 #include "ui.h"
 #include "menu.h"
 #include "fw_version.h"
@@ -65,22 +66,38 @@ static uint64_t now_ms(void) { return (uint64_t)(esp_timer_get_time() / 1000); }
 
 /* ---------------- shared settings ---------------- */
 
+/* Mode / fan / main setpoints. A heat or cool setpoint that differs from the
+ * current program setpoint is stored in the CURRENT program period (day or
+ * night, see schedule.h); with no clock that is the day period. */
 static void settings_update(const ctrl_settings_t *s, bool keep_heat)
 {
+    (void)keep_heat;
     ctrl_params_t p = CTRL_PARAMS_DEFAULT();
+    uint16_t minute = 0;
+    bool known = zb_thermostat_local_minute(&minute);
+    ctrl_settings_t n = *s;
+    ctrl_sanitize_settings(&p, &n, true);
     xSemaphoreTake(s_mtx, portMAX_DELAY);
-    s_persist.s = *s;
-    ctrl_sanitize_settings(&p, &s_persist.s, keep_heat);
+    int16_t h, c;
+    sched_program_sp(&s_persist.sched, known, minute, &h, &c);
+    if (n.heat_sp != h) sched_edit_current(&p, &s_persist.sched, true, known, minute, n.heat_sp);
+    if (n.cool_sp != c) sched_edit_current(&p, &s_persist.sched, false, known, minute, n.cool_sp);
+    s_persist.s.mode = n.mode;
+    s_persist.s.fan = n.fan;
     s_dirty = true;
     s_dirty_at = now_ms();
     xSemaphoreGive(s_mtx);
 }
 
+/* Snapshot; s.heat_sp / s.cool_sp are the current program setpoints (no morning boost). */
 static persist_t settings_get(void)
 {
+    uint16_t minute = 0;
+    bool known = zb_thermostat_local_minute(&minute);
     xSemaphoreTake(s_mtx, portMAX_DELAY);
     persist_t p = s_persist;
     xSemaphoreGive(s_mtx);
+    sched_program_sp(&p.sched, known, minute, &p.s.heat_sp, &p.s.cool_sp);
     return p;
 }
 
@@ -95,7 +112,18 @@ static void banner(const char *b)
 
 /* ---------------- Zigbee callbacks (Zigbee task) ---------------- */
 
-static void zb_on_settings(const ctrl_settings_t *s, bool keep_heat) { settings_update(s, keep_heat); }
+static void zb_on_settings(const ctrl_settings_t *s, uint8_t what)
+{
+    /* Start from the live program setpoints so a mode/fan write can never copy a
+     * stale setpoint into a period that just started; then apply the one field written. */
+    persist_t p = settings_get();
+    ctrl_settings_t n = p.s;
+    n.mode = s->mode;
+    n.fan = s->fan;
+    if (what == ZB_SET_HEAT_SP) n.heat_sp = s->heat_sp;
+    if (what == ZB_SET_COOL_SP) n.cool_sp = s->cool_sp;
+    settings_update(&n, what != ZB_SET_COOL_SP);
+}
 
 static void zb_on_calib(int8_t c)
 {
@@ -123,6 +151,17 @@ static void zb_on_swing(int16_t sw)
 {
     xSemaphoreTake(s_mtx, portMAX_DELAY);
     s_persist.swing = ctrl_clamp_swing(sw);
+    s_dirty = true;
+    s_dirty_at = now_ms();
+    xSemaphoreGive(s_mtx);
+}
+
+static void zb_on_sched(const sched_cfg_t *c)
+{
+    ctrl_params_t prm = CTRL_PARAMS_DEFAULT();
+    xSemaphoreTake(s_mtx, portMAX_DELAY);
+    s_persist.sched = *c;
+    sched_sanitize(&prm, &s_persist.sched);
     s_dirty = true;
     s_dirty_at = now_ms();
     xSemaphoreGive(s_mtx);
@@ -221,13 +260,6 @@ static bool handle_home_key(const btn_msg_t *m)
         switch (s.mode) {
         case CTRL_MODE_HEAT: s.heat_sp = menu_step_temp(s.heat_sp, dir, F); settings_update(&s, true); break;
         case CTRL_MODE_COOL: s.cool_sp = menu_step_temp(s.cool_sp, dir, F); settings_update(&s, false); break;
-        case CTRL_MODE_AUTO: {
-            int16_t nh = menu_step_temp(s.heat_sp, dir, F);
-            s.cool_sp = (int16_t)(s.cool_sp + (nh - s.heat_sp));
-            s.heat_sp = nh;
-            settings_update(&s, dir > 0 ? false : true);
-            break;
-        }
         default: banner("Mode is OFF - M: menu > Mode"); break;
         }
         return true;
@@ -271,7 +303,7 @@ static void set_units(persist_t *p, int32_t v)     { p->fahrenheit = v ? 1 : 0; 
 static menu_ctx_t menu_ctx(const persist_t *p, uint64_t now)
 {
     return (menu_ctx_t){
-        .mode = p->s.mode, .boost_active = s_boost_active, .boost_sp = p->boost_sp,
+        .mode = p->s.mode, .fan = p->s.fan, .boost_active = s_boost_active, .boost_sp = p->boost_sp,
         .boost_minutes = p->boost_minutes, .swing = p->swing, .fahrenheit = p->fahrenheit,
         .link = zb_thermostat_link(), .fw_version = FW_VERSION,
         .raw_valid = s_raw.valid, .raw_temp = s_raw.temp_c100, .raw_rh = s_raw.rh_c100,
@@ -286,6 +318,10 @@ static bool apply_menu_action(const menu_action_t *a)
     switch (a->kind) {
     case MA_SET_MODE:
         p.s.mode = (ctrl_mode_t)a->value;
+        settings_update(&p.s, true);
+        break;
+    case MA_SET_FAN:
+        p.s.fan = (ctrl_fan_t)a->value;
         settings_update(&p.s, true);
         break;
     case MA_BOOST_TARGET:
@@ -379,7 +415,12 @@ static void app_task(void *arg)
         if (ctl.p.hysteresis != p.swing) ctrl_set_swing(&ctl, p.swing);
 
         /* 3. control + outputs (the interlock lives in hvac_outputs_set) */
-        ctrl_output_t o = ctrl_step(&ctl, &p.s, now);
+        /*    program schedule -> effective setpoints (incl. morning heat boost) */
+        uint16_t minute = 0;
+        bool time_known = zb_thermostat_local_minute(&minute);
+        ctrl_settings_t eff = p.s;
+        sched_state_t sst = sched_apply(&prm, &p.sched, time_known, minute, &eff);
+        ctrl_output_t o = ctrl_step(&ctl, &eff, now);
         hvac_state_t act = hvac_outputs_set((hvac_state_t){.w = o.w, .y = o.y, .g = o.g});
         ctrl_boost_status_t bs = ctrl_boost_status(&ctl, now);
         if (s_boost_active && bs.kind == BOOST_NONE && bs.last_end != BOOST_END_CANCELLED) {
@@ -398,6 +439,7 @@ static void app_task(void *arg)
             .rh_valid = rd.valid, .rh = rd.rh_c100, .s = p.s, .w = act.w, .y = act.y, .g = act.g,
             .boost_state = bstate, .boost_remaining_min = bmin, .boost_last_result = s_boost_result,
             .boost_sp = p.boost_sp, .boost_minutes = p.boost_minutes, .swing = p.swing,
+            .sched = p.sched, .sched_state = (uint8_t)sst,
         };
         zb_thermostat_publish(&zs);
         link_state_t link = zb_thermostat_link();
@@ -423,6 +465,7 @@ static void app_task(void *arg)
         }
         dm.full_epoch = s_full_epoch;
         dm.swing = p.swing;
+        dm.sched_state = (uint8_t)sst;
         dm.boost = bs.kind;
         dm.boost_dir = bs.dir;
         dm.boost_sp = bs.sp;
@@ -520,6 +563,8 @@ void app_main(void)
     s_btn_q = xQueueCreate(16, sizeof(btn_msg_t));
     s_boost_q = xQueueCreate(4, sizeof(uint8_t));
     settings_load(&s_persist);
+    /* no clock yet at boot: mirror the day program */
+    sched_program_sp(&s_persist.sched, false, 0, &s_persist.s.heat_sp, &s_persist.s.cool_sp);
     menu_init(&s_menu);
     ESP_LOGI(TAG, "settings: mode %d heat %d cool %d fan %d calib %d", s_persist.s.mode, s_persist.s.heat_sp,
              s_persist.s.cool_sp, s_persist.s.fan, s_persist.calib_tenths);
@@ -537,11 +582,12 @@ void app_main(void)
         .on_boost_params = zb_on_boost_params,
         .on_boost_command = zb_on_boost_cmd,
         .on_swing = zb_on_swing,
+        .on_sched = zb_on_sched,
     };
     zb_thermostat_init_t zi = {
         .s = s_persist.s, .calib = s_persist.calib_tenths,
         .boost_sp = s_persist.boost_sp, .boost_minutes = s_persist.boost_minutes, .boost_dir = s_persist.boost_dir,
-        .swing = s_persist.swing,
+        .swing = s_persist.swing, .sched = s_persist.sched,
     };
     ESP_ERROR_CHECK(zb_thermostat_start(&cbs, &zi));
 

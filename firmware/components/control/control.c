@@ -29,12 +29,9 @@ void ctrl_sanitize_settings(const ctrl_params_t *p, ctrl_settings_t *s, bool kee
 {
     if (!ctrl_mode_valid(s->mode)) s->mode = CTRL_MODE_OFF;
     if (s->fan != CTRL_FAN_ON && s->fan != CTRL_FAN_AUTO) s->fan = CTRL_FAN_AUTO;
-    s->heat_sp = clamp16(s->heat_sp, p->min_sp, (int16_t)(p->max_sp - p->deadband));
-    s->cool_sp = clamp16(s->cool_sp, (int16_t)(p->min_sp + p->deadband), p->max_sp);
-    if (s->cool_sp - s->heat_sp < p->deadband) {
-        if (keep_heat) s->cool_sp = (int16_t)(s->heat_sp + p->deadband);
-        else           s->heat_sp = (int16_t)(s->cool_sp - p->deadband);
-    }
+    (void)keep_heat;
+    s->heat_sp = clamp16(s->heat_sp, p->min_sp, p->max_sp);
+    s->cool_sp = clamp16(s->cool_sp, p->min_sp, p->max_sp);
 }
 
 void ctrl_feed_sensor(ctrl_t *c, const ctrl_input_t *in, uint64_t now_ms)
@@ -132,8 +129,8 @@ ctrl_output_t ctrl_step(ctrl_t *c, const ctrl_settings_t *s_in, uint64_t now)
             else                          { force_cool = true; }
         }
     }
-    const bool heat_allowed = (s.mode == CTRL_MODE_HEAT || s.mode == CTRL_MODE_AUTO);
-    const bool cool_allowed = (s.mode == CTRL_MODE_COOL || s.mode == CTRL_MODE_AUTO);
+    const bool heat_allowed = (s.mode == CTRL_MODE_HEAT);
+    const bool cool_allowed = (s.mode == CTRL_MODE_COOL);
 
     /* ---- hysteresis (latched calls) ---- */
     if (!heat_allowed)               c->heat_call = false;
@@ -147,7 +144,7 @@ ctrl_output_t ctrl_step(ctrl_t *c, const ctrl_settings_t *s_in, uint64_t now)
     if (force_heat) { c->heat_call = true; c->cool_call = false; }
     if (force_cool) { c->cool_call = true; c->heat_call = false; }
 
-    /* Deadband makes both calls impossible, but be explicit: an active stage wins. */
+    /* One mode at a time makes both calls impossible, but be explicit: an active stage wins. */
     if (c->heat_call && c->cool_call) {
         if (c->y) c->heat_call = false; else c->cool_call = false;
     }
@@ -199,14 +196,13 @@ ctrl_mode_t ctrl_next_mode(ctrl_mode_t m)
     switch (m) {
     case CTRL_MODE_OFF:  return CTRL_MODE_HEAT;
     case CTRL_MODE_HEAT: return CTRL_MODE_COOL;
-    case CTRL_MODE_COOL: return CTRL_MODE_AUTO;
     default:             return CTRL_MODE_OFF;
     }
 }
 
 bool ctrl_mode_valid(int v)
 {
-    return v == CTRL_MODE_OFF || v == CTRL_MODE_AUTO || v == CTRL_MODE_COOL || v == CTRL_MODE_HEAT;
+    return v == CTRL_MODE_OFF || v == CTRL_MODE_COOL || v == CTRL_MODE_HEAT;
 }
 
 const char *ctrl_fault_str(ctrl_fault_t f)

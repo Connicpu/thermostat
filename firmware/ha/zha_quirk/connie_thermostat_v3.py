@@ -1,7 +1,7 @@
 """ZHA quirk (quirks v2) for Connie's Super Awesome Thermostat V3.
 
-Adds the manufacturer-specific Boost cluster 0xFC57 and exposes it as clean
-Home Assistant entities. The standard Thermostat / Fan / Humidity clusters are
+Adds the manufacturer-specific Boost cluster 0xFC57 (boost, swing and the
+day/night program schedule) and exposes it as clean Home Assistant entities. The standard Thermostat / Fan / Humidity clusters are
 left alone, so ZHA's normal climate entity keeps working.
 
 Install: copy this file into the folder configured as `zha: custom_quirks_path:`
@@ -88,6 +88,15 @@ class BoostResult(t.enum8):
     Rejected_no_direction = 0x13
 
 
+class ScheduleState(t.enum8):
+    """Which program period is active (attribute 0x002A)."""
+
+    No_clock_holding_day = 0x00
+    Day = 0x01
+    Night = 0x02
+    Day_morning_boost = 0x03
+
+
 class ConnieBoostCluster(CustomCluster):
     """Manufacturer-specific boost control cluster."""
 
@@ -106,11 +115,70 @@ class ConnieBoostCluster(CustomCluster):
         boost_last_result = ZCLAttributeDef(id=0x0006, type=BoostResult, access="rp", is_manufacturer_specific=True)
         # Temperature swing (hysteresis), 0.01 °C each side of the setpoint, 10..100.
         temperature_swing = ZCLAttributeDef(id=0x0010, type=t.uint16_t, is_manufacturer_specific=True)
+        # Program schedule. Start times: minutes after local midnight. Temps: 0.01 °C.
+        day_cool_start = ZCLAttributeDef(id=0x0020, type=t.uint16_t, is_manufacturer_specific=True)
+        day_cool_temp = ZCLAttributeDef(id=0x0021, type=t.int16s, is_manufacturer_specific=True)
+        night_cool_start = ZCLAttributeDef(id=0x0022, type=t.uint16_t, is_manufacturer_specific=True)
+        night_cool_temp = ZCLAttributeDef(id=0x0023, type=t.int16s, is_manufacturer_specific=True)
+        day_heat_start = ZCLAttributeDef(id=0x0024, type=t.uint16_t, is_manufacturer_specific=True)
+        day_heat_temp = ZCLAttributeDef(id=0x0025, type=t.int16s, is_manufacturer_specific=True)
+        night_heat_start = ZCLAttributeDef(id=0x0026, type=t.uint16_t, is_manufacturer_specific=True)
+        night_heat_temp = ZCLAttributeDef(id=0x0027, type=t.int16s, is_manufacturer_specific=True)
+        morning_boost_duration = ZCLAttributeDef(id=0x0028, type=t.uint16_t, is_manufacturer_specific=True)
+        morning_boost_offset = ZCLAttributeDef(id=0x0029, type=t.int16s, is_manufacturer_specific=True)
+        schedule_state = ZCLAttributeDef(id=0x002A, type=ScheduleState, access="rp", is_manufacturer_specific=True)
+
+
+def _schedule(builder):
+    """Number entities for the program schedule (CONFIG category)."""
+    a = ConnieBoostCluster.AttributeDefs
+    # Quirks v2 has no time-of-day entity, so start times are hours with 15-minute steps
+    # (6.5 = 06:30). The firmware accepts any minute.
+    for attr, name in (
+        (a.day_heat_start, "Day heating start"),
+        (a.night_heat_start, "Night heating start"),
+        (a.day_cool_start, "Day cooling start"),
+        (a.night_cool_start, "Night cooling start"),
+    ):
+        builder = builder.number(
+            attr.name, ConnieBoostCluster.cluster_id,
+            min_value=0.0, max_value=23.75, step=0.25, multiplier=1 / 60, unit=UnitOfTime.HOURS,
+            mode="box", entity_type=EntityType.CONFIG, translation_key=attr.name, fallback_name=name,
+        )
+    for attr, name in (
+        (a.day_heat_temp, "Day heating temperature"),
+        (a.night_heat_temp, "Night heating temperature"),
+        (a.day_cool_temp, "Day cooling temperature"),
+        (a.night_cool_temp, "Night cooling temperature"),
+    ):
+        builder = builder.number(
+            attr.name, ConnieBoostCluster.cluster_id,
+            min_value=10.0, max_value=32.0, step=0.5, multiplier=0.01, unit=UnitOfTemperature.CELSIUS,
+            device_class=NumberDeviceClass.TEMPERATURE, mode="box", entity_type=EntityType.CONFIG,
+            translation_key=attr.name, fallback_name=name,
+        )
+    builder = builder.number(
+        a.morning_boost_duration.name, ConnieBoostCluster.cluster_id,
+        min_value=0, max_value=240, step=15, unit=UnitOfTime.MINUTES, device_class=NumberDeviceClass.DURATION,
+        mode="box", entity_type=EntityType.CONFIG, translation_key="morning_boost_duration",
+        fallback_name="Morning heating boost duration",
+    )
+    # a temperature *difference*: no temperature device_class (see temperature_swing)
+    builder = builder.number(
+        a.morning_boost_offset.name, ConnieBoostCluster.cluster_id,
+        min_value=0.0, max_value=3.0, step=0.1, multiplier=0.01, unit=UnitOfTemperature.CELSIUS,
+        mode="box", entity_type=EntityType.CONFIG, translation_key="morning_boost_offset",
+        fallback_name="Morning heating boost offset",
+    )
+    return builder.enum(
+        a.schedule_state.name, ScheduleState, ConnieBoostCluster.cluster_id,
+        entity_platform=EntityPlatform.SENSOR, entity_type=EntityType.STANDARD,
+        translation_key="schedule_state", fallback_name="Schedule period",
+    )
 
 
 QUIRK_ENTRY = (
-    QuirkBuilder(MANUFACTURER, MODEL)
-    .adds(ConnieBoostCluster)
+    _schedule(QuirkBuilder(MANUFACTURER, MODEL).adds(ConnieBoostCluster))
     # --- settings for the next boost ---
     .number(
         ConnieBoostCluster.AttributeDefs.boost_setpoint.name,

@@ -8,7 +8,7 @@ HA thermostat for a single-stage gas furnace plus AC, with 24 VAC W/Y/G triac ou
 > before you wire it to the HVAC system.
 
 ![screen preview](docs/display_preview.png)
-![screen preview, auto/°C/fault](docs/display_preview_auto_c.png)
+![screen preview, cool/°C/fault](docs/display_preview_cool_c.png)
 
 *(Rendered on the host by the unit tests with the same rendering code the firmware uses.)*
 
@@ -16,10 +16,11 @@ HA thermostat for a single-stage gas furnace plus AC, with 24 VAC W/Y/G triac ou
 
 | Component | What it does | Hardware-free? |
 |---|---|---|
-| `components/control` | Thermostat logic: hysteresis, deadband, minimum on/off times, changeover, fan run-on, failsafe | **yes**, pure C |
+| `components/control` | Thermostat logic: hysteresis, minimum on/off times, changeover, fan run-on, failsafe | **yes**, pure C |
 | `components/hvac_outputs` | `hvac_interlock.c` (pure) is the **single** W/Y interlock. `hvac_outputs.c` is the only code that touches DRV_W/Y/G | interlock: yes |
 | `components/sensor` | SHT40 over I2C (`sht40_parse.c` handles CRC and conversion and is pure) | parser: yes |
 | `components/display` | SSD1680/GDEY029T94 driver, 1-bpp graphics plus fonts, screen renderer (pure), refresh-policy task | renderer: yes |
+| `components/control/schedule.c` | Day/night program schedule + morning heat boost | **yes**, pure C (`test/host/test_schedule.c`) |
 | `components/ui` | Button debounce, auto-repeat and hold-stage state machine (pure), on-device menu state machine (pure), 10 ms sampler, LED | state machines: yes |
 | `components/zigbee` | Endpoint and cluster model, commissioning, attribute writes, OTA client | no |
 | `components/board` | Pin map (`board.h`), STWD100 driver | no |
@@ -42,12 +43,13 @@ All of these live in `control.c`, and the tests in `test/host/test_control.c` co
 | Rule | Default |
 |---|---|
 | Temperature swing (hysteresis) | Configurable 0.1–1.0 °C, default ±0.5 °C, stored in NVS. Heat on at SP−swing, off at SP+swing; cooling is the mirror image. Minimum on/off times and changeover delays still apply on top. Set from HA (*Temperature swing* number, Zigbee 0xFC57/0x0010); shown on the e-paper as `+/-0.5°` next to the humidity (in °F when the display is in °F) |
-| Auto deadband | cool SP − heat SP ≥ 1.5 °C (the setpoint you didn't edit moves) |
+| Modes | Off / Heat / Cool. **There is no Auto (heat/cool changeover) mode**: the program schedule replaced it. Heat and cool setpoints are independent (no deadband), because only one of them is ever active |
 | Setpoint range | 10.0–32.0 °C |
 | **Compressor minimum off-time** | **5 min**, also applied from boot, so a power blip can't short-cycle the compressor |
 | Compressor minimum on-time | 3 min. Mode change or failsafe stops it immediately |
 | Furnace minimum on/off | 2 min / 1 min |
 | Heat↔cool changeover | 5 min between one stage stopping and the other starting |
+| Fan mode | Auto: G only with Y (and W when `heat_drives_fan`) plus run-on. **On: G runs continuously, even with no heat/cool demand, in every mode including Off** (still killed by the failsafe). Set from HA (Fan Control 0x0202 FanMode, ZHA fan control / climate fan mode) or the menu (*Fan*) |
 | Fan run-on | G stays on 90 s after W and 45 s after Y. G is energised with Y. With W it's left to the furnace (`heat_drives_fan=false`) |
 | **Failsafe** | No valid reading for 30 s, **or** a reading outside 0–45 °C, turns **all outputs off immediately** (overriding the minimum on-time and the fan run-on). Recovery needs 3 consecutive good readings. The firmware boots in failsafe |
 | **W/Y interlock** | `hvac_interlock()` is the only path to the pins. If W and Y are both requested, both are dropped and a fault is counted. That fault makes the loop unhealthy, so it stops kicking and the watchdogs reset the chip |
@@ -55,6 +57,59 @@ All of these live in `control.c`, and the tests in `test/host/test_control.c` co
 
 A one-week randomised soak test (temperature drift, random mode and setpoint changes, sensor dropouts,
 garbage readings) checks the invariants on every simulated second.
+
+## Program schedule (day/night)
+
+Heating and cooling each have their own two-period program. **DAY** runs from the day start time up
+to the night start time, **NIGHT** from the night start time up to the day start time; either period
+may cross midnight (e.g. day 20:00 → night 04:00). If day and night start are equal the program is
+effectively off and DAY applies all day. The heat program is used in HEAT mode, the cool program in COOL
+mode (in OFF nothing runs, but the display/HA still show the program values).
+
+**Morning heating boost** (HEAT mode only): starting at *day heating start*, for *boost duration*
+minutes, the heating setpoint is raised by *boost offset*. Duration 0 or offset 0 turns it off. The
+boost is applied to what the controller regulates to; the setpoint shown on the device and in HA's
+climate card stays the program value (so editing it round-trips), and the screen says *Day, morning
+boost* / HA's *Schedule period* sensor says `Day_morning_boost`. It is unrelated to the manual
+(to-target / timed) boost below, which still overrides everything while it runs.
+
+**Moving the main setpoint** (UP/DOWN on the device, or HA's climate setpoint = Occupied Heating /
+Cooling Setpoint) **changes the setpoint of the current period** of the program for the mode you are in
+(heat setpoint → heat program, cool setpoint → cool program) and is persisted. The other period is untouched.
+During the morning boost the edit changes the underlying day value (the offset is kept).
+
+**Time of day** comes from the coordinator via the Zigbee **Time cluster** (client on our endpoint 1):
+5 s after joining/rejoining the device reads LocalTime (0x0007), with Time + TimeZone + DstShift as a
+fallback, from the coordinator, then re-reads hourly (every minute until the first success). Between syncs
+the time is extrapolated with the monotonic clock. zigpy/ZHA answers these reads with the HA host's local time,
+so DST changes are picked up within an hour. **Until the first sync after boot the time is unknown: the
+DAY setpoints of both programs are held, no morning boost runs, setpoint edits go to the DAY period**, and
+the screen shows *Day (no clock)* (*Schedule period* = `No_clock_holding_day`). Once known, the time is kept
+across later network loss (extrapolated) until the next reboot.
+
+| Setting | Attr (0xFC57) | Type | Default | Range |
+|---|---|---|---|---|
+| Day cooling start | 0x0020 | uint16 min after midnight | 480 (08:00) | 0–1439 |
+| Day cooling temp | 0x0021 | int16 0.01 °C | 2450 (24.5 °C) | 1000–3200 |
+| Night cooling start | 0x0022 | uint16 | 1320 (22:00) | 0–1439 |
+| Night cooling temp | 0x0023 | int16 | 2400 (24.0 °C) | 1000–3200 |
+| Day heating start | 0x0024 | uint16 | 360 (06:00) | 0–1439 |
+| Day heating temp | 0x0025 | int16 | 2000 (20.0 °C) | 1000–3200 |
+| Night heating start | 0x0026 | uint16 | 1320 (22:00) | 0–1439 |
+| Night heating temp | 0x0027 | int16 | 1800 (18.0 °C) | 1000–3200 |
+| Morning heating boost duration | 0x0028 | uint16 minutes | 120 (→ 06:00–08:00) | 0–240, 0 = off |
+| Morning heating boost offset | 0x0029 | int16 0.01 °C | 50 (+0.5 °C) | 0–300 |
+| Schedule period (read-only, reported) | 0x002A | enum8 | – | 0 no clock (holding day), 1 day, 2 night, 3 day + morning boost |
+
+All are manufacturer-specific (code 0x131B) on the existing 0xFC57 cluster, persisted in NVS (settings
+blob v5; v2–v4 blobs migrate with both periods seeded from the old single setpoints, so an upgrade changes
+nothing until you edit the program). Out-of-range writes are clamped and the clamped value is stored, so a
+read-back shows reality. Changes made on the device (setpoint edits) are written and reported to the coordinator.
+There is no standard ZCL attribute set that ZHA understands for this (the Thermostat weekly-schedule commands
+aren't supported by ZHA), so the ZHA quirk (`ha/zha_quirk`) exposes them as *config* number entities:
+start times as hours in 0.25 h steps (6.5 = 06:30; quirks v2 has no time-of-day entity), temperatures in °C
+(HA converts), boost duration in minutes, offset as a °C difference, plus a *Schedule period* sensor.
+Without the quirk they're still reachable via *Manage zigbee device* (cluster 0xFC57, manufacturer 0x131B).
 
 ## Boost
 
@@ -123,8 +178,9 @@ drop `esp_zb_sleep_enable` / `set_rx_on_when_idle(false)`, and re-measure the te
 |---|---|---|
 | Basic 0x0000 | server | manufacturer `Connie`, model `thermostat-v3`, power source mains, sw build |
 | Identify 0x0003 | server | identify time → LED blinks |
-| Thermostat 0x0201 | server | LocalTemperature, Occupied Heating/Cooling Setpoint (writable), SystemMode off/auto/cool/heat (writable), ControlSequenceOfOperation = 4 (cool and heat), ThermostatRunningState (bit0 heat, bit1 cool, bit2 fan), Abs/Min/Max setpoint limits, MinSetpointDeadBand = 1.5 °C, LocalTemperatureCalibration ±2.5 °C (writable, persisted) |
-| Fan Control 0x0202 | server | FanMode on/auto (writable), FanModeSequence = 4 (On/Auto) |
+| Thermostat 0x0201 | server | LocalTemperature, Occupied Heating/Cooling Setpoint (writable; = current program period, writes edit that period), SystemMode off/cool/heat (writable; Auto 0x01 is refused and the real mode re-published), ControlSequenceOfOperation = 4 (cool and heat), ThermostatRunningState (bit0 heat, bit1 cool, bit2 fan), Abs/Min/Max setpoint limits (no MinSetpointDeadBand any more), LocalTemperatureCalibration ±2.5 °C (writable, persisted) |
+| Fan Control 0x0202 | server | FanMode on/auto (writable, persisted; other values map to On, Off maps to Auto), FanModeSequence = 4 (On/Auto) |
+| Time 0x000A | client | Reads the coordinator's LocalTime for the program schedule |
 | Temperature Measurement 0x0402 | server | MeasuredValue (same calibrated value) |
 | Relative Humidity 0x0405 | server | MeasuredValue |
 | OTA Upgrade 0x0019 | client | manufacturer 0x131B, image type 0x0301, file version `FW_OTA_FILE_VERSION` (0xMMmmpppp, derived from `FW_VERSION`) |
@@ -135,7 +191,7 @@ Changes made on the device (buttons) are written into the local attributes, so c
 
 | Input | Action |
 |---|---|
-| UP / DOWN | Main screen: setpoint ±1 °F (or ±0.5 °C). Auto-repeats after 0.6 s. HEAT edits the heat setpoint, COOL edits the cool setpoint, AUTO shifts both. Ignored in OFF |
+| UP / DOWN | Main screen: setpoint ±1 °F (or ±0.5 °C). Auto-repeats after 0.6 s. HEAT edits the heat setpoint, COOL edits the cool setpoint, in both cases **of the current program period** (persisted). Ignored in OFF |
 | UP + DOWN | Start a timed boost, or cancel the running one |
 | M (short) | Open the menu |
 | M hold 5 s | Bottom bar: *Let go: pair / hold on: reset*. **Releasing between 5 and 8 s starts pairing** |
@@ -143,7 +199,7 @@ Changes made on the device (buttons) are written into the local attributes, so c
 | M hold 15 s | **Factory reset**: outputs off, settings erased, leave the network, reboot |
 | RESET pinhole | Hardware reset |
 
-Debounce is 30 ms. Fan On/Auto is currently Zigbee-only (see TODO).
+Debounce is 30 ms. Fan On/Auto is in the menu (*Fan*) and in HA.
 
 Pairing is triggered on *release* in the 5–8 s window rather than at 5 s, so a hold that goes on to
 a factory reset never starts pairing on the way. A short press is a release before 1.5 s; a release
@@ -159,7 +215,8 @@ and the usual every-20th-refresh full refresh still applies.
 
 | Item | What it does |
 |---|---|
-| Mode | Off / Heat / Cool / Auto |
+| Mode | Off / Heat / Cool |
+| Fan | Auto / On (On runs the blower continuously, even with no heating/cooling) |
 | Boost → To target | Set the target (0.5 °C / 1 °F steps, 10–32 °C), M starts it |
 | Boost → For N minutes | 15–120 min in 15 min steps, M starts it |
 | Boost → Cancel boost | Only listed while a boost runs |
@@ -185,7 +242,7 @@ Display refreshes: a partial refresh ~0.4 s after a button change. Background ch
 humidity, running state, link) refresh at most every 3 min, as partials. Every 20th refresh, or every
 6 h, is a full refresh to clear ghosting. The panel deep-sleeps between refreshes. Displayed temperature
 is rounded to 0.1 °C before comparing, so sensor noise doesn't trigger refreshes.
-Settings (mode, fan, both setpoints, calibration, boost preferences, swing, units) are saved to NVS 5 s after the last change.
+Settings (mode, fan, the program schedule, calibration, boost preferences, swing, units) are saved to NVS 5 s after the last change.
 
 ## Building
 
@@ -241,7 +298,7 @@ later: hold MODE for 10 s (factory reset), or hold it for 3 s if it's already un
 Install the boost quirk first (`ha/zha_quirk/README.md`): add `zha: custom_quirks_path:` and copy
 the file there. Then: Settings → Devices & services → Zigbee Home Automation → *Add device*, then power the thermostat or
 start pairing. ZHA's generic thermostat support should pick up cluster 0x0201 and create a
-`climate` entity (off/heat/cool/heat_cool, both setpoints, HVAC action from running state), plus
+`climate` entity (off/heat/cool, both setpoints, HVAC action from running state), plus
 humidity and temperature sensors and a fan-mode control. No quirk should be needed. If the fan mode or
 running state doesn't show up, a small ZHA quirk v2 can be added later.
 
@@ -297,8 +354,13 @@ The converter is written against the standard `fz.thermostat` / `tz.thermostat_*
   it can lag by up to 3 minutes (HA gets it every minute). Boost options can only be edited from HA
   (locally only start/cancel). The quirk is tested with mocks against zha 2.3.1 / zha-quirks 2.3.0,
   not in a live HA instance.
-- Fan mode can't be changed on the device (no spare button). A possible future combo is MODE + UP.
-- Setback/schedules, occupancy and the setpoint raise/lower command are not implemented (HA can schedule).
+- ZHA derives the climate entity's HVAC modes from ControlSequenceOfOperation; 4 ("cooling and heating")
+  makes it also offer *Heat/Cool*. There is no standard value for "heat or cool, no auto". Selecting it in HA is
+  refused by the device and the mode snaps back. Hiding it would need a quirk that overrides the Thermostat
+  cluster / climate entity (not done yet).
+- The program schedule is only editable from HA (no on-device editor yet; the main setpoint edits the current period).
+  One program for every day of the week (no weekday/weekend split).
+- Occupancy and the setpoint raise/lower command are not implemented.
 - The Z2M converter and ZHA behaviour are untested. The OTA flow is untested end to end.
 - No feedback that a triac actually switched, and no 24 VAC presence or C-wire detection (the hardware has none).
 - Interlock fault handling is a deliberate "stop kicking and reboot". A fault counter in NVS could stop boot loops.
