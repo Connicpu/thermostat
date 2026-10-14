@@ -65,6 +65,16 @@
         [`sensor.${PREFIX}_humidity`]: { state: '55' },
       },
     },
+    'heat-boost': {
+      now: 10 * 60,
+      open: ['boost', 'morning', 'schedule'],
+      patch: {
+        [c]: { state: 'heat', attributes: { hvac_action: 'heating', current_temperature: 68.2, temperature: 70 } },
+        [`binary_sensor.${PREFIX}_boost_active`]: { state: 'on' },
+        [`sensor.${PREFIX}_boost`]: { state: 'Timed_heat' },
+        [`sensor.${PREFIX}_boost_time_remaining`]: { state: '22' },
+      },
+    },
     'morning-boost': { now: 6 * 60 + 50, open: ['morning', 'schedule', 'status'], patch: { [`sensor.${PREFIX}_schedule_period`]: { state: 'Day_morning_boost' }, [c]: { attributes: { temperature: 70, current_temperature: 67.1 } } } },
   };
   const sc = scenarios[q.get('scenario')] ?? scenarios['heat-day'];

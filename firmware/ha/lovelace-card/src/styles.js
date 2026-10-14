@@ -178,13 +178,15 @@ export const cardStyles = css`
   /* boost + morning boost tiles: label, value stepper and its button form one unit */
   .tile-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .tile { border-radius: var(--ct-radius); padding: 10px 12px; background: var(--ct-tile); border: 2px solid transparent; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-  .tile.running { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 10%, transparent); }
+  .tile.running { --ct-run: var(--primary-color); border-color: var(--ct-run); background: color-mix(in srgb, var(--ct-run) 10%, transparent); }
+  .tile.running.heat { --ct-run: var(--ct-heat); }
+  .tile.running.cool { --ct-run: var(--ct-cool); }
   .tile-h { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500; color: var(--primary-text-color); min-height: 24px; }
   .tile-h > svg { color: var(--primary-color); }
   .tile-c { display: flex; align-items: center; gap: 8px; }
   .tile-pair .tile-c { justify-content: center; }
   .tile .mini { background: var(--card-background-color, var(--ha-card-background, #fff)); }
-  .run-chip { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 600; color: var(--primary-color); }
+  .run-chip { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 600; color: var(--ct-run, var(--primary-color)); }
   .go {
     margin-left: auto; height: 36px; padding: 0 14px 0 10px; border: none; border-radius: 18px; cursor: pointer; font: inherit; font-size: 14px; font-weight: 500;
     display: inline-flex; align-items: center; gap: 4px; color: var(--text-primary-color, #fff); background: var(--primary-color);

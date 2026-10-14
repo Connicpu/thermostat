@@ -34,6 +34,8 @@ const shots = [
   ['dark', 'cool-night'],
   ['light', 'morning-boost'],
   ['dark', 'morning-boost'],
+  ['light', 'heat-boost'],
+  ['dark', 'heat-boost'],
   ['light', 'tooltip'],
   ['dark', 'tooltip'],
 ];
@@ -50,17 +52,17 @@ try {
     console.log(out);
     await page.close();
   }
-  // Close-ups of the boost sections, light and dark, while a timed boost runs.
-  for (const theme of ['light', 'dark']) {
+  // Close-ups of the boost sections, light and dark, while a timed boost runs (cool, then heat).
+  for (const [theme, scenario, tag] of [['light', 'cool-night', ''], ['dark', 'cool-night', ''], ['light', 'heat-boost', 'heat-'], ['dark', 'heat-boost', 'heat-']]) {
     const page = await browser.newPage({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2, colorScheme: theme });
-    await page.goto(`${base}?theme=${theme}&scenario=cool-night`);
+    await page.goto(`${base}?theme=${theme}&scenario=${scenario}`);
     await page.waitForSelector('body[data-ready]');
     await page.locator('connie-thermostat-card').evaluate(async (c) => {
       c._open = { boost: true, morning: true, schedule: false, status: false };
       await c.updateComplete;
     });
-    for (const [h, f] of [['Boost', 'boost'], ['Morning heating boost', 'morning-boost']]) {
-      const out = join(outDir, `closeup-${f}-${theme}.png`);
+    for (const [h, f] of tag ? [['Boost', 'boost']] : [['Boost', 'boost'], ['Morning heating boost', 'morning-boost']]) {
+      const out = join(outDir, `closeup-${tag}${f}-${theme}.png`);
       await page.locator('section').filter({ has: page.locator('h3', { hasText: new RegExp(`^${h}$`) }) }).screenshot({ path: out });
       console.log(out);
     }
@@ -70,7 +72,7 @@ try {
   // Geometry check: every tooltip, opened in turn, stays inside the card and covers none of
   // the controls in its own row (or, for the setpoint, the setpoint box). Phone and narrow widths.
   for (const width of [412, 320]) {
-    for (const scenario of ['heat-day', 'morning-boost', 'cool-night']) {
+    for (const scenario of ['heat-day', 'morning-boost', 'cool-night', 'heat-boost']) {
       const page = await browser.newPage({ viewport: { width, height: 915 } });
       await page.goto(`${base}?theme=light&scenario=${scenario}`);
       await page.waitForSelector('body[data-ready]');

@@ -594,12 +594,12 @@ export class ConnieThermostatCard extends LitElement {
     const on = period === 'boost';
     return this._section('morning', 'Morning heating boost', meta, () => html`<div class="tile-pair">
       ${this._tile('mb-duration', {
-        title: 'Duration', iconPath: I.mdiTimerOutline, cls: on ? 'running' : '',
+        title: 'Duration', iconPath: I.mdiTimerOutline, cls: on ? 'running heat' : '',
         help: 'Runs from the day heating start for this long; 0 = off.', helpLabel: 'About morning boost duration',
         body: this._numStepper('morning_boost_duration', { label: 'morning boost duration' }),
       })}
       ${this._tile('mb-offset', {
-        title: 'Offset', iconPath: I.mdiThermometerPlus, cls: on ? 'running' : '',
+        title: 'Offset', iconPath: I.mdiThermometerPlus, cls: on ? 'running heat' : '',
         help: 'Added to the day heating target while the morning boost runs.', helpLabel: 'About morning boost offset',
         body: this._numStepper('morning_boost_offset', { delta: true, label: 'morning boost offset' }),
       })}
@@ -612,6 +612,11 @@ export class ConnieThermostatCard extends LitElement {
     const rem = num(this._st('boost_remaining'));
     const st = String(state ?? '').toLowerCase();
     const kind = !active ? null : st.includes('timed') ? 'timed' : st.includes('target') ? 'target' : null;
+    // Running tile takes the heat/cool colour of the boost; unknown direction keeps the theme accent.
+    // Colour is extra: the header meta and the run chip say the direction in words.
+    const dir = st.includes('heat') ? 'heat' : st.includes('cool') ? 'cool' : null;
+    const dirWord = { heat: 'Heating', cool: 'Cooling' }[dir];
+    const runCls = (k) => (kind === k ? `running ${dir ?? ''}`.trim() : '');
     const meta = active ? `${humanize(state)}${rem ? ` · ${Math.round(rem)} min left` : ''}` : 'Idle';
     const sel = this._st('boost_mode');
     const dirIcon = { auto: I.mdiThermostatAuto, heat: I.mdiFire, cool: I.mdiSnowflake };
@@ -622,7 +627,7 @@ export class ConnieThermostatCard extends LitElement {
     const spV = sp ? this._val('boost_setpoint', num(sp)) : null;
     const spText = spV !== null ? this._fmtNum(spV, decimalsOf(sp.attributes?.step), sp.attributes?.unit_of_measurement ?? '') : '—';
     const mins = this._val('boost_duration', num(this._st('boost_duration')));
-    const runChip = (k) => (kind === k ? html`<span class="run-chip">${icon(I.mdiPlay, 'xs')}${k === 'timed' && rem ? `${Math.round(rem)} min left` : 'Running'}</span>` : nothing);
+    const runChip = (k) => (kind === k ? html`<span class="run-chip">${icon(I.mdiPlay, 'xs')}${dirWord ? `${dirWord} · ` : ''}${k === 'timed' && rem ? `${Math.round(rem)} min left` : 'Running'}</span>` : nothing);
     const what = { target: `boost to ${spText}`, timed: `timed boost for ${mins ?? '—'} min` };
     // One persistent <button> per tile: Start / Switch / Stop only change its name and action,
     // so focus stays put and screen readers announce the new name. Starting the other kind
@@ -652,12 +657,12 @@ export class ConnieThermostatCard extends LitElement {
             aria-pressed=${o === sel.state ? 'true' : 'false'} ?disabled=${offline} @click=${() => this._call('select', 'select_option', { entity_id: this._e.boost_mode, option: o }).catch((e) => this._fail(null, e, "Couldn't set the boost direction"))}>${dirIcon[o.toLowerCase()] ? icon(dirIcon[o.toLowerCase()], 'xs') : nothing}${humanize(o)}</button>`)}</div>`
         : html`<span class="missing">n/a</span>`}</div>
       ${this._tile('boost-target', {
-        title: 'Boost to target', iconPath: I.mdiThermometerChevronUp, cls: kind === 'target' ? 'running' : '', status: runChip('target'),
+        title: 'Boost to target', iconPath: I.mdiThermometerChevronUp, cls: runCls('target'), status: runChip('target'),
         help: 'Heats or cools (per Direction) until the room reaches this temperature.',
         body: html`${this._numStepper('boost_setpoint', { label: 'boost target' })}${go('target', 'boost_start_target', 'boost_setpoint')}`,
       })}
       ${this._tile('boost-timed', {
-        title: 'Timed boost', iconPath: I.mdiTimerPlayOutline, cls: kind === 'timed' ? 'running' : '', status: runChip('timed'),
+        title: 'Timed boost', iconPath: I.mdiTimerPlayOutline, cls: runCls('timed'), status: runChip('timed'),
         help: 'Runs heating or cooling (per Direction) for this long, then returns to the program.',
         body: html`${this._numStepper('boost_duration', { label: 'boost duration' })}${go('timed', 'boost_start_timed', 'boost_duration')}`,
       })}

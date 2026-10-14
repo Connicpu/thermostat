@@ -394,6 +394,46 @@ describe('card', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it('the running boost tile takes the heat/cool colour, with the direction also in words', async () => {
+    const el = await mount();
+    const run = async (state, rem = '22') => {
+      const h = el.hass;
+      const st = { ...h.states };
+      st[`binary_sensor.${PREFIX}_boost_active`] = { ...st[`binary_sensor.${PREFIX}_boost_active`], state: 'on' };
+      st[`sensor.${PREFIX}_boost`] = { ...st[`sensor.${PREFIX}_boost`], state };
+      st[`sensor.${PREFIX}_boost_time_remaining`] = { ...st[`sensor.${PREFIX}_boost_time_remaining`], state: rem };
+      el.hass = { ...h, states: st };
+      await el.updateComplete;
+      return $(el, '.tile.running');
+    };
+    let t = await run('Timed_heat');
+    expect(t.getAttribute('aria-labelledby')).toBe('tile-boost-timed');
+    expect([...t.classList]).toEqual(expect.arrayContaining(['running', 'heat']));
+    expect(t.querySelector('.run-chip').textContent.trim()).toBe('Heating · 22 min left');
+    t = await run('Target_cool');
+    expect(t.getAttribute('aria-labelledby')).toBe('tile-boost-target');
+    expect(t.classList.contains('cool')).toBe(true);
+    expect(t.classList.contains('heat')).toBe(false);
+    expect(t.querySelector('.run-chip').textContent.trim()).toBe('Cooling · Running');
+    t = await run('Timed'); // direction unknown: theme accent, no colour class, no direction word
+    expect(t.className.trim().split(/\s+/).sort()).toEqual(['running', 'tile']);
+    expect(t.querySelector('.run-chip').textContent.trim()).toBe('22 min left');
+    const css = [customElements.get('connie-thermostat-card').styles].flat().map((x) => x.cssText ?? String(x)).join('');
+    expect(css).toContain('.tile.running { --ct-run: var(--primary-color)');
+    expect(css).toContain('.tile.running.heat { --ct-run: var(--ct-heat); }');
+    expect(css).toContain('.tile.running.cool { --ct-run: var(--ct-cool); }');
+  });
+
+  it('morning boost tiles use the heat colour while it runs', async () => {
+    const el = await mount();
+    const h = el.hass;
+    el.hass = { ...h, states: { ...h.states, [`sensor.${PREFIX}_schedule_period`]: { ...h.states[`sensor.${PREFIX}_schedule_period`], state: 'Day_morning_boost' } } };
+    await el.updateComplete;
+    const tiles = $$(el, '.tile[aria-labelledby^="tile-mb-"]');
+    expect(tiles.length).toBe(2);
+    for (const t of tiles) expect([...t.classList]).toEqual(expect.arrayContaining(['running', 'heat']));
+  });
+
   it('tints the top only while actively heating or cooling (hvac_action)', async () => {
     const el = await mount();
     const set = async (state, action) => {

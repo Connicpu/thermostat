@@ -116,6 +116,7 @@ Source: `src/model.js` (discovery, units and schedule maths; no DOM), `src/conni
 
 ## Changelog
 
+* **Unreleased**: a running boost tile (and its run chip) uses the heat or cool colour of the boost, with "Heating"/"Cooling" in the chip text; unknown direction keeps the theme accent. Morning boost tiles use the heat colour while running. New heat-boost demo scenario.
 * **1.1.0**: boost redesign (each value sits on the control that sets it; Start/Switch/Stop on the same
   tile); boosts above the schedule; explainers moved into info tooltips; accessible setpoint slider;
   Start waits for pending writes; 10 s service-call timeout; dismissible error banner; heating/cooling
