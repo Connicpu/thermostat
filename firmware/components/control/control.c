@@ -30,13 +30,12 @@ void CtrlInit(Ctrl *pC, const CtrlParams *pP, U64 nowMs)
 }
 
 /** Validate mode/fan, clamp setpoints. See control.h. */
-void CtrlSanitizeSettings(const CtrlParams *pP, CtrlSettings *pS, bool keepHeat)
+void CtrlSanitizeSettings(const CtrlParams *pP, CtrlSettings *pS)
 {
     if (!CtrlModeValid(pS->mode))
         pS->mode = kCtrlModeOff;
     if (pS->fan != kCtrlFanOn && pS->fan != kCtrlFanAuto)
         pS->fan = kCtrlFanAuto;
-    (void)keepHeat;
     pS->heatSp = Clamp16(pS->heatSp, pP->minSp, pP->maxSp);
     pS->coolSp = Clamp16(pS->coolSp, pP->minSp, pP->maxSp);
 }
@@ -117,7 +116,7 @@ CtrlOutput CtrlStep(Ctrl *pC, const CtrlSettings *pIn, U64 now)
 {
     CtrlOutput o = {0};
     CtrlSettings s = *pIn;
-    CtrlSanitizeSettings(&pC->p, &s, true);
+    CtrlSanitizeSettings(&pC->p, &s);
 
     /* ---- failsafe: stale or implausible sensor => everything off, now. ---- */
     if (!Elapsed(now, pC->lastValidAt, 0) || (now - pC->lastValidAt) > pC->p.sensorTimeoutMs)

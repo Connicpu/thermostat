@@ -61,7 +61,7 @@ bool SettingsDecode(const void *pData, size_t n, Persist *pP)
 void SettingsSanitize(Persist *pP, bool fahrenheitDefault)
 {
     CtrlParams prm = CTRL_PARAMS_DEFAULT();
-    CtrlSanitizeSettings(&prm, &pP->s, true);
+    CtrlSanitizeSettings(&prm, &pP->s);
     SchedSanitize(&prm, &pP->sched);
     if (pP->calibTenths > 25 || pP->calibTenths < -25)
         pP->calibTenths = 0;

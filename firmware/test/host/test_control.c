@@ -276,18 +276,18 @@ static void SanitizeSettings(void)
 {
     s_p = (CtrlParams)CTRL_PARAMS_DEFAULT();
     CtrlSettings s = {.mode = 7, .fan = 9, .heatSp = 2300, .coolSp = 2350};
-    CtrlSanitizeSettings(&s_p, &s, true);
+    CtrlSanitizeSettings(&s_p, &s);
     CHECK_EQ(s.mode, kCtrlModeOff);
     CHECK_EQ(s.fan, kCtrlFanAuto);
     CHECK_EQ(s.heatSp, 2300); /* no deadband any more: setpoints are independent */
     CHECK_EQ(s.coolSp, 2350);
     s = (CtrlSettings){.mode = 0x01 /* old AUTO */, .fan = kCtrlFanOn, .heatSp = 2400, .coolSp = 2200};
-    CtrlSanitizeSettings(&s_p, &s, false);
+    CtrlSanitizeSettings(&s_p, &s);
     CHECK_EQ(s.mode, kCtrlModeOff);
     CHECK_EQ(s.heatSp, 2400);
     CHECK_EQ(s.coolSp, 2200);
     s = (CtrlSettings){.mode = kCtrlModeHeat, .fan = kCtrlFanAuto, .heatSp = -500, .coolSp = 9000};
-    CtrlSanitizeSettings(&s_p, &s, true);
+    CtrlSanitizeSettings(&s_p, &s);
     CHECK_EQ(s.heatSp, s_p.minSp);
     CHECK_EQ(s.coolSp, s_p.maxSp);
 }

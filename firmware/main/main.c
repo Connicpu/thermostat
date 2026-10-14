@@ -91,17 +91,14 @@ static U64 NowMs(void)
  * heat or cool setpoint that differs from the current program setpoint is stored in the CURRENT
  * program period (day or night, see schedule.h); with no clock that is the day period. Marks
  * the settings dirty, so they are saved SAVE_DELAY_MS later.
- *
- * `keepHeat` is ignored (kept for API compatibility).
  */
-static void SettingsUpdate(const CtrlSettings *pS, bool keepHeat)
+static void SettingsUpdate(const CtrlSettings *pS)
 {
-    (void)keepHeat;
     CtrlParams p = CTRL_PARAMS_DEFAULT();
     U16 minute = 0;
     bool known = ZbThermostatLocalMinute(&minute);
     CtrlSettings n = *pS;
-    CtrlSanitizeSettings(&p, &n, true);
+    CtrlSanitizeSettings(&p, &n);
     xSemaphoreTake(s_mtx, portMAX_DELAY);
     I16 h, c;
     SchedProgramSp(&s_persist.sched, known, minute, &h, &c);
@@ -160,7 +157,7 @@ static void ZbOnSettings(const CtrlSettings *pS, U8 what)
         n.heatSp = pS->heatSp;
     if (what == kZbSetCoolSp)
         n.coolSp = pS->coolSp;
-    SettingsUpdate(&n, what != kZbSetCoolSp);
+    SettingsUpdate(&n);
 }
 
 /**
@@ -355,7 +352,7 @@ static bool HandleHomeKey(const BtnMsg *pM)
         /* UP+DOWN together: toggle a timed boost. Undo the setpoint nudge the
          * first of the two presses caused. */
         if (NowMs() - s_nudgeAt < 1500)
-            SettingsUpdate(&s_beforeNudge, true);
+            SettingsUpdate(&s_beforeNudge);
         U8 cmd = s_boostActive ? kZbBoostCmdCancel : kZbBoostCmdStartTimed;
         xQueueSend(s_boostQ, &cmd, 0);
         return true;
@@ -375,11 +372,11 @@ static bool HandleHomeKey(const BtnMsg *pM)
         {
         case kCtrlModeHeat:
             s.heatSp = MenuStepTemp(s.heatSp, dir, f);
-            SettingsUpdate(&s, true);
+            SettingsUpdate(&s);
             break;
         case kCtrlModeCool:
             s.coolSp = MenuStepTemp(s.coolSp, dir, f);
-            SettingsUpdate(&s, false);
+            SettingsUpdate(&s);
             break;
         default:
             Banner("Mode is OFF - M: menu > Mode");
@@ -488,11 +485,11 @@ static bool ApplyMenuAction(const MenuAction *pA)
     {
     case kMaSetMode:
         p.s.mode = (CtrlMode)pA->value;
-        SettingsUpdate(&p.s, true);
+        SettingsUpdate(&p.s);
         break;
     case kMaSetFan:
         p.s.fan = (CtrlFan)pA->value;
-        SettingsUpdate(&p.s, true);
+        SettingsUpdate(&p.s);
         break;
     case kMaBoostTarget:
         PersistEdit(SetBoostSp, pA->value);

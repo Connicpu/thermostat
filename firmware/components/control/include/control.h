@@ -224,10 +224,9 @@ extern "C"
  * kCtrlFanAuto, and both setpoints are clamped into pP->minSp..maxSp. There is no heat/cool
  * deadband, because heating and cooling never run in the same mode.
  *
- * `pP` is the limits; `pS` is the settings to fix in place; `keepHeat` is ignored (kept for API
- * compatibility).
+ * `pP` is the limits; `pS` is the settings to fix in place.
  */
-    void CtrlSanitizeSettings(const CtrlParams *pP, CtrlSettings *pS, bool keepHeat);
+    void CtrlSanitizeSettings(const CtrlParams *pP, CtrlSettings *pS);
 
     /**
  * Feed one sensor read attempt, valid or not. Call on every attempt.
