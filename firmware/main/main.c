@@ -79,6 +79,13 @@ static bool s_boostActive;     /* mirror for the UI combo */
 
 /* ---------------- shared settings ---------------- */
 
+/** Mark the persisted settings dirty, so they are saved SAVE_DELAY_MS from now. Caller holds s_mtx. */
+static void MarkDirty(void)
+{
+    s_dirty = true;
+    s_dirtyAt = NowMs();
+}
+
 /**
  * Apply new mode/fan/main setpoints to the persisted settings (mutex-protected; any task). A
  * heat or cool setpoint that differs from the current program setpoint is stored in the CURRENT
@@ -101,8 +108,7 @@ static void SettingsUpdate(const CtrlSettings *pS)
         SchedEditCurrent(&p, &s_persist.sched, false, known, minute, n.coolSp);
     s_persist.s.mode = n.mode;
     s_persist.s.fan = n.fan;
-    s_dirty = true;
-    s_dirtyAt = NowMs();
+    MarkDirty();
     xSemaphoreGive(s_mtx);
 }
 
@@ -164,8 +170,7 @@ static void ZbOnCalib(I8 c)
         c = -25;
     xSemaphoreTake(s_mtx, portMAX_DELAY);
     s_persist.calibTenths = c;
-    s_dirty = true;
-    s_dirtyAt = NowMs();
+    MarkDirty();
     xSemaphoreGive(s_mtx);
 }
 
@@ -178,18 +183,7 @@ static void ZbOnBoostParams(I16 sp, U16 minutes, U8 dir)
     s_persist.boostSp = sp;
     s_persist.boostMinutes = minutes;
     s_persist.boostDir = dir;
-    s_dirty = true;
-    s_dirtyAt = NowMs();
-    xSemaphoreGive(s_mtx);
-}
-
-/** Zigbee onSwing callback: store the swing (0.01 °C, clamped) and mark dirty. */
-static void ZbOnSwing(I16 sw)
-{
-    xSemaphoreTake(s_mtx, portMAX_DELAY);
-    s_persist.swing = CtrlClampSwing(sw);
-    s_dirty = true;
-    s_dirtyAt = NowMs();
+    MarkDirty();
     xSemaphoreGive(s_mtx);
 }
 
@@ -200,8 +194,7 @@ static void ZbOnSched(const SchedCfg *pC)
     xSemaphoreTake(s_mtx, portMAX_DELAY);
     s_persist.sched = *pC;
     SchedSanitize(&prm, &s_persist.sched);
-    s_dirty = true;
-    s_dirtyAt = NowMs();
+    MarkDirty();
     xSemaphoreGive(s_mtx);
 }
 
@@ -411,8 +404,7 @@ static void PersistEdit(void (*fn)(Persist *, I32), I32 v)
 {
     xSemaphoreTake(s_mtx, portMAX_DELAY);
     fn(&s_persist, v);
-    s_dirty = true;
-    s_dirtyAt = NowMs();
+    MarkDirty();
     xSemaphoreGive(s_mtx);
 }
 
@@ -432,6 +424,12 @@ static void SetBoostMin(Persist *pP, I32 v)
 static void SetSwing(Persist *pP, I32 v)
 {
     pP->swing = CtrlClampSwing(v);
+}
+
+/** Zigbee onSwing callback: store the swing (0.01 °C, clamped) and mark dirty. */
+static void ZbOnSwing(I16 sw)
+{
+    PersistEdit(SetSwing, sw);
 }
 
 /** PersistEdit() setter: display units, non-zero = °F. */
@@ -507,8 +505,7 @@ static bool ApplyMenuAction(const MenuAction *pA)
         xSemaphoreTake(s_mtx, portMAX_DELAY);
         SchedSet(&s_persist.sched, (SchedItem)pA->item, pA->value);
         SchedSanitize(&prm, &s_persist.sched);
-        s_dirty = true;
-        s_dirtyAt = NowMs();
+        MarkDirty();
         xSemaphoreGive(s_mtx);
         break;
     }
