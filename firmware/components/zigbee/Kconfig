@@ -12,9 +12,6 @@ menu "Thermostat Zigbee"
     config THERMO_OTA_IMAGE_TYPE
         hex "OTA image type"
         default 0x0301
-    config THERMO_OTA_FILE_VERSION
-        hex "Running firmware file version (bump for every OTA image)"
-        default 0x00000001
     config THERMO_HW_VERSION
         int "Hardware version"
         default 3

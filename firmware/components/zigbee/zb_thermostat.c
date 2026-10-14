@@ -225,6 +225,14 @@ static esp_err_t ota_element(uint32_t total, const uint8_t *p, uint16_t n, const
     return ESP_OK;
 }
 
+static void ota_reset(void)
+{
+    if (s_ota) esp_ota_abort(s_ota);
+    s_ota = 0;
+    s_ota_off = s_ota_total = 0;
+    s_ota_tag_seen = false;
+}
+
 static esp_err_t on_ota(const esp_zb_zcl_ota_upgrade_value_message_t *m)
 {
     esp_err_t ret = ESP_OK;
@@ -232,19 +240,20 @@ static esp_err_t on_ota(const esp_zb_zcl_ota_upgrade_value_message_t *m)
     switch (m->upgrade_status) {
     case ESP_ZB_ZCL_OTA_UPGRADE_STATUS_START:
         ESP_LOGI(TAG, "OTA start");
+        ota_reset();   /* drop any handle left by an earlier failed transfer */
         s_ota_part = esp_ota_get_next_update_partition(NULL);
         ESP_RETURN_ON_FALSE(s_ota_part, ESP_FAIL, TAG, "no OTA partition");
-        s_ota_off = s_ota_total = 0;
-        s_ota_tag_seen = false;
         ret = esp_ota_begin(s_ota_part, OTA_WITH_SEQUENTIAL_WRITES, &s_ota);
+        if (ret != ESP_OK) s_ota = 0;
         break;
     case ESP_ZB_ZCL_OTA_UPGRADE_STATUS_RECEIVE: {
         s_ota_total = m->ota_header.image_size;
         s_ota_off += m->payload_size;
         const uint8_t *d; uint16_t n;
         if (m->payload_size && m->payload) {
-            ESP_RETURN_ON_ERROR(ota_element(s_ota_total, m->payload, m->payload_size, &d, &n), TAG, "element");
-            ret = esp_ota_write(s_ota, d, n);
+            ret = ota_element(s_ota_total, m->payload, m->payload_size, &d, &n);
+            if (ret == ESP_OK) ret = esp_ota_write(s_ota, d, n);
+            if (ret != ESP_OK) ESP_LOGE(TAG, "OTA write failed: %s", esp_err_to_name(ret));
         }
         if (s_cbs.on_ota_progress && s_ota_total)
             s_cbs.on_ota_progress((int)((uint64_t)s_ota_off * 100 / s_ota_total));
@@ -254,22 +263,27 @@ static esp_err_t on_ota(const esp_zb_zcl_ota_upgrade_value_message_t *m)
         ret = (s_ota_off == s_ota_total) ? ESP_OK : ESP_FAIL;
         break;
     case ESP_ZB_ZCL_OTA_UPGRADE_STATUS_FINISH:
-        ESP_RETURN_ON_ERROR(esp_ota_end(s_ota), TAG, "ota end");
-        ESP_RETURN_ON_ERROR(esp_ota_set_boot_partition(s_ota_part), TAG, "set boot");
+        ret = esp_ota_end(s_ota);
+        s_ota = 0;   /* esp_ota_end frees the handle even on failure */
+        if (ret != ESP_OK) { ESP_LOGE(TAG, "ota end: %s", esp_err_to_name(ret)); break; }
+        ret = esp_ota_set_boot_partition(s_ota_part);
+        if (ret != ESP_OK) { ESP_LOGE(TAG, "set boot: %s", esp_err_to_name(ret)); break; }
         ESP_LOGW(TAG, "OTA done (v0x%08lx), rebooting", (unsigned long)m->ota_header.file_version);
         if (s_cbs.before_ota_reboot) s_cbs.before_ota_reboot();
         esp_restart();
         break;
     case ESP_ZB_ZCL_OTA_UPGRADE_STATUS_ABORT:
         ESP_LOGW(TAG, "OTA aborted");
-        if (s_ota) esp_ota_abort(s_ota);
-        s_ota = 0;
+        ota_reset();
         if (s_cbs.on_ota_progress) s_cbs.on_ota_progress(-1);
         break;
     default:
         break;
     }
-    if (ret != ESP_OK && s_cbs.on_ota_progress) s_cbs.on_ota_progress(-1);
+    if (ret != ESP_OK) {
+        ota_reset();
+        if (s_cbs.on_ota_progress) s_cbs.on_ota_progress(-1);
+    }
     return ret;
 }
 
@@ -379,8 +393,8 @@ static esp_zb_ep_list_t *build_endpoint(const ctrl_settings_t *init, int8_t cali
 
     /* OTA upgrade client */
     esp_zb_ota_cluster_cfg_t ota_cfg = {
-        .ota_upgrade_file_version = CONFIG_THERMO_OTA_FILE_VERSION,
-        .ota_upgrade_downloaded_file_ver = CONFIG_THERMO_OTA_FILE_VERSION,
+        .ota_upgrade_file_version = FW_OTA_FILE_VERSION,
+        .ota_upgrade_downloaded_file_ver = FW_OTA_FILE_VERSION,
         .ota_upgrade_manufacturer = CONFIG_THERMO_OTA_MANUFACTURER,
         .ota_upgrade_image_type = CONFIG_THERMO_OTA_IMAGE_TYPE,
     };

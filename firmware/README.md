@@ -127,7 +127,7 @@ drop `esp_zb_sleep_enable` / `set_rx_on_when_idle(false)`, and re-measure the te
 | Fan Control 0x0202 | server | FanMode on/auto (writable), FanModeSequence = 4 (On/Auto) |
 | Temperature Measurement 0x0402 | server | MeasuredValue (same calibrated value) |
 | Relative Humidity 0x0405 | server | MeasuredValue |
-| OTA Upgrade 0x0019 | client | manufacturer 0x131B, image type 0x0301, file version `CONFIG_THERMO_OTA_FILE_VERSION` |
+| OTA Upgrade 0x0019 | client | manufacturer 0x131B, image type 0x0301, file version `FW_OTA_FILE_VERSION` (0xMMmmpppp, derived from `FW_VERSION`) |
 
 Changes made on the device (buttons) are written into the local attributes, so configured reports pick them up.
 
@@ -263,9 +263,9 @@ The converter is written against the standard `fz.thermostat` / `tz.thermostat_*
 
 ## OTA updates over Zigbee
 
-1. Bump `CONFIG_THERMO_OTA_FILE_VERSION` and build.
+1. Bump `FW_VERSION_*` in `components/board/include/fw_version.h` (the OTA file version is derived from it) and build.
 2. Wrap `build/thermostat_v3.bin` in a Zigbee OTA file with Espressif's
-   `esp-zigbee-sdk/tools/image_builder_tool/image_builder_tool.py`, using manufacturer 0x131B, image type 0x0301 and the new version.
+   `esp-zigbee-sdk/tools/image_builder_tool/image_builder_tool.py`, using manufacturer 0x131B, image type 0x0301 and the new version (e.g. 0.2.1 → 0x00020001).
 3. **ZHA:** put the `.ota` file in the directory set by `zha: zigpy_config: ota: otau_directory`. **Z2M:**
    add it to a local OTA index (`ota: zigbee_ota_override_index_location`).
 4. The device queries for updates once a day (the ZCL default), and HA can also trigger an update.

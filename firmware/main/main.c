@@ -39,7 +39,8 @@ static const char *TAG = "app";
 #define SAVE_DELAY_MS       5000          /* coalesce NVS writes */
 #define HWDT_ARM_AFTER_MS   10000         /* arm STWD100 once the loop is proven healthy */
 #define DISPLAY_STALL_MS    30000         /* display task must loop at least this often */
-#define OTA_VALID_AFTER_MS  60000
+#define OTA_VALID_AFTER_MS  60000      /* min healthy uptime before confirming a new image */
+#define OTA_JOIN_TIMEOUT_MS (10 * 60 * 1000) /* roll back if never rejoined Zigbee by then */
 #define BANNER_MS           4000
 
 /* on-device menu (pure state machine in components/ui/menu.c) */
@@ -57,8 +58,8 @@ static volatile int s_ota_pct = -1;
 
 typedef struct { uint8_t which, ev; } btn_msg_t;
 static QueueHandle_t s_boost_q;      /* uint8_t ZB_BOOST_CMD_* from Zigbee or the UP+DOWN combo */
-static uint8_t s_boost_result;
-static bool s_boost_active;          /* mirror for the UI combo */       /* ZB_BOOST_RESULT_* last outcome, reported to HA */
+static uint8_t s_boost_result;       /* ZB_BOOST_RESULT_* last outcome, reported to HA */
+static bool s_boost_active;          /* mirror for the UI combo */
 
 static uint64_t now_ms(void) { return (uint64_t)(esp_timer_get_time() / 1000); }
 
@@ -464,10 +465,24 @@ static void app_task(void *arg)
             hvac_outputs_all_off();
         }
 
-        /* 9. OTA rollback protection: confirm the image after a healthy minute */
-        if (!ota_marked && healthy && o.fault == CTRL_FAULT_NONE && now - boot >= OTA_VALID_AFTER_MS) {
-            esp_ota_mark_app_valid_cancel_rollback();
-            ota_marked = true;
+        /* 9. OTA rollback protection: confirm the image only once it is healthy
+         *    AND back on the Zigbee network; if it never rejoins, roll back. */
+        if (!ota_marked) {
+            esp_ota_img_states_t st;
+            const esp_partition_t *run = esp_ota_get_running_partition();
+            bool pending = esp_ota_get_state_partition(run, &st) == ESP_OK && st == ESP_OTA_IMG_PENDING_VERIFY;
+            if (!pending) {
+                ota_marked = true;   /* factory/already-confirmed image: nothing to do */
+            } else if (healthy && o.fault == CTRL_FAULT_NONE && now - boot >= OTA_VALID_AFTER_MS &&
+                       zb_thermostat_link() == LINK_JOINED) {
+                ESP_LOGI(TAG, "new image healthy and joined: confirming");
+                esp_ota_mark_app_valid_cancel_rollback();
+                ota_marked = true;
+            } else if (now - boot >= OTA_JOIN_TIMEOUT_MS) {
+                ESP_LOGE(TAG, "new image not confirmed within %d s: rolling back", OTA_JOIN_TIMEOUT_MS / 1000);
+                hvac_outputs_all_off();
+                esp_ota_mark_app_invalid_rollback_and_reboot();
+            }
         }
 
         vTaskDelayUntil(&wake, pdMS_TO_TICKS(LOOP_MS));
