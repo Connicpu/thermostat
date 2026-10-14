@@ -12,10 +12,10 @@
  * HVAC_RETEST_MS (longer than every min-off/changeover time), at most HVAC_RETEST_MAX
  * times per boot. Readback sees only the GPIO pad: a shorted or open triac, or a
  * wiring fault after the MOC3063, is NOT detected. */
-#define HVAC_SETTLE_US   1000
-#define HVAC_MISMATCH_N  2
-#define HVAC_RETEST_MS   (10u * 60u * 1000u)
-#define HVAC_RETEST_MAX  3
+#define HVAC_SETTLE_US  1000
+#define HVAC_MISMATCH_N 2
+#define HVAC_RETEST_MS  (10u * 60u * 1000u)
+#define HVAC_RETEST_MAX 3
 
 /**
  * Configure DRV_W/Y/G as input+output (so the pads can be read back) with pull-downs, latched
@@ -25,7 +25,7 @@
  *
  * Returns ESP_OK, or the last gpio_config() error.
  */
-esp_err_t    HvacOutputsInit(void);
+esp_err_t HvacOutputsInit(void);
 
 /**
  * Drive the outputs. The only path to the DRV_* GPIOs.
@@ -51,16 +51,16 @@ HvacState HvacOutputsSet(HvacState req);
 HvacState HvacOutputsGet(void);
 
 /** Command all outputs off through HvacOutputsSet() (so the normal verification still runs). */
-void         HvacOutputsAllOff(void);
+void HvacOutputsAllOff(void);
 
 /**
  * Returns how many times HvacInterlock() has rejected a W+Y request since boot. Non-zero makes
  * the main loop unhealthy, so the watchdogs stop being kicked.
  */
-U32     HvacOutputsInterlockFaults(void);
+U32 HvacOutputsInterlockFaults(void);
 
 /**
  * Returns the current output fault mask: bit0 W, bit1 Y, bit2 G. Readback/write faults clear on
  * a passed re-test; pin configuration faults last until reboot.
  */
-U8      HvacOutputsDriveFault(void);
+U8 HvacOutputsDriveFault(void);

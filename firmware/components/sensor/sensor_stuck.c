@@ -5,7 +5,8 @@
 /** Restart the timer on any change; report frozen after SENSOR_STUCK_MS. See sensor_stuck.h. */
 bool SensorStuckUpdate(SensorStuck *pS, I16 t, U16 rh, U64 now)
 {
-    if (!pS->have || pS->t != t || pS->rh != rh) {
+    if (!pS->have || pS->t != t || pS->rh != rh)
+    {
         pS->have = true;
         pS->t = t;
         pS->rh = rh;

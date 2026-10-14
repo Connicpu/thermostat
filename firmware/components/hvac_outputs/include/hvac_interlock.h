@@ -8,7 +8,10 @@
  * Requested or permitted state of the three 24 VAC thermostat outputs.
  * w = W (heat call), y = Y (cooling compressor call), g = G (indoor blower fan).
  */
-typedef struct { bool w, y, g; } HvacState;
+typedef struct
+{
+    bool w, y, g;
+} HvacState;
 
 /**
  * Vet a requested output combination; the single place where output combinations are checked.

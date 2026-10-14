@@ -15,7 +15,7 @@ static void DefaultsSane(void)
     CHECK_EQ(p.sched.boostOffset, 50);
     CHECK_EQ(p.sched.dayHeatStart, 360);
     q = p;
-    SettingsSanitize(&q, true);                 /* defaults are already in range */
+    SettingsSanitize(&q, true); /* defaults are already in range */
     CHECK(memcmp(&p, &q, sizeof p) == 0);
 }
 
@@ -26,8 +26,12 @@ static void Roundtrip(void)
 {
     Persist p, q;
     SettingsDefaults(&p, false);
-    p.s.mode = kCtrlModeCool; p.s.fan = kCtrlFanOn;
-    p.sched.dayHeatStart = 400; p.sched.nightCool = 2300; p.swing = 70; p.calibTenths = -4;
+    p.s.mode = kCtrlModeCool;
+    p.s.fan = kCtrlFanOn;
+    p.sched.dayHeatStart = 400;
+    p.sched.nightCool = 2300;
+    p.swing = 70;
+    p.calibTenths = -4;
     U8 buf[SETTINGS_BLOB_MAX];
     size_t n = SettingsEncode(&p, buf, sizeof buf);
     CHECK(n > 0 && n <= SETTINGS_BLOB_MAX);
@@ -36,7 +40,7 @@ static void Roundtrip(void)
     SettingsDefaults(&q, false);
     CHECK(SettingsDecode(buf, n, &q));
     CHECK(memcmp(&p, &q, sizeof p) == 0);
-    CHECK_EQ(SettingsEncode(&p, buf, 4), 0u);   /* buffer too small */
+    CHECK_EQ(SettingsEncode(&p, buf, 4), 0u); /* buffer too small */
 }
 
 /** An older version, a truncated or an empty blob is rejected and leaves the output untouched. */
@@ -52,9 +56,9 @@ static void UnknownVersionOrSizeRejected(void)
     buf[0] = 0;
     CHECK(!SettingsDecode(buf, n, &q));
     buf[0] = SETTINGS_VERSION;
-    CHECK(!SettingsDecode(buf, n - 1, &q));     /* truncated */
+    CHECK(!SettingsDecode(buf, n - 1, &q)); /* truncated */
     CHECK(!SettingsDecode(buf, 0, &q));
-    CHECK(memcmp(&before, &q, sizeof q) == 0);   /* untouched -> caller keeps defaults */
+    CHECK(memcmp(&before, &q, sizeof q) == 0); /* untouched -> caller keeps defaults */
 }
 
 /**
@@ -65,11 +69,13 @@ static void NewerLongerBlobLoadsKnownPrefix(void)
 {
     Persist p, q;
     SettingsDefaults(&p, false);
-    p.s.mode = kCtrlModeCool; p.sched.nightHeat = 1650; p.swing = 30;
+    p.s.mode = kCtrlModeCool;
+    p.sched.nightHeat = 1650;
+    p.swing = 30;
     U8 buf[SETTINGS_BLOB_MAX];
     memset(buf, 0xA5, sizeof buf);
     size_t n = SettingsEncode(&p, buf, sizeof buf);
-    buf[0] = SETTINGS_VERSION + 1;               /* "v2" with 16 appended bytes of new fields */
+    buf[0] = SETTINGS_VERSION + 1; /* "v2" with 16 appended bytes of new fields */
     size_t longer = n + 16;
     CHECK(longer <= SETTINGS_BLOB_MAX);
     SettingsDefaults(&q, false);
@@ -88,10 +94,16 @@ static void NewerLongerBlobLoadsKnownPrefix(void)
 /** SettingsSanitize() resets every out-of-range field to its default (or clamps it). */
 static void SanitizeBadValues(void)
 {
-    Persist p; SettingsDefaults(&p, false);
-    p.s.mode = 0x01;                             /* old AUTO value: no longer a mode */
-    p.swing = 999; p.fahrenheit = 7; p.sched.boostMin = 999; p.calibTenths = 99;
-    p.boostMinutes = 0; p.boostDir = 9; p.boostSp = 9000;
+    Persist p;
+    SettingsDefaults(&p, false);
+    p.s.mode = 0x01; /* old AUTO value: no longer a mode */
+    p.swing = 999;
+    p.fahrenheit = 7;
+    p.sched.boostMin = 999;
+    p.calibTenths = 99;
+    p.boostMinutes = 0;
+    p.boostDir = 9;
+    p.boostSp = 9000;
     SettingsSanitize(&p, true);
     CHECK_EQ(p.s.mode, kCtrlModeOff);
     CHECK_EQ(p.swing, CTRL_SWING_DEFAULT);

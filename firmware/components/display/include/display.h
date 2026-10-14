@@ -32,4 +32,4 @@ void DisplayPost(const DisplayModel *pM, bool urgent);
 U64 DisplayLastAliveMs(void);
 
 /** Returns true if the display task was started (DisplayInit() succeeded). */
-bool     DisplayRunning(void);
+bool DisplayRunning(void);

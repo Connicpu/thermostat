@@ -4,8 +4,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define ZB_TIME_STATUS_MASTER        0x01   /* TimeStatus bit 0 */
-#define ZB_TIME_STATUS_SYNCHRONIZED  0x02   /* TimeStatus bit 1 */
+#define ZB_TIME_STATUS_MASTER       0x01 /* TimeStatus bit 0 */
+#define ZB_TIME_STATUS_SYNCHRONIZED 0x02 /* TimeStatus bit 1 */
 /* Plausible range, seconds since 2000-01-01 (Zigbee epoch): 2024-01-01 .. 2100-01-01 */
 #define ZB_TIME_MIN_PLAUSIBLE 757382400u
 #define ZB_TIME_MAX_PLAUSIBLE 3155760000u

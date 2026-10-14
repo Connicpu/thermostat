@@ -16,9 +16,10 @@
  * have: a reference reading has been stored. t (0.01 °C) and rh (0.01 %RH): the reference reading.
  * sinceMs: monotonic time in ms at which the reading last changed.
  */
-typedef struct {
-    bool     have;
-    I16  t;
+typedef struct
+{
+    bool have;
+    I16 t;
     U16 rh;
     U64 sinceMs;
 } SensorStuck;

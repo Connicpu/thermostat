@@ -3,19 +3,19 @@
 #include "tinytest.h"
 #include "zb_time.h"
 
-#define Y2026 ((U32)26 * 365u * 86400u + 7u * 86400u)   /* ~2026-01-01 since 2000 */
+#define Y2026 ((U32)26 * 365u * 86400u + 7u * 86400u) /* ~2026-01-01 since 2000 */
 
 /** ZbTimeAcceptable(): year range check, and TimeStatus must say Master or Synchronized when present. */
 static void PlausibilityAndStatus(void)
 {
-    CHECK(ZbTimeAcceptable(false, 0, Y2026));                          /* no status attr: year check only */
+    CHECK(ZbTimeAcceptable(false, 0, Y2026)); /* no status attr: year check only */
     CHECK(ZbTimeAcceptable(true, ZB_TIME_STATUS_MASTER, Y2026));
     CHECK(ZbTimeAcceptable(true, ZB_TIME_STATUS_SYNCHRONIZED, Y2026));
-    CHECK(ZbTimeAcceptable(true, 0x05, Y2026));                        /* zigpy: Master | Master_for_Zone_and_DST */
-    CHECK(!ZbTimeAcceptable(true, 0x00, Y2026));                       /* unset clock */
-    CHECK(!ZbTimeAcceptable(true, 0x04, Y2026));                       /* only zone/DST master */
+    CHECK(ZbTimeAcceptable(true, 0x05, Y2026));  /* zigpy: Master | Master_for_Zone_and_DST */
+    CHECK(!ZbTimeAcceptable(true, 0x00, Y2026)); /* unset clock */
+    CHECK(!ZbTimeAcceptable(true, 0x04, Y2026)); /* only zone/DST master */
     CHECK(!ZbTimeAcceptable(false, 0, 0));
-    CHECK(!ZbTimeAcceptable(false, 0, 3600));                          /* 2000-01-01 01:00: never set */
+    CHECK(!ZbTimeAcceptable(false, 0, 3600)); /* 2000-01-01 01:00: never set */
     CHECK(!ZbTimeAcceptable(false, 0, ZB_TIME_MIN_PLAUSIBLE - 1));
     CHECK(ZbTimeAcceptable(false, 0, ZB_TIME_MIN_PLAUSIBLE));
     CHECK(!ZbTimeAcceptable(true, 0x03, 0xFFFFFFFFu));

@@ -11,9 +11,10 @@
  * tempC100: temperature in 0.01 °C, with the caller's offset already applied.
  * rhC100: relative humidity in 0.01 %RH (0..10000).
  */
-typedef struct {
-    bool     valid;
-    I16  tempC100;   /* calibrated (offset applied) */
+typedef struct
+{
+    bool valid;
+    I16 tempC100; /* calibrated (offset applied) */
     U16 rhC100;
 } SensorReading;
 

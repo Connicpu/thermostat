@@ -4,7 +4,13 @@
 #include "esp_err.h"
 
 /* kUiBtnCombo: UP and DOWN held together (fires kBtnEvPress once per hold). */
-typedef enum { kUiBtnUp, kUiBtnDown, kUiBtnMode, kUiBtnCombo } UiButton;
+typedef enum
+{
+    kUiBtnUp,
+    kUiBtnDown,
+    kUiBtnMode,
+    kUiBtnCombo
+} UiButton;
 
 /**
  * Button event callback. Called from the esp_timer task every BTN_TICK_MS tick that produces an

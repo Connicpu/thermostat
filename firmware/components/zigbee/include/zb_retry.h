@@ -10,14 +10,15 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define ZB_RETRY_STABLE_MS  (10u * 60u * 1000u)   /* joined this long = healthy again */
-#define ZB_RETRY_STALL_MS   (60u * 1000u)          /* Zigbee task silent this long = stalled */
+#define ZB_RETRY_STABLE_MS (10u * 60u * 1000u) /* joined this long = healthy again */
+#define ZB_RETRY_STALL_MS  (60u * 1000u)       /* Zigbee task silent this long = stalled */
 
 /** Join/rejoin backoff state. Zero-initialise; owned by the Zigbee task. */
-typedef struct {
-    U8  fails;      /* consecutive failed attempts / unstable joins */
-    bool     joined;
-    U64 joinedAt;  /* ms, valid while joined */
+typedef struct
+{
+    U8 fails; /* consecutive failed attempts / unstable joins */
+    bool joined;
+    U64 joinedAt; /* ms, valid while joined */
 } ZbRetry;
 
 /**
@@ -32,7 +33,7 @@ U32 ZbRetryDelayMs(const ZbRetry *pR);
  *
  * `nowMs` is monotonic time, ms.
  */
-void     ZbRetryJoined(ZbRetry *pR, U64 nowMs);
+void ZbRetryJoined(ZbRetry *pR, U64 nowMs);
 
 /**
  * A join attempt failed: count it (saturating at 255) and mark not joined.
@@ -59,4 +60,4 @@ U32 ZbRetryLost(ZbRetry *pR, U64 nowMs);
  * Returns true if the stack has not run for ZB_RETRY_STALL_MS (false if lastAliveMs is in the
  * future).
  */
-bool     ZbRetryStalled(U64 lastAliveMs, U64 nowMs);
+bool ZbRetryStalled(U64 lastAliveMs, U64 nowMs);

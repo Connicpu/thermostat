@@ -5,9 +5,16 @@
 #include "esp_err.h"
 #include "esp_partition.h"
 typedef uint32_t esp_ota_handle_t;
-typedef enum { ESP_OTA_IMG_NEW = 0, ESP_OTA_IMG_PENDING_VERIFY = 1, ESP_OTA_IMG_VALID = 2, ESP_OTA_IMG_INVALID = 3,
-               ESP_OTA_IMG_ABORTED = 4, ESP_OTA_IMG_UNDEFINED = -1 } esp_ota_img_states_t;
-#define OTA_SIZE_UNKNOWN 0xffffffff
+typedef enum
+{
+    ESP_OTA_IMG_NEW = 0,
+    ESP_OTA_IMG_PENDING_VERIFY = 1,
+    ESP_OTA_IMG_VALID = 2,
+    ESP_OTA_IMG_INVALID = 3,
+    ESP_OTA_IMG_ABORTED = 4,
+    ESP_OTA_IMG_UNDEFINED = -1
+} esp_ota_img_states_t;
+#define OTA_SIZE_UNKNOWN           0xffffffff
 #define OTA_WITH_SEQUENTIAL_WRITES 0xfffffffe
 const esp_partition_t *esp_ota_get_running_partition(void);
 const esp_partition_t *esp_ota_get_next_update_partition(const esp_partition_t *start);

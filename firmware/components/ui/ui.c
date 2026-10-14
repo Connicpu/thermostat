@@ -13,21 +13,30 @@ static const gpio_num_t kPin[3] = {BOARD_GPIO_BTN_UP, BOARD_GPIO_BTN_DOWN, BOARD
  */
 static void Tick(void *pArg)
 {
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 3; i++)
+    {
         BtnEvent ev = BtnTick(&s_btn[i], gpio_get_level(kPin[i]) == 0);
-        if (ev != kBtnEvNone && s_cb) s_cb((UiButton)i, ev);
+        if (ev != kBtnEvNone && s_cb)
+            s_cb((UiButton)i, ev);
     }
     bool up = s_btn[kUiBtnUp].stable, down = s_btn[kUiBtnDown].stable;
-    if (up && down && !s_combo) {
+    if (up && down && !s_combo)
+    {
         s_combo = true;
-        if (s_cb) s_cb(kUiBtnCombo, kBtnEvPress);
-    } else if (!up && !down) {
+        if (s_cb)
+            s_cb(kUiBtnCombo, kBtnEvPress);
+    }
+    else if (!up && !down)
+    {
         s_combo = false;
     }
 }
 
 /** See ui.h. */
-void UiLed(bool on) { gpio_set_level(BOARD_GPIO_LED, on ? 0 : 1); }
+void UiLed(bool on)
+{
+    gpio_set_level(BOARD_GPIO_LED, on ? 0 : 1);
+}
 
 /** See ui.h. */
 esp_err_t UiInit(UiEventCb cb)
@@ -36,7 +45,7 @@ esp_err_t UiInit(UiEventCb cb)
     gpio_config_t in = {
         .pin_bit_mask = (1ULL << BOARD_GPIO_BTN_UP) | (1ULL << BOARD_GPIO_BTN_DOWN) | (1ULL << BOARD_GPIO_BTN_MODE),
         .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,  /* 10k on board */
+        .pull_up_en = GPIO_PULLUP_DISABLE, /* 10k on board */
     };
     gpio_config(&in);
     gpio_set_level(BOARD_GPIO_LED, 1);
@@ -52,9 +61,13 @@ esp_err_t UiInit(UiEventCb cb)
     const esp_timer_create_args_t a = {.callback = Tick, .name = "buttons"};
     esp_timer_handle_t t;
     esp_err_t err = esp_timer_create(&a, &t);
-    if (err == ESP_OK) err = esp_timer_start_periodic(t, BTN_TICK_MS * 1000);
+    if (err == ESP_OK)
+        err = esp_timer_start_periodic(t, BTN_TICK_MS * 1000);
     return err;
 }
 
 /** See ui.h. */
-bool UiComboActive(void) { return s_combo; }
+bool UiComboActive(void)
+{
+    return s_combo;
+}

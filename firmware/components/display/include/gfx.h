@@ -6,17 +6,20 @@
 #include <stdint.h>
 #include "font.h"
 
-#define GFX_W 296
-#define GFX_H 128
+#define GFX_W        296
+#define GFX_H        128
 #define EPD_NATIVE_W 128
 #define EPD_NATIVE_H 296
-#define EPD_FB_SIZE (EPD_NATIVE_W / 8 * EPD_NATIVE_H)   /* 4736 bytes */
+#define EPD_FB_SIZE  (EPD_NATIVE_W / 8 * EPD_NATIVE_H) /* 4736 bytes */
 
 /**
  * Frame buffer in the SSD1680's native RAM layout: 1 = white, 0 = black, row-major, 16 bytes
  * (128 px) per gate line, 296 lines. Drawing uses landscape coordinates (GFX_W x GFX_H).
  */
-typedef struct { U8 buf[EPD_FB_SIZE]; } GfxFb;
+typedef struct
+{
+    U8 buf[EPD_FB_SIZE];
+} GfxFb;
 
 /** Fill the frame with white. */
 void GfxClear(GfxFb *pFb);
@@ -37,7 +40,7 @@ void GfxHline(GfxFb *pFb, int x, int y, int w);
 void GfxVline(GfxFb *pFb, int x, int y, int h);
 
 /** Returns the width in pixels of the string in font pF (unknown chars count as '?' or a space). */
-int  GfxTextWidth(const Font *pF, const char *pS);
+int GfxTextWidth(const Font *pF, const char *pS);
 
 /**
  * Draw text with its top-left at (x,y), clipped to the canvas. Characters outside 32..127 are
@@ -48,4 +51,4 @@ int  GfxTextWidth(const Font *pF, const char *pS);
  *
  * Returns the x just past the last glyph.
  */
-int  GfxText(GfxFb *pFb, const Font *pF, int x, int y, const char *pS, bool black);
+int GfxText(GfxFb *pFb, const Font *pF, int x, int y, const char *pS, bool black);

@@ -21,7 +21,11 @@
 #include <string.h>
 
 /** On-flash layout: the layout version byte followed by the raw Persist struct (memcpy, native padding). */
-typedef struct { U8 version; Persist p; } Blob;
+typedef struct
+{
+    U8 version;
+    Persist p;
+} Blob;
 _Static_assert(sizeof(Blob) <= SETTINGS_BLOB_MAX, "settings blob outgrew SETTINGS_BLOB_MAX");
 
 /** See settings.h. */
@@ -44,9 +48,11 @@ bool SettingsDecode(const void *pData, size_t n, Persist *pP)
     /* Same or newer layout (version >= ours, at least our size): read the known prefix,
      * ignore appended fields. Newer firmware adds migration branches for older, shorter
      * blobs here (e.g. version 1 with the v1 sizeof(Blob) -> defaults for new fields). */
-    if (n < sizeof b) return false;
+    if (n < sizeof b)
+        return false;
     memcpy(&b, pData, sizeof b);
-    if (b.version < SETTINGS_VERSION) return false;
+    if (b.version < SETTINGS_VERSION)
+        return false;
     *pP = b.p;
     return true;
 }
@@ -57,12 +63,18 @@ void SettingsSanitize(Persist *pP, bool fahrenheitDefault)
     CtrlParams prm = CTRL_PARAMS_DEFAULT();
     CtrlSanitizeSettings(&prm, &pP->s, true);
     SchedSanitize(&prm, &pP->sched);
-    if (pP->calibTenths > 25 || pP->calibTenths < -25) pP->calibTenths = 0;
-    if (pP->boostSp < prm.minSp || pP->boostSp > prm.maxSp) pP->boostSp = 2200;
-    if (pP->boostMinutes < BOOST_TIMED_MIN_MIN || pP->boostMinutes > BOOST_TIMED_MAX_MIN) pP->boostMinutes = 30;
-    if (pP->boostDir > kBoostDirCool) pP->boostDir = kBoostDirAuto;
-    if (pP->fahrenheit > 1) pP->fahrenheit = fahrenheitDefault ? 1 : 0;
-    if (pP->swing < CTRL_SWING_MIN || pP->swing > CTRL_SWING_MAX) pP->swing = CTRL_SWING_DEFAULT;
+    if (pP->calibTenths > 25 || pP->calibTenths < -25)
+        pP->calibTenths = 0;
+    if (pP->boostSp < prm.minSp || pP->boostSp > prm.maxSp)
+        pP->boostSp = 2200;
+    if (pP->boostMinutes < BOOST_TIMED_MIN_MIN || pP->boostMinutes > BOOST_TIMED_MAX_MIN)
+        pP->boostMinutes = 30;
+    if (pP->boostDir > kBoostDirCool)
+        pP->boostDir = kBoostDirAuto;
+    if (pP->fahrenheit > 1)
+        pP->fahrenheit = fahrenheitDefault ? 1 : 0;
+    if (pP->swing < CTRL_SWING_MIN || pP->swing > CTRL_SWING_MAX)
+        pP->swing = CTRL_SWING_DEFAULT;
 }
 
 /** See settings.h. */
@@ -72,7 +84,8 @@ size_t SettingsEncode(const Persist *pP, void *pBuf, size_t n)
     memset(&b, 0, sizeof b);
     b.version = SETTINGS_VERSION;
     b.p = *pP;
-    if (n < sizeof b) return 0;
+    if (n < sizeof b)
+        return 0;
     memcpy(pBuf, &b, sizeof b);
     return sizeof b;
 }

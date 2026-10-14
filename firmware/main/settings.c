@@ -7,8 +7,8 @@
 #include <string.h>
 #include "sdkconfig.h"
 
-#define NS "tstat"
-#define KEY "cfg3"   /* new key: never collides with 0.2.x's tstat/cfg layout */
+#define NS  "tstat"
+#define KEY "cfg3" /* new key: never collides with 0.2.x's tstat/cfg layout */
 /* Kconfig bools are #defined to 1 when y and left undefined when n, so test with #ifdef. */
 #ifdef CONFIG_THERMO_DISPLAY_FAHRENHEIT
 #define FDEF true
@@ -24,10 +24,12 @@ void SettingsLoad(Persist *pP)
 {
     SettingsDefaults(pP, FDEF);
     nvs_handle_t h;
-    if (nvs_open(NS, NVS_READONLY, &h) == ESP_OK) {
+    if (nvs_open(NS, NVS_READONLY, &h) == ESP_OK)
+    {
         size_t n = sizeof s_buf;
         esp_err_t e = nvs_get_blob(h, KEY, s_buf, &n);
-        if (e == ESP_OK && !SettingsDecode(s_buf, n, pP)) {
+        if (e == ESP_OK && !SettingsDecode(s_buf, n, pP))
+        {
             ESP_LOGW("settings", "unknown settings blob (%u bytes, version %d): defaults", (unsigned)n,
                      n ? (int)s_buf[0] : -1);
             SettingsDefaults(pP, FDEF);
@@ -41,13 +43,17 @@ void SettingsLoad(Persist *pP)
 bool SettingsSave(const Persist *pP)
 {
     size_t n = SettingsEncode(pP, s_buf, sizeof s_buf);
-    if (!n) return false;
+    if (!n)
+        return false;
     nvs_handle_t h;
-    if (nvs_open(NS, NVS_READWRITE, &h) != ESP_OK) return false;
+    if (nvs_open(NS, NVS_READWRITE, &h) != ESP_OK)
+        return false;
     esp_err_t e = nvs_set_blob(h, KEY, s_buf, n);
-    if (e == ESP_OK) e = nvs_commit(h);
+    if (e == ESP_OK)
+        e = nvs_commit(h);
     nvs_close(h);
-    if (e != ESP_OK) ESP_LOGE("settings", "save failed: %s", esp_err_to_name(e));
+    if (e != ESP_OK)
+        ESP_LOGE("settings", "save failed: %s", esp_err_to_name(e));
     return e == ESP_OK;
 }
 
@@ -55,7 +61,8 @@ bool SettingsSave(const Persist *pP)
 void SettingsErase(void)
 {
     nvs_handle_t h;
-    if (nvs_open(NS, NVS_READWRITE, &h) != ESP_OK) return;
+    if (nvs_open(NS, NVS_READWRITE, &h) != ESP_OK)
+        return;
     nvs_erase_all(h);
     nvs_commit(h);
     nvs_close(h);

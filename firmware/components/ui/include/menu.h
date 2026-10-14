@@ -22,59 +22,98 @@
 #include "display_model.h"
 #include "schedule.h"
 
-#define MENU_TIMEOUT_MS   10000
-#define MENU_BOOST_MIN_STEP 15
-#define MENU_BOOST_MIN_MIN  15
-#define MENU_BOOST_MIN_MAX  120
-#define MENU_SCHED_TIME_STEP 15     /* schedule start times: 15 min steps, wrap at midnight */
-#define MENU_SCHED_BOOST_STEP 15    /* morning boost duration: 0..240 min */
-#define MENU_SCHED_OFS_STEP  10     /* morning boost offset: 0.1 °C steps, 0..3.0 °C */
+#define MENU_TIMEOUT_MS       10000
+#define MENU_BOOST_MIN_STEP   15
+#define MENU_BOOST_MIN_MIN    15
+#define MENU_BOOST_MIN_MAX    120
+#define MENU_SCHED_TIME_STEP  15 /* schedule start times: 15 min steps, wrap at midnight */
+#define MENU_SCHED_BOOST_STEP 15 /* morning boost duration: 0..240 min */
+#define MENU_SCHED_OFS_STEP   10 /* morning boost offset: 0.1 °C steps, 0..3.0 °C */
 
-typedef enum { kMenuKeyUp, kMenuKeyDown, kMenuKeyM, kMenuKeyCombo } MenuKey;
+typedef enum
+{
+    kMenuKeyUp,
+    kMenuKeyDown,
+    kMenuKeyM,
+    kMenuKeyCombo
+} MenuKey;
 
-typedef enum {
-    kMsHome = 0, kMsHoldPair, kMsHoldReset,
-    kMsList, kMsEditMode, kMsEditFan, kMsBoost, kMsEditBoostSp, kMsEditBoostMin,
-    kMsSched, kMsEditSched, kMsEditSwing, kMsEditUnits, kMsZigbee, kMsInfo,
+typedef enum
+{
+    kMsHome = 0,
+    kMsHoldPair,
+    kMsHoldReset,
+    kMsList,
+    kMsEditMode,
+    kMsEditFan,
+    kMsBoost,
+    kMsEditBoostSp,
+    kMsEditBoostMin,
+    kMsSched,
+    kMsEditSched,
+    kMsEditSwing,
+    kMsEditUnits,
+    kMsZigbee,
+    kMsInfo,
 } MenuState;
 
 /* Main-list items (in order). */
-typedef enum { kMiMode, kMiFan, kMiBoost, kMiSched, kMiSwing, kMiUnits, kMiZigbee, kMiInfo, kMiBack, kMiCount } MenuItem;
+typedef enum
+{
+    kMiMode,
+    kMiFan,
+    kMiBoost,
+    kMiSched,
+    kMiSwing,
+    kMiUnits,
+    kMiZigbee,
+    kMiInfo,
+    kMiBack,
+    kMiCount
+} MenuItem;
 /* Boost-list items; kMbCancel is only present while a boost runs. */
-typedef enum { kMbTarget, kMbTimed, kMbCancel, kMbBack } MenuBoostItem;
+typedef enum
+{
+    kMbTarget,
+    kMbTimed,
+    kMbCancel,
+    kMbBack
+} MenuBoostItem;
 
 /**
  * Live data the menu shows and starts edits from. Filled by the app task (BuildMenuCtx() in
  * main.c) before every MenuOnKey()/MenuGetView() call; the menu never modifies it.
  */
-typedef struct {
-    CtrlMode  mode;
-    CtrlFan   fan;
-    bool         boostActive;
-    I16      boostSp;        /* c°C */
-    U16     boostMinutes;
-    I16      swing;           /* c°C */
-    SchedCfg  sched;           /* program schedule (Schedule submenu) */
-    bool         fahrenheit;
+typedef struct
+{
+    CtrlMode mode;
+    CtrlFan fan;
+    bool boostActive;
+    I16 boostSp; /* c°C */
+    U16 boostMinutes;
+    I16 swing;      /* c°C */
+    SchedCfg sched; /* program schedule (Schedule submenu) */
+    bool fahrenheit;
     LinkState link;
-    const char  *pFwVersion;
-    bool         rawValid;
-    I16      rawTemp;        /* c°C, uncalibrated sensor reading */
-    U16     rawRh;          /* c%RH */
-    U32     uptimeS;
+    const char *pFwVersion;
+    bool rawValid;
+    I16 rawTemp; /* c°C, uncalibrated sensor reading */
+    U16 rawRh;   /* c%RH */
+    U32 uptimeS;
 } MenuCtx;
 
-typedef enum {
+typedef enum
+{
     kMaNone = 0,
-    kMaHomeKey,       /* main screen key: caller handles (setpoint / boost combo) */
-    kMaSetMode,       /* value = CtrlMode */
-    kMaSetFan,        /* value = CtrlFan (kCtrlFanOn / kCtrlFanAuto) */
-    kMaBoostTarget,   /* value = c°C */
-    kMaBoostTimed,    /* value = minutes */
+    kMaHomeKey,     /* main screen key: caller handles (setpoint / boost combo) */
+    kMaSetMode,     /* value = CtrlMode */
+    kMaSetFan,      /* value = CtrlFan (kCtrlFanOn / kCtrlFanAuto) */
+    kMaBoostTarget, /* value = c°C */
+    kMaBoostTimed,  /* value = minutes */
     kMaBoostCancel,
-    kMaSetSwing,      /* value = c°C */
-    kMaSetSched,      /* item = SchedItem, value = new raw value (already clamped) */
-    kMaSetUnits,      /* value = 1 for °F */
+    kMaSetSwing, /* value = c°C */
+    kMaSetSched, /* item = SchedItem, value = new raw value (already clamped) */
+    kMaSetUnits, /* value = 1 for °F */
     kMaPair,
     kMaFactoryReset,
 } MenuActionKind;
@@ -84,12 +123,13 @@ typedef enum {
  * MenuActionKind). redraw: the screen changed, so post the display urgently. fullRefresh: the
  * menu or the warning was left, so force a full (de-ghosting) refresh.
  */
-typedef struct {
+typedef struct
+{
     MenuActionKind kind;
     I32 value;
-    U8 item;        /* kMaSetSched: SchedItem */
-    bool redraw;         /* screen changed: refresh promptly */
-    bool fullRefresh;   /* leaving the menu / warning: full refresh to clear ghosting */
+    U8 item;          /* kMaSetSched: SchedItem */
+    bool redraw;      /* screen changed: refresh promptly */
+    bool fullRefresh; /* leaving the menu / warning: full refresh to clear ghosting */
 } MenuAction;
 
 /**
@@ -97,18 +137,19 @@ typedef struct {
  * edit holds the value being edited, in the unit of the current editor (index, 0/1, 0.01 °C,
  * minutes); lastKeyMs is the time of the last key, for MENU_TIMEOUT_MS.
  */
-typedef struct {
+typedef struct
+{
     MenuState st;
-    U8  cursor;          /* main list */
-    U8  bcursor;         /* boost list (index into visible items) */
-    U8  scursor;         /* schedule list: SchedItem, kSchedItCount = Back */
-    I32  edit;            /* value being edited */
+    U8 cursor;  /* main list */
+    U8 bcursor; /* boost list (index into visible items) */
+    U8 scursor; /* schedule list: SchedItem, kSchedItCount = Back */
+    I32 edit;   /* value being edited */
     U64 lastKeyMs;
-    bool     swallowM;       /* ignore M events until the current hold is released */
+    bool swallowM; /* ignore M events until the current hold is released */
 } Menu;
 
 /** Reset to the main screen. */
-void          MenuInit(Menu *pM);
+void MenuInit(Menu *pM);
 
 /**
  * Handle one button event.
@@ -135,7 +176,7 @@ MenuAction MenuOnKey(Menu *pM, const MenuCtx *pC, MenuKey k, BtnEvent ev, U64 no
 MenuAction MenuTick(Menu *pM, U64 nowMs);
 
 /** Returns true while the main screen is showing, including the pair/reset hold banners. */
-bool          MenuIsHome(const Menu *pM);
+bool MenuIsHome(const Menu *pM);
 
 /**
  * Describe what should be on screen for the current state (pure). kViewHome on the main screen;
@@ -143,7 +184,7 @@ bool          MenuIsHome(const Menu *pM);
  *
  * `pV` is fully overwritten.
  */
-void          MenuGetView(const Menu *pM, const MenuCtx *pC, MenuView *pV);
+void MenuGetView(const Menu *pM, const MenuCtx *pC, MenuView *pV);
 
 /**
  * Step a temperature by one display unit, snapping to that unit's grid: 0.5 °C, or 1 °F

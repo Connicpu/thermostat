@@ -1,0 +1,31 @@
+# clang-format 19.1.7 (pinned: pip install clang-format==19.1.7; run tools/format.sh)
+# Base: Microsoft = Allman braces, 4-space indent, 120 columns, no short if/loop/function/case on one line.
+# Docs: https://clang.llvm.org/docs/ClangFormatStyleOptions.html
+BasedOnStyle: Microsoft
+Language: Cpp
+# Microsoft leaves these two brace cases attached; make Allman uniform.
+BraceWrapping:
+  AfterCaseLabel: true
+  AfterUnion: true
+# Spelled out even though Microsoft already sets them (Connie's explicit rules).
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: None
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortEnumsOnASingleLine: false
+ColumnLimit: 120
+PointerAlignment: Right
+DerivePointerAlignment: false
+# Include order matters (sdkconfig.h, FreeRTOS.h before task.h, ...): never reorder.
+SortIncludes: Never
+# Never rewrap comments: keeps the prose doc blocks and aligned field notes as written.
+ReflowComments: false
+IndentCaseLabels: true
+IndentPPDirectives: None
+AlignConsecutiveMacros: Consecutive
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 0
+AlignEscapedNewlines: Left
+InsertNewlineAtEOF: true

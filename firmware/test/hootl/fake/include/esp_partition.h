@@ -1,3 +1,9 @@
 #pragma once
 #include <stdint.h>
-typedef struct { const char *label; uint32_t address; uint32_t size; int index; } esp_partition_t;
+typedef struct
+{
+    const char *label;
+    uint32_t address;
+    uint32_t size;
+    int index;
+} esp_partition_t;

@@ -15,44 +15,51 @@
 #include "esp_err.h"
 #include "control.h"
 #include "schedule.h"
-#include "display_model.h"   /* LinkState */
+#include "display_model.h" /* LinkState */
 #include "zb_boost.h"
 
 #define ZB_THERMOSTAT_EP 1
 
-enum { kZbSetModeFan = 0, kZbSetHeatSp = 1, kZbSetCoolSp = 2 };
+enum
+{
+    kZbSetModeFan = 0,
+    kZbSetHeatSp = 1,
+    kZbSetCoolSp = 2
+};
 
 /**
  * Application callbacks for remote (Zigbee) writes and OTA events. All are called from the Zigbee
  * task, inside the stack's main loop: keep them short, don't block for long, and don't call
  * ZbThermostat* functions that take the stack lock (Pair, FactoryReset, Publish). Any may be NULL.
  */
-typedef struct {
+typedef struct
+{
     /* A remote write changed settings. `what` says which field was written
      * (kZbSet*); only a setpoint write may change the program schedule. */
     void (*onSettings)(const CtrlSettings *pS, U8 what);
-    void (*onCalibration)(I8 calibTenths);       /* LocalTemperatureCalibration, 0.1 °C */
+    void (*onCalibration)(I8 calibTenths); /* LocalTemperatureCalibration, 0.1 °C */
     void (*onIdentify)(U16 seconds);
-    void (*onOtaProgress)(int percent);               /* -1 = finished/aborted */
-    void (*beforeOtaReboot)(void);                     /* outputs off etc. */
+    void (*onOtaProgress)(int percent); /* -1 = finished/aborted */
+    void (*beforeOtaReboot)(void);      /* outputs off etc. */
     /* Boost cluster (0xFC57) writes. Called from the Zigbee task. */
     void (*onBoostParams)(I16 sp, U16 minutes, U8 dir);
-    void (*onBoostCommand)(U8 cmd);                /* kZbBoostCmd* */
-    void (*onSwing)(I16 swingC100);                 /* kZbAttrSwing write (already clamped) */
-    void (*onSched)(const SchedCfg *pC);               /* program schedule write (sanitized) */
+    void (*onBoostCommand)(U8 cmd);      /* kZbBoostCmd* */
+    void (*onSwing)(I16 swingC100);      /* kZbAttrSwing write (already clamped) */
+    void (*onSched)(const SchedCfg *pC); /* program schedule write (sanitized) */
 } ZbThermostatCbs;
 
 /**
  * Initial attribute values, from the persisted settings, applied when the stack starts.
  * calib is the LocalTemperatureCalibration in 0.1 °C; boostDir is a CtrlBoostDir value.
  */
-typedef struct {
+typedef struct
+{
     CtrlSettings s;
-    I8   calib;
-    I16  boostSp;
+    I8 calib;
+    I16 boostSp;
     U16 boostMinutes;
-    U8  boostDir;
-    I16  swing;        /* c°C */
+    U8 boostDir;
+    I16 swing; /* c°C */
     SchedCfg sched;
 } ZbThermostatInit;
 
@@ -60,22 +67,23 @@ typedef struct {
  * Local state pushed to the stack by ZbThermostatPublish(). Temperatures 0.01 °C, humidity
  * 0.01 %RH. Must stay plain data: publish compares it with memcmp() to skip no-op updates.
  */
-typedef struct {
-    bool     tempValid;
-    I16  temp;         /* c°C, calibrated */
-    bool     rhValid;
-    U16 rh;           /* c%RH */
+typedef struct
+{
+    bool tempValid;
+    I16 temp; /* c°C, calibrated */
+    bool rhValid;
+    U16 rh; /* c%RH */
     CtrlSettings s;
-    bool     w, y, g;      /* actual outputs (ThermostatRunningState) */
-    U8  boostState;          /* kZbBoostState* */
+    bool w, y, g;  /* actual outputs (ThermostatRunningState) */
+    U8 boostState; /* kZbBoostState* */
     U16 boostRemainingMin;
-    U8  boostLastResult;    /* kZbBoostResult* */
+    U8 boostLastResult; /* kZbBoostResult* */
     /* Writable 0xFC57 settings; pushed (and reported) when changed locally, e.g. from the on-device menu. */
-    I16  boostSp;
+    I16 boostSp;
     U16 boostMinutes;
-    I16  swing;
+    I16 swing;
     SchedCfg sched;
-    U8  schedState;          /* SchedState */
+    U8 schedState; /* SchedState */
 } ZbThermostatState;
 
 /**
@@ -89,7 +97,7 @@ typedef struct {
  *
  * Returns ESP_OK, or the platform-config / task-creation error (radio fault).
  */
-esp_err_t    ZbThermostatStart(const ZbThermostatCbs *pCbs, const ZbThermostatInit *pInit);
+esp_err_t ZbThermostatStart(const ZbThermostatCbs *pCbs, const ZbThermostatInit *pInit);
 
 /**
  * Push local state to the stack and report boost/schedule attribute changes to the coordinator.
@@ -101,7 +109,7 @@ esp_err_t    ZbThermostatStart(const ZbThermostatCbs *pCbs, const ZbThermostatIn
  * they differ from both the last published value and the current attribute, so a stale snapshot
  * can't undo a write that just came in from HA. Call from the app task.
  */
-void         ZbThermostatPublish(const ZbThermostatState *pSt);
+void ZbThermostatPublish(const ZbThermostatState *pSt);
 
 /**
  * Returns the link state for display and HA: kLinkFault if the stack failed to start or the
@@ -115,14 +123,14 @@ LinkState ZbThermostatLink(void);
  * No-op if the stack is not running or faulted; gives up (logged) if the stack lock is not
  * free within 1 s.
  */
-void         ZbThermostatPair(void);
+void ZbThermostatPair(void);
 
 /**
  * Leave the network, erase the Zigbee NVRAM and reboot (esp_zb_factory_reset()). Returns only
  * if the stack is not running or its lock can't be taken within 1 s; the caller then restarts
  * by itself, and the network data is kept.
  */
-void         ZbThermostatFactoryReset(void);
+void ZbThermostatFactoryReset(void);
 
 /**
  * Local time of day from the last Zigbee Time sync, extrapolated with the monotonic clock. Safe
@@ -132,4 +140,4 @@ void         ZbThermostatFactoryReset(void);
  *
  * Returns false until the first successful sync after boot.
  */
-bool         ZbThermostatLocalMinute(U16 *pMinute);
+bool ZbThermostatLocalMinute(U16 *pMinute);

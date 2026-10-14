@@ -7,9 +7,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#define SHT40_ADDR        0x44
-#define SHT40_MEAS_HIGH   0xFD
-#define SHT40_SOFT_RESET  0x94
+#define SHT40_ADDR       0x44
+#define SHT40_MEAS_HIGH  0xFD
+#define SHT40_SOFT_RESET 0x94
 
 static const char *kTag = "sht40";
 static i2c_master_bus_handle_t s_bus;
@@ -27,14 +27,16 @@ esp_err_t SensorInit(void)
         .flags.enable_internal_pullup = false, /* 4.7k on board */
     };
     esp_err_t err = i2c_new_master_bus(&bc, &s_bus);
-    if (err != ESP_OK) return err;
+    if (err != ESP_OK)
+        return err;
     i2c_device_config_t dc = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
         .device_address = SHT40_ADDR,
         .scl_speed_hz = 100000,
     };
     err = i2c_master_bus_add_device(s_bus, &dc, &s_dev);
-    if (err == ESP_OK) {
+    if (err == ESP_OK)
+    {
         U8 c = SHT40_SOFT_RESET;
         i2c_master_transmit(s_dev, &c, 1, 50);
         vTaskDelay(pdMS_TO_TICKS(2));
@@ -47,11 +49,15 @@ SensorReading SensorRead(I16 offset)
 {
     SensorReading r = {0};
     U8 cmd = SHT40_MEAS_HIGH, f[6];
-    if (!s_dev) return r;
-    if (i2c_master_transmit(s_dev, &cmd, 1, 50) != ESP_OK) goto fail;
-    vTaskDelay(pdMS_TO_TICKS(10));                /* tMEAS high repeatability 8.3 ms max */
-    if (i2c_master_receive(s_dev, f, sizeof f, 50) != ESP_OK) goto fail;
-    if (!Sht40Parse(f, &r.tempC100, &r.rhC100)) {
+    if (!s_dev)
+        return r;
+    if (i2c_master_transmit(s_dev, &cmd, 1, 50) != ESP_OK)
+        goto fail;
+    vTaskDelay(pdMS_TO_TICKS(10)); /* tMEAS high repeatability 8.3 ms max */
+    if (i2c_master_receive(s_dev, f, sizeof f, 50) != ESP_OK)
+        goto fail;
+    if (!Sht40Parse(f, &r.tempC100, &r.rhC100))
+    {
         ESP_LOGW(kTag, "CRC error");
         return r;
     }

@@ -602,6 +602,24 @@ idf.py -B build-variant -DSDKCONFIG=build-variant/sdkconfig \
 
 Kconfig `bool` options are `#define`d to 1 when on and left undefined when off. Test them with `#if`/`#ifdef`, never inside a C expression.
 
+### Formatting (clang-format)
+
+`firmware/.clang-format` is the source of truth. It is based on clang-format's built-in **Microsoft** style (Allman braces, 4-space indent, 120 columns, no short `if`/loop/function/case on one line) with a few overrides:
+- `case` blocks and unions get their braces on their own line too.
+- `case` labels are indented inside `switch`.
+- Include order is never sorted, because order matters (`sdkconfig.h`, `FreeRTOS.h` before `task.h`).
+- Comments are never reflowed, so prose doc blocks and aligned field notes stay as written.
+- Escaped newlines in macros align to the left.
+
+A single-statement `if`/`for`/`while` puts its statement on the next line. Braces are optional there:
+
+```c
+if (!pS->valid)
+    return false;
+```
+
+The version is pinned to **19.1.7** (`pip install clang-format==19.1.7`); other versions format differently. `tools/format.sh` formats all of our C (main/, components/, test/), and `tools/format.sh --check` is the CI dry run (`--dry-run -Werror`). `components/display/font_data.c` is generated and excluded. Code that clang-format can't lay out sensibly, such as macro-generated definitions without a trailing `;`, sits between `/* clang-format off */` and `/* clang-format on */`.
+
 ### Doc comments
 
 Every struct and every function in our own C code (firmware, host tests, HOOTL fakes) has a block comment right above it: `/** ... */` (a one-liner is fine). Only blank lines may come between the comment and the code. Plain `/* */` comments are for everything else (section banners, notes inside functions, trailing field notes).

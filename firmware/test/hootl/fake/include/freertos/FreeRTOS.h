@@ -13,15 +13,18 @@ typedef struct SimTask *TaskHandle_t;
 typedef struct SimQueue *QueueHandle_t;
 typedef QueueHandle_t SemaphoreHandle_t;
 typedef void (*TaskFunction_t)(void *);
-typedef struct { int dummy; } portMUX_TYPE;
+typedef struct
+{
+    int dummy;
+} portMUX_TYPE;
 #define portMUX_INITIALIZER_UNLOCKED {0}
-#define portENTER_CRITICAL(m) ((void)(m))
-#define portEXIT_CRITICAL(m) ((void)(m))
-#define portMAX_DELAY 0xFFFFFFFFu
-#define portTICK_PERIOD_MS 1
-#define pdTRUE 1
-#define pdFALSE 0
-#define pdPASS 1
-#define pdFAIL 0
-#define pdMS_TO_TICKS(ms) ((TickType_t)(ms))
-#define configTICK_RATE_HZ 1000
+#define portENTER_CRITICAL(m)        ((void)(m))
+#define portEXIT_CRITICAL(m)         ((void)(m))
+#define portMAX_DELAY                0xFFFFFFFFu
+#define portTICK_PERIOD_MS           1
+#define pdTRUE                       1
+#define pdFALSE                      0
+#define pdPASS                       1
+#define pdFAIL                       0
+#define pdMS_TO_TICKS(ms)            ((TickType_t)(ms))
+#define configTICK_RATE_HZ           1000

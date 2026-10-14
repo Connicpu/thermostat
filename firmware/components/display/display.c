@@ -14,10 +14,10 @@
 #include "freertos/task.h"
 #include <string.h>
 
-#define URGENT_SETTLE_MS     400
-#define BACKGROUND_MIN_MS    (3 * 60 * 1000)
-#define FULL_EVERY_PARTIALS  20
-#define FULL_EVERY_MS        (6ULL * 3600 * 1000)
+#define URGENT_SETTLE_MS    400
+#define BACKGROUND_MIN_MS   (3 * 60 * 1000)
+#define FULL_EVERY_PARTIALS 20
+#define FULL_EVERY_MS       (6ULL * 3600 * 1000)
 
 /**
  * Display state. s_mtx guards s_model, s_dirty, s_urgent and s_urgentAt (shared with DisplayPost());
@@ -34,26 +34,42 @@ static volatile U64 s_alive;
 static GfxFb s_fb, s_prev;
 
 /** Returns monotonic time in ms (esp_timer). */
-static U64 NowMs(void) { return (U64)(esp_timer_get_time() / 1000); }
+static U64 NowMs(void)
+{
+    return (U64)(esp_timer_get_time() / 1000);
+}
 
 /** See display.h. */
-U64 DisplayLastAliveMs(void) { return s_alive; }
+U64 DisplayLastAliveMs(void)
+{
+    return s_alive;
+}
 
 /** See display.h. */
-bool DisplayRunning(void) { return s_task != NULL; }
+bool DisplayRunning(void)
+{
+    return s_task != NULL;
+}
 
 /** Copy the model under the mutex, wake the task if urgent. See display.h. */
 void DisplayPost(const DisplayModel *pM, bool urgent)
 {
-    if (!s_mtx) return;
+    if (!s_mtx)
+        return;
     xSemaphoreTake(s_mtx, portMAX_DELAY);
-    if (memcmp(&s_model, pM, sizeof *pM) != 0 || urgent) {
+    if (memcmp(&s_model, pM, sizeof *pM) != 0 || urgent)
+    {
         s_model = *pM;
         s_dirty = true;
-        if (urgent) { s_urgent = true; s_urgentAt = NowMs(); }
+        if (urgent)
+        {
+            s_urgent = true;
+            s_urgentAt = NowMs();
+        }
     }
     xSemaphoreGive(s_mtx);
-    if (urgent && s_task) xTaskNotifyGive(s_task);
+    if (urgent && s_task)
+        xTaskNotifyGive(s_task);
 }
 
 /**
@@ -68,7 +84,8 @@ static void DisplayTask(void *pArg)
     int partials = 0;
     U8 epoch = 0;
     bool first = true;
-    for (;;) {
+    for (;;)
+    {
         ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(200));
         U64 now = NowMs();
         s_alive = now;
@@ -76,29 +93,45 @@ static void DisplayTask(void *pArg)
         DisplayModel m;
         bool go = false;
         xSemaphoreTake(s_mtx, portMAX_DELAY);
-        if (s_dirty) {
-            if (s_urgent) go = now - s_urgentAt >= URGENT_SETTLE_MS;
-            else go = first || now - lastRefresh >= BACKGROUND_MIN_MS;
+        if (s_dirty)
+        {
+            if (s_urgent)
+                go = now - s_urgentAt >= URGENT_SETTLE_MS;
+            else
+                go = first || now - lastRefresh >= BACKGROUND_MIN_MS;
         }
-        if (go) { m = s_model; s_dirty = s_urgent = false; }
+        if (go)
+        {
+            m = s_model;
+            s_dirty = s_urgent = false;
+        }
         xSemaphoreGive(s_mtx);
-        if (!go) continue;
+        if (!go)
+            continue;
 
         DisplayRender(&s_fb, &m);
-        bool wantFull = m.fullEpoch != epoch;   /* menu exit / reset warning: clear ghosting */
+        bool wantFull = m.fullEpoch != epoch; /* menu exit / reset warning: clear ghosting */
         epoch = m.fullEpoch;
-        if (!first && !wantFull && memcmp(&s_fb, &s_prev, sizeof s_fb) == 0) continue;
+        if (!first && !wantFull && memcmp(&s_fb, &s_prev, sizeof s_fb) == 0)
+            continue;
         bool full = first || wantFull || partials >= FULL_EVERY_PARTIALS || now - lastFull >= FULL_EVERY_MS;
         esp_err_t err = Ssd1680Show(&s_fb, &s_prev, full);
-        if (err != ESP_OK) {
+        if (err != ESP_OK)
+        {
             ESP_LOGE(kTag, "refresh failed: %s", esp_err_to_name(err));
-            first = true;              /* retry with a full refresh next time */
+            first = true; /* retry with a full refresh next time */
             lastRefresh = now;
             continue;
         }
         s_prev = s_fb;
         lastRefresh = NowMs();
-        if (full) { lastFull = lastRefresh; partials = 0; } else partials++;
+        if (full)
+        {
+            lastFull = lastRefresh;
+            partials = 0;
+        }
+        else
+            partials++;
         first = false;
     }
 }
@@ -107,7 +140,8 @@ static void DisplayTask(void *pArg)
 esp_err_t DisplayInit(void)
 {
     esp_err_t err = Ssd1680BusInit();
-    if (err != ESP_OK) return err;
+    if (err != ESP_OK)
+        return err;
     s_mtx = xSemaphoreCreateMutex();
     GfxClear(&s_prev);
     s_alive = NowMs();
