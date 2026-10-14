@@ -270,7 +270,7 @@ static void HeatToCoolModeSwitchNeverOverlaps(void)
 }
 
 /**
- * Invalid mode/fan values are fixed, setpoints clamped, and heat/cool setpoints stay independent (no deadband).
+ * Invalid mode/fan values are fixed, setpoints clamped, and heat/cool setpoints stay independent.
  */
 static void SanitizeSettings(void)
 {
@@ -279,7 +279,7 @@ static void SanitizeSettings(void)
     CtrlSanitizeSettings(&s_p, &s);
     CHECK_EQ(s.mode, kCtrlModeOff);
     CHECK_EQ(s.fan, kCtrlFanAuto);
-    CHECK_EQ(s.heatSp, 2300); /* no deadband any more: setpoints are independent */
+    CHECK_EQ(s.heatSp, 2300); /* setpoints are independent: cool may sit below heat */
     CHECK_EQ(s.coolSp, 2350);
     s = (CtrlSettings){.mode = 0x01 /* old AUTO */, .fan = kCtrlFanOn, .heatSp = 2400, .coolSp = 2200};
     CtrlSanitizeSettings(&s_p, &s);
@@ -475,7 +475,7 @@ static void BoostTargetRejectsBadRequests(void)
     /* target is clamped to the setpoint range */
     CHECK_EQ(CtrlBoostStart(&s_c, &s_st, kBoostToTarget, kBoostDirHeat, 9000, 0, s_now), kBoostOk);
     CHECK_EQ(CtrlGetBoostStatus(&s_c, s_now).sp, s_p.maxSp);
-    /* timed AUTO with nothing to do (in deadband, mode OFF) */
+    /* timed AUTO with nothing to do (mode OFF, so no direction) */
     s_st.mode = kCtrlModeOff;
     CtrlBoostCancel(&s_c);
     CHECK_EQ(CtrlBoostStart(&s_c, &s_st, kBoostTimed, kBoostDirAuto, 0, 10, s_now), kBoostErrNoDirection);
@@ -777,7 +777,7 @@ static void SwingStillHonoursMinOn(void)
  */
 static void WideSwingOverlappingSetpointsNeverOverlap(void)
 {
-    /* No deadband any more: cool SP below heat SP, 1.0 °C swing, alternating modes */
+    /* Cool SP below heat SP, 1.0 °C swing, alternating modes */
     Setup(kCtrlModeHeat, 2200, 2000);
     CtrlSetSwing(&s_c, 100);
     for (int k = 0; k < 6; k++)

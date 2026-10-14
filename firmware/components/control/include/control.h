@@ -221,8 +221,8 @@ extern "C"
 
     /**
  * Make settings safe to run: an unknown mode becomes kCtrlModeOff, an unknown fan mode becomes
- * kCtrlFanAuto, and both setpoints are clamped into pP->minSp..maxSp. There is no heat/cool
- * deadband, because heating and cooling never run in the same mode.
+ * kCtrlFanAuto, and both setpoints are clamped into pP->minSp..maxSp. The heat and cool
+ * setpoints are independent, because heating and cooling never run in the same mode.
  *
  * `pP` is the limits; `pS` is the settings to fix in place.
  */
