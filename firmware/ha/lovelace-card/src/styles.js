@@ -61,7 +61,7 @@ export const cardStyles = css`
     background: var(--card-background-color, var(--ha-card-background, #fff));
   }
   .sp-row { display: flex; align-items: center; justify-content: center; gap: 20px; width: 100%; }
-  .sp-val { font-size: 52px; line-height: 1; color: var(--primary-text-color); min-width: 3.4ch; text-align: center; font-variant-numeric: tabular-nums; }
+  .sp-val { border-radius: 8px; outline: none; font-size: 52px; line-height: 1; color: var(--primary-text-color); min-width: 3.4ch; text-align: center; font-variant-numeric: tabular-nums; }
   .sp-val small { font-size: 22px; color: var(--secondary-text-color); }
   .sp-val.pending { opacity: 0.6; }
   .caption { font-size: 13px; color: var(--secondary-text-color); text-align: center; }
@@ -71,7 +71,7 @@ export const cardStyles = css`
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
   }
   .round:disabled { opacity: 0.4; cursor: default; }
-  .round:focus-visible, .seg button:focus-visible, .mini:focus-visible, .btn:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+  .round:focus-visible, .seg button:focus-visible, .mini:focus-visible, .btn:focus-visible, .fanbtn:focus-visible, .sec-h:focus-visible, .sp-val:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
   .off-note { font-size: 14px; color: var(--secondary-text-color); padding: 18px 0; }
 
   /* modes */

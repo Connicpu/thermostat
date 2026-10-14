@@ -178,13 +178,35 @@ export class ConnieThermostatCard extends LitElement {
     this._call('climate', 'set_fan_mode', { entity_id: this._e.climate, fan_mode: on ? 'auto' : 'on' });
   }
 
-  _stepSetpoint(dir) {
+  get _spStep() {
+    return this._st('climate')?.attributes?.target_temp_step || (this._haUnit === '°F' ? 1 : 0.5);
+  }
+
+  /** Move the setpoint `dir` (±1) by `steps` steps, clamped to min_temp..max_temp. */
+  _stepSetpoint(dir, steps = 1) {
     const a = this._st('climate')?.attributes ?? {};
-    const step = a.target_temp_step || (this._haUnit === '°F' ? 1 : 0.5);
+    const step = this._spStep;
     const cur = this._val('climate', a.temperature);
     if (cur === null || cur === undefined) return;
-    const v = snap(cur + dir * step, a.min_temp, a.max_temp, step);
+    const v = snap(cur + dir * steps * step, a.min_temp, a.max_temp, step);
+    if (v === cur) return;
     this._queue('climate', v, (t) => this._call('climate', 'set_temperature', { entity_id: this._e.climate, temperature: t }));
+  }
+
+  /** Slider keys: arrows ±1 step, PageUp/PageDown ±5, Home/End to min/max. */
+  _spKey(ev) {
+    const a = this._st('climate')?.attributes ?? {};
+    const cur = this._val('climate', a.temperature);
+    const step = this._spStep;
+    const toEnd = (lim) => (Number.isFinite(lim) && Number.isFinite(cur) ? Math.ceil(Math.abs(cur - lim) / step) : 0);
+    const map = {
+      ArrowUp: [1, 1], ArrowRight: [1, 1], ArrowDown: [-1, 1], ArrowLeft: [-1, 1],
+      PageUp: [1, 5], PageDown: [-1, 5], Home: [-1, toEnd(a.min_temp)], End: [1, toEnd(a.max_temp)],
+    };
+    const m = map[ev.key];
+    if (!m) return;
+    ev.preventDefault();
+    if (m[1] > 0) this._stepSetpoint(m[0], m[1]);
   }
 
   _toggle(sec) {
@@ -347,7 +369,10 @@ export class ConnieThermostatCard extends LitElement {
       <span class="period">${icon(periodIcon, 'sm')}${periodName}${info.span ? html` · ${info.span}` : nothing}</span>
       <div class="sp-row">
         <button class="round" aria-label="Lower setpoint" ?disabled=${unavailable || v <= a.min_temp} @click=${() => this._stepSetpoint(-1)}>${icon(I.mdiMinus)}</button>
-        <span class="sp-val ${'climate' in this._pending ? 'pending' : ''}" aria-live="polite">${v ?? '—'}<small>${this._haUnit}</small></span>
+        <span class="sp-val ${'climate' in this._pending ? 'pending' : ''}" role="slider" tabindex=${unavailable ? -1 : 0}
+          aria-label="Setpoint" aria-valuenow=${v ?? nothing} aria-valuemin=${a.min_temp ?? nothing} aria-valuemax=${a.max_temp ?? nothing}
+          aria-valuetext="${v ?? '—'} ${this._haUnit}, ${info.label}${'climate' in this._pending ? ', sending…' : ''}"
+          aria-disabled=${unavailable ? 'true' : 'false'} @keydown=${(e) => !unavailable && this._spKey(e)}>${v ?? '—'}<small>${this._haUnit}</small></span>
         <button class="round" aria-label="Raise setpoint" ?disabled=${unavailable || v >= a.max_temp} @click=${() => this._stepSetpoint(1)}>${icon(I.mdiPlus)}</button>
       </div>
       <div class="caption">Changes the <b>${info.label}</b> program setpoint${period === 'boost' ? ' (the morning boost is added on top)' : ''}.</div>

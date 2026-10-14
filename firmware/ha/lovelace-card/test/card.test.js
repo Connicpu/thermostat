@@ -62,6 +62,39 @@ describe('card', () => {
     expect(el.hass.calls).toEqual([{ domain: 'climate', service: 'set_temperature', data: { entity_id: `climate.${PREFIX}`, temperature: 72 } }]);
   });
 
+  it('setpoint is a keyboard slider routed through _stepSetpoint', async () => {
+    const el = await mount();
+    const sl = $(el, '[role="slider"]');
+    expect(sl.getAttribute('tabindex')).toBe('0');
+    expect(sl.getAttribute('aria-valuenow')).toBe('70');
+    expect(sl.getAttribute('aria-valuemin')).toBe('50');
+    expect(sl.getAttribute('aria-valuemax')).toBe('90');
+    expect(sl.getAttribute('aria-valuetext')).toBe('70 °F, Day heating');
+    const spy = vi.spyOn(el, '_stepSetpoint');
+    const key = async (k) => {
+      const ev = new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true });
+      $(el, '[role="slider"]').dispatchEvent(ev);
+      await el.updateComplete;
+      return ev.defaultPrevented;
+    };
+    expect(await key('ArrowUp')).toBe(true);
+    expect($(el, '[role="slider"]').getAttribute('aria-valuenow')).toBe('71');
+    expect($(el, '[role="slider"]').getAttribute('aria-valuetext')).toBe('71 °F, Day heating, sending…');
+    await key('ArrowLeft');
+    await key('PageUp');
+    expect($(el, '[role="slider"]').getAttribute('aria-valuenow')).toBe('75');
+    await key('PageDown');
+    await key('ArrowRight');
+    await key('End');
+    expect($(el, '[role="slider"]').getAttribute('aria-valuenow')).toBe('90');
+    await key('Home');
+    expect($(el, '[role="slider"]').getAttribute('aria-valuenow')).toBe('50');
+    expect(await key('a')).toBe(false);
+    expect(spy.mock.calls).toEqual([[1, 1], [-1, 1], [1, 5], [-1, 5], [1, 1], [1, 19], [-1, 40]]);
+    vi.advanceTimersByTime(1000);
+    expect(el.hass.calls).toEqual([{ domain: 'climate', service: 'set_temperature', data: { entity_id: `climate.${PREFIX}`, temperature: 50 } }]);
+  });
+
   it('labels the night cooling period when cooling at night', async () => {
     const el = await mount({}, { patch: { [`climate.${PREFIX}`]: { state: 'cool', attributes: { hvac_action: 'idle', temperature: 72 } }, [`sensor.${PREFIX}_schedule_period`]: { state: 'Night' } } });
     expect(text(el)).toContain('Changes the Night cooling program setpoint');
