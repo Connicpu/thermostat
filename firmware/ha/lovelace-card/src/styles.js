@@ -15,6 +15,14 @@ export const cardStyles = css`
   :host([mode='heat']) { --ct-accent: var(--ct-heat); }
   :host([mode='cool']) { --ct-accent: var(--ct-cool); }
   ha-card { overflow: hidden; }
+  /* Soft tint on the top area (header + setpoint) while actively heating/cooling, like HA's
+     thermostat card. Low alpha fading to transparent so text contrast holds in both themes. */
+  :host([action='heating']) { --ct-tint: var(--ct-heat); }
+  :host([action='cooling']) { --ct-tint: var(--ct-cool); }
+  :host([action]) ha-card {
+    background-image: linear-gradient(180deg, color-mix(in srgb, var(--ct-tint) 16%, transparent) 0,
+      color-mix(in srgb, var(--ct-tint) 6%, transparent) 140px, transparent 260px);
+  }
   svg.icon { width: 24px; height: 24px; fill: currentColor; flex: none; }
   svg.sm { width: 18px; height: 18px; }
   .content { padding: 16px; display: flex; flex-direction: column; gap: 16px; }

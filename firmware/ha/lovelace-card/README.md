@@ -34,6 +34,9 @@ number tiles with a single card that covers everything the quirk exposes.
   closes on Esc (consumed only when a tooltip was open) or a click elsewhere, opens above its row (the setpoint one opens in place, on click/tap only, and pushes the value down), and is linked with `aria-describedby`.
 * **Warnings** always stay visible: device unavailable, no clock yet (holding the day program), and failed boosts (rejected, failsafe, limit).
 
+While the thermostat is actively heating or cooling (its `hvac_action`), the top of the card
+gets a soft orange or blue tint, like HA's own thermostat card. Idle, off and fan-only show no tint.
+
 ### Units
 Temperatures follow Home Assistant's unit system. HA already converts the climate entity and the
 temperature-class number entities, e.g. to °F. The swing and the morning-boost offset are temperature

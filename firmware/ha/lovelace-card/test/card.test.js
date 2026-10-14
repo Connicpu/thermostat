@@ -350,6 +350,27 @@ describe('card', () => {
     expect($(el, '.banner.error[role="alert"]')).toBeNull();
   });
 
+  it('tints the top only while actively heating or cooling (hvac_action)', async () => {
+    const el = await mount();
+    const set = async (state, action) => {
+      const h = el.hass;
+      const c = h.states[`climate.${PREFIX}`];
+      el.hass = { ...h, states: { ...h.states, [`climate.${PREFIX}`]: { ...c, state, attributes: { ...c.attributes, hvac_action: action } } } };
+      await el.updateComplete;
+      return el.getAttribute('action');
+    };
+    expect(await set('heat', 'heating')).toBe('heating');
+    expect(await set('cool', 'cooling')).toBe('cooling');
+    expect(await set('heat', 'idle')).toBeNull();
+    expect(await set('off', 'off')).toBeNull();
+    expect(await set('off', 'fan')).toBeNull();
+    expect(await set('unavailable', 'heating')).toBeNull();
+    const css = [customElements.get('connie-thermostat-card').styles].flat().map((x) => x.cssText ?? String(x)).join('');
+    expect(css).toMatch(/:host\(\[action='heating'\]\)\s*\{\s*--ct-tint: var\(--ct-heat\)/);
+    expect(css).toMatch(/:host\(\[action='cooling'\]\)\s*\{\s*--ct-tint: var\(--ct-cool\)/);
+    expect(css).toMatch(/color-mix\(in srgb, var\(--ct-tint\) 16%, transparent\)/);
+  });
+
   it('Start, Stop and Direction are disabled while the thermostat is unavailable', async () => {
     const el = await mount({}, { patch: { [`climate.${PREFIX}`]: { state: 'unavailable' }, [`binary_sensor.${PREFIX}_boost_active`]: { state: 'on' }, [`sensor.${PREFIX}_boost`]: { state: 'Timed_heat' } } });
     const gos = $$(el, '.tile .go');

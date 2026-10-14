@@ -160,6 +160,11 @@ export class ConnieThermostatCard extends LitElement {
       if (dirty) this._pending = left;
       const mode = this._st('climate')?.state;
       this.setAttribute('mode', mode === 'heat' || mode === 'cool' ? mode : 'off');
+      // Top-area tint follows what the device is doing right now, not the selected mode.
+      const c = this._st('climate');
+      const act = c && c.state !== 'unavailable' ? c.attributes?.hvac_action : null;
+      if (act === 'heating' || act === 'cooling') this.setAttribute('action', act);
+      else this.removeAttribute('action');
     }
   }
 
