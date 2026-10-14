@@ -49,10 +49,10 @@ All of these live in `control.c`, and the tests in `test/host/test_control.c` co
 | Compressor minimum on-time | 3 min. Mode change or failsafe stops it immediately |
 | Furnace minimum on/off | 2 min / 1 min |
 | Heat↔cool changeover | 5 min between one stage stopping and the other starting |
-| Fan mode | Auto: G only with Y (and W when `heat_drives_fan`) plus run-on. **On: G runs continuously, even with no heat/cool demand, in every mode including Off** (still killed by the failsafe). Set from HA (Fan Control 0x0202 FanMode, ZHA fan control / climate fan mode) or the menu (*Fan*) |
-| Fan run-on | G stays on 90 s after W and 45 s after Y. G is energised with Y. With W it's left to the furnace (`heat_drives_fan=false`) |
+| Fan mode | Auto: G only with Y (and W when `heatDrivesFan`) plus run-on. **On: G runs continuously, even with no heat/cool demand, in every mode including Off** (still killed by the failsafe). Set from HA (Fan Control 0x0202 FanMode, ZHA fan control / climate fan mode) or the menu (*Fan*) |
+| Fan run-on | G stays on 90 s after W and 45 s after Y. G is energised with Y. With W it's left to the furnace (`heatDrivesFan=false`) |
 | **Failsafe** | No valid reading for 30 s, **or** a reading outside 0–45 °C, turns **all outputs off immediately** (overriding the minimum on-time and the fan run-on). Recovery needs 3 consecutive good readings. The firmware boots in failsafe |
-| **W/Y interlock** | `hvac_interlock()` is the only path to the pins. If W and Y are both requested, both are dropped and a fault is counted. That fault makes the loop unhealthy, so it stops kicking and the watchdogs reset the chip |
+| **W/Y interlock** | `HvacInterlock()` is the only path to the pins. If W and Y are both requested, both are dropped and a fault is counted. That fault makes the loop unhealthy, so it stops kicking and the watchdogs reset the chip |
 | **Watchdog** | The STWD100 (about 1.6 s) is armed 10 s after boot, and only after the loop has run cleanly. It's kicked once per 250 ms loop, and only while the health check passes (no interlock fault; a stalled display is reported but deliberately not a reason to reset). The IDF task watchdog (5 s) watches the same loop as a second layer. A watchdog reset puts the GPIOs in high-Z, and the 10k pull-downs then switch every triac off |
 
 | **Output readback** | W/Y/G pins are INPUT_OUTPUT and the pad is read back on the **next** 250 ms pass (≥ 1 ms after the last change, past the C6 input synchroniser), never right after the write. **2 consecutive** mismatches, or a `gpio_set_level` error, latch an OUTPUT FAULT: everything off, shown on screen, no reboot. G is raised before Y, and Y is never raised if G failed. The latch is **re-tested after 10 min** (longer than every min-off/changeover time, so resuming cannot short-cycle), only while the pads read "all off", at most 3 times per boot; then it stays off until reboot. `gpio_config` failure at boot is permanent. **Readback only sees the ESP32 pad: it cannot detect a shorted (or open) triac, a dead MOC3063 or a wiring fault**, and must be verified on real hardware with the MOC3063s loaded (that the loaded pad still reads back its driven level) |
@@ -111,10 +111,10 @@ across later network loss (extrapolated) until the next reboot.
 
 All are manufacturer-specific (code 0x131B) on the existing 0xFC57 cluster, persisted in NVS.
 
-**Settings storage.** All settings live in one versioned blob, `{version, persist_t}`, under the NVS key
+**Settings storage.** All settings live in one versioned blob, `{version, Persist}`, under the NVS key
 `cfg3` (namespace `tstat`; a new key so it never collides with the 0.2.x `cfg` blob). The current layout is **version 1** (no hardware has shipped, so there are no
 older layouts to migrate). A blob with an unknown version or size loads the defaults. A future layout change
-bumps `SETTINGS_VERSION` and adds a migration branch in `settings_decode()` (`main/settings_codec.c`, host-tested
+bumps `SETTINGS_VERSION` and adds a migration branch in `SettingsDecode()` (`main/settings_codec.c`, host-tested
 in `test/host/test_settings.c`).
 
 ### Design note: settings layout compatibility (OTA rollback)
@@ -122,15 +122,15 @@ in `test/host/test_settings.c`).
 Every future NVS layout change must be **one-version backward and forward compatible**, so an OTA rollback
 always boots with the user's settings:
 
-- A newer layout may only **append** fields to the end of `persist_t`. Existing fields are never reordered,
+- A newer layout may only **append** fields to the end of `Persist`. Existing fields are never reordered,
   resized, retyped or repurposed, and the blob stays within `SETTINGS_BLOB_MAX` (256 bytes).
 - Firmware one version older must read the newer blob: its decoder accepts a version ≥ its own and a size ≥
   what it expects, takes the fields it knows (the prefix) and ignores the rest. New data doesn't have to
   survive a rollback.
 - Newer firmware must still load the older blob, by migrating it (defaults for the appended fields).
 
-The version-1 decoder already follows this (`settings_decode()` in `main/settings_codec.c`, tested by
-`newer_longer_blob_loads_known_prefix` in `test/host/test_settings.c`). Out-of-range writes are clamped and the clamped value is stored, so a
+The version-1 decoder already follows this (`SettingsDecode()` in `main/settings_codec.c`, tested by
+`NewerLongerBlobLoadsKnownPrefix` in `test/host/test_settings.c`). Out-of-range writes are clamped and the clamped value is stored, so a
 read-back shows reality. Changes made on the device (setpoint edits) are written and reported to the coordinator.
 There is no standard ZCL attribute set that ZHA understands for this (the Thermostat weekly-schedule commands
 aren't supported by ZHA), so the ZHA quirk (`ha/zha_quirk`) exposes them as *config* number entities:
@@ -556,6 +556,36 @@ The converter is written against the standard `fz.thermostat` / `tz.thermostat_*
 4. Measure self-heating: compare against a reference thermometer with the board in its case after 2 h,
    then set `CONFIG_THERMO_SELF_HEAT_OFFSET_C100`.
 5. Only then connect R/C/W/Y/G. Do the first heat and cool calls while you're watching the equipment.
+
+## Code style
+
+All of our own C code (firmware, `test/host`, the HOOTL fakes in `test/hootl`) uses these conventions. Python is exempt and stays PEP 8.
+
+| Kind | Convention | Example |
+|---|---|---|
+| Functions, struct/enum/typedef names | PascalCase | `HvacInterlock()`, `CtrlSettings` |
+| Locals, parameters, struct fields | camelCase | `heatDrivesFan` |
+| File-scope (and function-local) statics | `s_` prefix | `s_boostResult` |
+| Globals (extern) | `g_` prefix | |
+| Pointers | `p`, after the scope prefix | `pBuf`, `s_pState` |
+| Constants, enum values | kCamelCase | `kCtrlModeHeat`, `kTag`, `kFontSmall` |
+| Macros | UPPER_SNAKE | `SETTINGS_VERSION` |
+
+Fixed-width types come from `components/core/include/core.h`: `U8 U16 U32 U64 I8 I16 I32 I64 F32 F64`. Use them instead of `uint8_t`/`int16_t`/`float`/`double`. Plain `int`, `char`, `bool` and `size_t` are fine where the width does not matter.
+
+Exempt, never renamed:
+- ESP-IDF, esp-zigbee and FreeRTOS names, types and callback signatures, including `app_main`. The HOOTL fakes keep the vendor names they implement. Our own `sim_*` fake helpers follow the rules.
+- Zigbee attribute/cluster IDs and NVS key strings, and log strings (HOOTL greps them). On-wire and NVS layouts are unchanged.
+
+Judgment calls:
+- Static `const` tables and strings are constants, so they take `k` and not `s_`/`p` (`static const char *kTag`).
+- Function-local statics take `s_`, the same as file statics.
+- Opaque handle typedefs (`TaskHandle_t`, `QueueHandle_t`) and function pointers don't take `p`. Only a source-level `*` does.
+- `const` locals stay camelCase. `k` is for static-storage constants.
+- Macro-hygiene temporaries starting with `_` are left alone.
+- A few functions got a verb so they don't clash with a type of the same name: `CtrlGetBoostStatus`, `SchedPeriodAt`, `MenuGetView`, `MenuOnKey`, `BuildMenuCtx`.
+
+`tools/check_naming.py` checks all of this with libclang (`pip install libclang`). It reads the compile databases of the host-test, HOOTL and production builds, so build those first. It exits non-zero on any violation. CI runs it in the host-test job.
 
 ## Known gaps / TODO
 - **Not run on hardware.** The SSD1680 init and partial-refresh sequences follow Good Display's

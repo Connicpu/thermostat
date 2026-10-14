@@ -1,18 +1,19 @@
 /* zb_time.c - see zb_time.h. Pure C. */
+#include "core.h"
 #include "zb_time.h"
 
-bool zb_time_acceptable(bool have_status, uint8_t status, uint32_t secs)
+bool ZbTimeAcceptable(bool haveStatus, U8 status, U32 secs)
 {
     if (secs < ZB_TIME_MIN_PLAUSIBLE || secs >= ZB_TIME_MAX_PLAUSIBLE) return false;
-    if (have_status && !(status & (ZB_TIME_STATUS_MASTER | ZB_TIME_STATUS_SYNCHRONIZED))) return false;
+    if (haveStatus && !(status & (ZB_TIME_STATUS_MASTER | ZB_TIME_STATUS_SYNCHRONIZED))) return false;
     return true;
 }
 
-uint32_t zb_time_next_delay_ms(uint8_t fails, bool known)
+U32 ZbTimeNextDelayMs(U8 fails, bool known)
 {
-    static const uint32_t backoff[] = {60u * 1000u, 2u * 60u * 1000u, 5u * 60u * 1000u};
-    const uint32_t hourly = 60u * 60u * 1000u;
+    static const U32 kBackoff[] = {60u * 1000u, 2u * 60u * 1000u, 5u * 60u * 1000u};
+    const U32 hourly = 60u * 60u * 1000u;
     if (known) return hourly;
-    if (fails < sizeof backoff / sizeof backoff[0]) return backoff[fails];
+    if (fails < sizeof kBackoff / sizeof kBackoff[0]) return kBackoff[fails];
     return hourly;
 }

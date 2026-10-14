@@ -4,6 +4,7 @@
 # zb_thermostat.c compiles exactly as on the chip. See README "HOOTL simulation".
 cmake_minimum_required(VERSION 3.16)
 project(thermostat_hootl C)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)   # used by tools/check_naming.py
 set(CMAKE_C_STANDARD 11)
 set(ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 set(FW ${ROOT}/components)
@@ -22,7 +23,7 @@ add_executable(tstat_sim ${FW_SRCS}
 target_include_directories(tstat_sim PRIVATE
   fake/include fake
   ${ROOT}/main
-  ${FW}/control/include ${FW}/hvac_outputs/include ${FW}/sensor/include ${FW}/display/include
+  ${FW}/core/include ${FW}/control/include ${FW}/hvac_outputs/include ${FW}/sensor/include ${FW}/display/include
   ${FW}/ui/include ${FW}/board/include ${FW}/zigbee/include ${FW}/display
   ${ZBLIB} ${ZBOSS})
 # firmware code: the same warning bar as the chip build; fake code: strict too

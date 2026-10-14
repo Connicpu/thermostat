@@ -1,6 +1,7 @@
 #pragma once
+#include "core.h"
 #include <stdint.h>
-typedef struct { uint8_t w; uint16_t off; } font_glyph_t;
-typedef struct { uint8_t height; const font_glyph_t *glyphs; const uint8_t *bits; } font_t;
-extern const font_t font_small, font_med, font_big;
+typedef struct { U8 w; U16 off; } FontGlyph;
+typedef struct { U8 height; const FontGlyph *pGlyphs; const U8 *pBits; } Font;
+extern const Font kFontSmall, kFontMed, kFontBig;
 #define FONT_DEGREE "\x7f"

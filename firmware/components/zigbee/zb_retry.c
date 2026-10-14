@@ -1,34 +1,35 @@
 /* zb_retry.c - see zb_retry.h. Pure C. */
+#include "core.h"
 #include "zb_retry.h"
 
-uint32_t zb_retry_delay_ms(const zb_retry_t *r)
+U32 ZbRetryDelayMs(const ZbRetry *pR)
 {
-    static const uint32_t table[] = {10000u, 30000u, 60000u, 120000u, 300000u};
-    if (r->fails < sizeof table / sizeof table[0]) return table[r->fails];
+    static const U32 kTable[] = {10000u, 30000u, 60000u, 120000u, 300000u};
+    if (pR->fails < sizeof kTable / sizeof kTable[0]) return kTable[pR->fails];
     return 15u * 60u * 1000u;
 }
 
-void zb_retry_joined(zb_retry_t *r, uint64_t now_ms)
+void ZbRetryJoined(ZbRetry *pR, U64 nowMs)
 {
-    r->joined = true;
-    r->joined_at = now_ms;
+    pR->joined = true;
+    pR->joinedAt = nowMs;
 }
 
-uint32_t zb_retry_failed(zb_retry_t *r)
+U32 ZbRetryFailed(ZbRetry *pR)
 {
-    uint32_t d = zb_retry_delay_ms(r);
-    r->joined = false;
-    if (r->fails < 255) r->fails++;
+    U32 d = ZbRetryDelayMs(pR);
+    pR->joined = false;
+    if (pR->fails < 255) pR->fails++;
     return d;
 }
 
-uint32_t zb_retry_lost(zb_retry_t *r, uint64_t now_ms)
+U32 ZbRetryLost(ZbRetry *pR, U64 nowMs)
 {
-    if (r->joined && now_ms - r->joined_at >= ZB_RETRY_STABLE_MS) r->fails = 0;
-    return zb_retry_failed(r);
+    if (pR->joined && nowMs - pR->joinedAt >= ZB_RETRY_STABLE_MS) pR->fails = 0;
+    return ZbRetryFailed(pR);
 }
 
-bool zb_retry_stalled(uint64_t last_alive_ms, uint64_t now_ms)
+bool ZbRetryStalled(U64 lastAliveMs, U64 nowMs)
 {
-    return now_ms > last_alive_ms && now_ms - last_alive_ms >= ZB_RETRY_STALL_MS;
+    return nowMs > lastAliveMs && nowMs - lastAliveMs >= ZB_RETRY_STALL_MS;
 }

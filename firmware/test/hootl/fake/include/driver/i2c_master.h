@@ -5,8 +5,8 @@
 #include <stddef.h>
 #include "esp_err.h"
 #include "driver/gpio.h"
-typedef struct sim_i2c_bus *i2c_master_bus_handle_t;
-typedef struct sim_i2c_dev *i2c_master_dev_handle_t;
+typedef struct SimI2cBus *i2c_master_bus_handle_t;
+typedef struct SimI2cDev *i2c_master_dev_handle_t;
 typedef enum { I2C_NUM_0 = 0 } i2c_port_num_t;
 typedef enum { I2C_CLK_SRC_DEFAULT = 0 } i2c_clock_source_t;
 typedef enum { I2C_ADDR_BIT_LEN_7 = 0 } i2c_addr_bit_len_t;

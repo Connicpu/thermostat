@@ -3,12 +3,12 @@
 #include "buttons.h"
 #include "esp_err.h"
 
-/* UI_BTN_COMBO: UP and DOWN held together (fires BTN_EV_PRESS once per hold). */
-typedef enum { UI_BTN_UP, UI_BTN_DOWN, UI_BTN_MODE, UI_BTN_COMBO } ui_button_t;
-typedef void (*ui_event_cb_t)(ui_button_t which, btn_event_t ev);
+/* kUiBtnCombo: UP and DOWN held together (fires kBtnEvPress once per hold). */
+typedef enum { kUiBtnUp, kUiBtnDown, kUiBtnMode, kUiBtnCombo } UiButton;
+typedef void (*UiEventCb)(UiButton which, BtnEvent ev);
 
-esp_err_t ui_init(ui_event_cb_t cb);
+esp_err_t UiInit(UiEventCb cb);
 /* Status LED (active-low on IO8). */
-void ui_led(bool on);
+void UiLed(bool on);
 /* true while an UP+DOWN combo is being held (UP/DOWN events should be ignored). */
-bool ui_combo_active(void);
+bool UiComboActive(void);

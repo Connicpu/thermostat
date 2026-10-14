@@ -9,8 +9,8 @@
 typedef uint32_t TickType_t;
 typedef int BaseType_t;
 typedef unsigned UBaseType_t;
-typedef struct sim_task *TaskHandle_t;
-typedef struct sim_queue *QueueHandle_t;
+typedef struct SimTask *TaskHandle_t;
+typedef struct SimQueue *QueueHandle_t;
 typedef QueueHandle_t SemaphoreHandle_t;
 typedef void (*TaskFunction_t)(void *);
 typedef struct { int dummy; } portMUX_TYPE;

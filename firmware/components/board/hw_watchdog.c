@@ -3,7 +3,7 @@
 
 static bool s_armed, s_wdi;
 
-void hw_watchdog_init(void)
+void HwWatchdogInit(void)
 {
     gpio_config_t cfg = {
         .pin_bit_mask = (1ULL << BOARD_GPIO_WD_WDI) | (1ULL << BOARD_GPIO_WD_EN),
@@ -17,17 +17,17 @@ void hw_watchdog_init(void)
     gpio_sleep_sel_dis(BOARD_GPIO_WD_WDI);
 }
 
-void hw_watchdog_kick(void)
+void HwWatchdogKick(void)
 {
     s_wdi = !s_wdi;              /* STWD100 resets its timer on either edge */
     gpio_set_level(BOARD_GPIO_WD_WDI, s_wdi);
 }
 
-void hw_watchdog_arm(void)
+void HwWatchdogArm(void)
 {
-    hw_watchdog_kick();
+    HwWatchdogKick();
     gpio_set_level(BOARD_GPIO_WD_EN, 0);
     s_armed = true;
 }
 
-bool hw_watchdog_armed(void) { return s_armed; }
+bool HwWatchdogArmed(void) { return s_armed; }

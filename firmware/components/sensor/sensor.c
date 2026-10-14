@@ -1,3 +1,4 @@
+#include "core.h"
 #include "sensor.h"
 #include "sht40_parse.h"
 #include "board.h"
@@ -10,11 +11,11 @@
 #define SHT40_MEAS_HIGH   0xFD
 #define SHT40_SOFT_RESET  0x94
 
-static const char *TAG = "sht40";
+static const char *kTag = "sht40";
 static i2c_master_bus_handle_t s_bus;
 static i2c_master_dev_handle_t s_dev;
 
-esp_err_t sensor_init(void)
+esp_err_t SensorInit(void)
 {
     i2c_master_bus_config_t bc = {
         .i2c_port = I2C_NUM_0,
@@ -33,30 +34,30 @@ esp_err_t sensor_init(void)
     };
     err = i2c_master_bus_add_device(s_bus, &dc, &s_dev);
     if (err == ESP_OK) {
-        uint8_t c = SHT40_SOFT_RESET;
+        U8 c = SHT40_SOFT_RESET;
         i2c_master_transmit(s_dev, &c, 1, 50);
         vTaskDelay(pdMS_TO_TICKS(2));
     }
     return err;
 }
 
-sensor_reading_t sensor_read(int16_t offset)
+SensorReading SensorRead(I16 offset)
 {
-    sensor_reading_t r = {0};
-    uint8_t cmd = SHT40_MEAS_HIGH, f[6];
+    SensorReading r = {0};
+    U8 cmd = SHT40_MEAS_HIGH, f[6];
     if (!s_dev) return r;
     if (i2c_master_transmit(s_dev, &cmd, 1, 50) != ESP_OK) goto fail;
     vTaskDelay(pdMS_TO_TICKS(10));                /* tMEAS high repeatability 8.3 ms max */
     if (i2c_master_receive(s_dev, f, sizeof f, 50) != ESP_OK) goto fail;
-    if (!sht40_parse(f, &r.temp_c100, &r.rh_c100)) {
-        ESP_LOGW(TAG, "CRC error");
+    if (!Sht40Parse(f, &r.tempC100, &r.rhC100)) {
+        ESP_LOGW(kTag, "CRC error");
         return r;
     }
-    r.temp_c100 = (int16_t)(r.temp_c100 + offset);
+    r.tempC100 = (I16)(r.tempC100 + offset);
     r.valid = true;
     return r;
 fail:
-    ESP_LOGW(TAG, "I2C error");
+    ESP_LOGW(kTag, "I2C error");
     i2c_master_bus_reset(s_bus);
     cmd = SHT40_SOFT_RESET;
     i2c_master_transmit(s_dev, &cmd, 1, 50);

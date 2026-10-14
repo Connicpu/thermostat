@@ -1,55 +1,55 @@
 #include "buttons.h"
 #include <string.h>
 
-void btn_init(btn_t *b, bool autorepeat)
+void BtnInit(Btn *pB, bool autorepeat)
 {
-    memset(b, 0, sizeof *b);
-    b->autorepeat = autorepeat;
+    memset(pB, 0, sizeof *pB);
+    pB->autorepeat = autorepeat;
 }
 
-btn_event_t btn_tick(btn_t *b, bool raw)
+BtnEvent BtnTick(Btn *pB, bool raw)
 {
-    if (raw == b->raw_last) {
-        if (b->raw_same_ms < 0xFFFF0000u) b->raw_same_ms += BTN_TICK_MS;
+    if (raw == pB->rawLast) {
+        if (pB->rawSameMs < 0xFFFF0000u) pB->rawSameMs += BTN_TICK_MS;
     } else {
-        b->raw_last = raw;
-        b->raw_same_ms = 0;
+        pB->rawLast = raw;
+        pB->rawSameMs = 0;
     }
 
-    bool was = b->stable;
-    if (b->raw_same_ms >= BTN_DEBOUNCE_MS) b->stable = raw;
-    if (!b->armed) {                          /* ignore a key held since boot until it is released */
-        if (b->raw_same_ms >= BTN_DEBOUNCE_MS && !raw) b->armed = true;
-        return BTN_EV_NONE;
+    bool was = pB->stable;
+    if (pB->rawSameMs >= BTN_DEBOUNCE_MS) pB->stable = raw;
+    if (!pB->armed) {                          /* ignore a key held since boot until it is released */
+        if (pB->rawSameMs >= BTN_DEBOUNCE_MS && !raw) pB->armed = true;
+        return kBtnEvNone;
     }
 
-    if (b->stable && !was) {                  /* press edge */
-        b->held_ms = 0;
-        b->stuck = false;
-        b->hold_fired = b->long_fired = b->warn_fired = b->vlong_fired = false;
-        b->next_repeat_ms = BTN_REPEAT_DELAY;
-        return b->autorepeat ? BTN_EV_PRESS : BTN_EV_NONE;
+    if (pB->stable && !was) {                  /* press edge */
+        pB->heldMs = 0;
+        pB->stuck = false;
+        pB->holdFired = pB->longFired = pB->warnFired = pB->vlongFired = false;
+        pB->nextRepeatMs = BTN_REPEAT_DELAY;
+        return pB->autorepeat ? kBtnEvPress : kBtnEvNone;
     }
-    if (!b->stable && was) {                  /* release edge */
-        if (b->autorepeat) return BTN_EV_NONE;
-        return b->hold_fired ? BTN_EV_RELEASE : BTN_EV_PRESS;
+    if (!pB->stable && was) {                  /* release edge */
+        if (pB->autorepeat) return kBtnEvNone;
+        return pB->holdFired ? kBtnEvRelease : kBtnEvPress;
     }
-    if (b->stable) {
-        if (b->held_ms < 0xFFFF0000u) b->held_ms += BTN_TICK_MS;
-        if (b->held_ms >= BTN_STUCK_MS) b->stuck = true;
-        if (b->autorepeat) {
-            if (b->stuck) return BTN_EV_NONE;
-            if (b->held_ms >= b->next_repeat_ms) {
-                b->next_repeat_ms += BTN_REPEAT_EVERY;
-                return BTN_EV_REPEAT;
+    if (pB->stable) {
+        if (pB->heldMs < 0xFFFF0000u) pB->heldMs += BTN_TICK_MS;
+        if (pB->heldMs >= BTN_STUCK_MS) pB->stuck = true;
+        if (pB->autorepeat) {
+            if (pB->stuck) return kBtnEvNone;
+            if (pB->heldMs >= pB->nextRepeatMs) {
+                pB->nextRepeatMs += BTN_REPEAT_EVERY;
+                return kBtnEvRepeat;
             }
         } else {
             /* one event per tick, in order; stages are far apart so none is ever late */
-            if (!b->hold_fired && b->held_ms >= BTN_HOLD_MS)   { b->hold_fired = true;  return BTN_EV_HOLD; }
-            if (!b->long_fired && b->held_ms >= BTN_LONG_MS)   { b->long_fired = true;  return BTN_EV_LONG; }
-            if (!b->warn_fired && b->held_ms >= BTN_WARN_MS)   { b->warn_fired = true;  return BTN_EV_WARN; }
-            if (!b->vlong_fired && b->held_ms >= BTN_VLONG_MS) { b->vlong_fired = true; return BTN_EV_VLONG; }
+            if (!pB->holdFired && pB->heldMs >= BTN_HOLD_MS)   { pB->holdFired = true;  return kBtnEvHold; }
+            if (!pB->longFired && pB->heldMs >= BTN_LONG_MS)   { pB->longFired = true;  return kBtnEvLong; }
+            if (!pB->warnFired && pB->heldMs >= BTN_WARN_MS)   { pB->warnFired = true;  return kBtnEvWarn; }
+            if (!pB->vlongFired && pB->heldMs >= BTN_VLONG_MS) { pB->vlongFired = true; return kBtnEvVlong; }
         }
     }
-    return BTN_EV_NONE;
+    return kBtnEvNone;
 }

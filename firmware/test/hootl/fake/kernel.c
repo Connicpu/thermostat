@@ -5,6 +5,7 @@
  * wait) or yields to a higher-priority task it just woke. When no task is
  * ready, virtual time jumps to the earliest wake-up. Same inputs + seed =>
  * identical run, independent of host speed. */
+#include "core.h"
 #include "sim.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -18,172 +19,172 @@
 #define MAX_TASKS 32
 #define NEVER UINT64_MAX
 
-struct sim_task {
+struct SimTask {
     pthread_t th;
     pthread_cond_t cv;
     TaskFunction_t fn;
-    void *arg;
+    void *pArg;
     char name[16];
     int prio, id;
     bool used, dead, ready;
-    uint64_t wake_at;          /* us; NEVER = no timeout */
-    void *wait_obj;            /* queue/semaphore being waited on */
-    uint32_t notify;
-    bool notify_wait;
+    U64 wakeAt;          /* us; NEVER = no timeout */
+    void *pWaitObj;            /* queue/semaphore being waited on */
+    U32 notify;
+    bool notifyWait;
 };
 
-struct sim_queue {
+struct SimQueue {
     size_t item, len, count, head;
-    uint8_t *buf;
-    bool is_mutex;
+    U8 *pBuf;
+    bool isMutex;
     TaskHandle_t owner;
 };
 
 static pthread_mutex_t s_big = PTHREAD_MUTEX_INITIALIZER;
-static struct sim_task s_tasks[MAX_TASKS];
-static struct sim_task *s_cur;
-static uint64_t s_now_us;
-static uint64_t s_end_us = NEVER;
-static int s_next_id;
+static struct SimTask s_tasks[MAX_TASKS];
+static struct SimTask *s_pCur;
+static U64 s_nowUs;
+static U64 s_endUs = NEVER;
+static int s_nextId;
 
-uint64_t sim_now_us(void) { return s_now_us; }
-uint64_t sim_now_ms(void) { return s_now_us / 1000; }
-void sim_set_now_us(uint64_t t) { s_now_us = t; }
-void sim_set_end_us(uint64_t t) { s_end_us = t; }
-const char *sim_cur_task_name(void) { return s_cur ? s_cur->name : "-"; }
+U64 SimNowUs(void) { return s_nowUs; }
+U64 SimNowMs(void) { return s_nowUs / 1000; }
+void SimSetNowUs(U64 t) { s_nowUs = t; }
+void SimSetEndUs(U64 t) { s_endUs = t; }
+const char *SimCurTaskName(void) { return s_pCur ? s_pCur->name : "-"; }
 
-static struct sim_task *pick(void)
+static struct SimTask *Pick(void)
 {
     for (;;) {
         /* highest priority ready task; round-robin among equals starting after the current one */
-        struct sim_task *best = NULL;
-        int start = s_cur ? s_cur->id + 1 : 0;
+        struct SimTask *pBest = NULL;
+        int start = s_pCur ? s_pCur->id + 1 : 0;
         for (int k = 0; k < MAX_TASKS; k++) {
-            struct sim_task *t = &s_tasks[(start + k) % MAX_TASKS];
-            if (!t->used || t->dead || !t->ready) continue;
-            if (!best || t->prio > best->prio) best = t;
+            struct SimTask *pT = &s_tasks[(start + k) % MAX_TASKS];
+            if (!pT->used || pT->dead || !pT->ready) continue;
+            if (!pBest || pT->prio > pBest->prio) pBest = pT;
         }
-        if (best) return best;
-        uint64_t next = NEVER;
+        if (pBest) return pBest;
+        U64 next = NEVER;
         for (int i = 0; i < MAX_TASKS; i++) {
-            struct sim_task *t = &s_tasks[i];
-            if (t->used && !t->dead && t->wake_at < next) next = t->wake_at;
+            struct SimTask *pT = &s_tasks[i];
+            if (pT->used && !pT->dead && pT->wakeAt < next) next = pT->wakeAt;
         }
-        if (next == NEVER) { sim_log('E', "sim", "deadlock: every task blocked forever"); sim_finish(SIM_EXIT_DEADLOCK); }
-        if (next >= s_end_us) { s_now_us = s_end_us; sim_finish(SIM_EXIT_DONE); }
-        s_now_us = next;
+        if (next == NEVER) { SimLog('E', "sim", "deadlock: every task blocked forever"); SimFinish(kSimExitDeadlock); }
+        if (next >= s_endUs) { s_nowUs = s_endUs; SimFinish(kSimExitDone); }
+        s_nowUs = next;
         for (int i = 0; i < MAX_TASKS; i++) {
-            struct sim_task *t = &s_tasks[i];
-            if (t->used && !t->dead && t->wake_at <= s_now_us) { t->ready = true; t->wake_at = NEVER; t->wait_obj = NULL; t->notify_wait = false; }
+            struct SimTask *pT = &s_tasks[i];
+            if (pT->used && !pT->dead && pT->wakeAt <= s_nowUs) { pT->ready = true; pT->wakeAt = NEVER; pT->pWaitObj = NULL; pT->notifyWait = false; }
         }
     }
 }
 
 /* hand the baton to the next task and wait until it comes back to `self` */
-static void switch_away(struct sim_task *self)
+static void SwitchAway(struct SimTask *pSelf)
 {
-    struct sim_task *n = pick();
-    if (n == self) return;
-    s_cur = n;
-    pthread_cond_signal(&n->cv);
-    if (self->dead) { pthread_mutex_unlock(&s_big); pthread_exit(NULL); }
-    while (s_cur != self) pthread_cond_wait(&self->cv, &s_big);
+    struct SimTask *pN = Pick();
+    if (pN == pSelf) return;
+    s_pCur = pN;
+    pthread_cond_signal(&pN->cv);
+    if (pSelf->dead) { pthread_mutex_unlock(&s_big); pthread_exit(NULL); }
+    while (s_pCur != pSelf) pthread_cond_wait(&pSelf->cv, &s_big);
 }
 
-static void block(uint64_t timeout_us, void *obj)
+static void Block(U64 timeoutUs, void *pObj)
 {
-    struct sim_task *self = s_cur;
-    self->ready = false;
-    self->wait_obj = obj;
-    self->wake_at = timeout_us == NEVER ? NEVER : s_now_us + timeout_us;
-    switch_away(self);
+    struct SimTask *pSelf = s_pCur;
+    pSelf->ready = false;
+    pSelf->pWaitObj = pObj;
+    pSelf->wakeAt = timeoutUs == NEVER ? NEVER : s_nowUs + timeoutUs;
+    SwitchAway(pSelf);
 }
 
-static void wake(struct sim_task *t)
+static void Wake(struct SimTask *pT)
 {
-    t->ready = true;
-    t->wake_at = NEVER;
-    t->wait_obj = NULL;
-    t->notify_wait = false;
+    pT->ready = true;
+    pT->wakeAt = NEVER;
+    pT->pWaitObj = NULL;
+    pT->notifyWait = false;
 }
 
-static void maybe_preempt(struct sim_task *woken)
+static void MaybePreempt(struct SimTask *pWoken)
 {
-    if (woken && s_cur && s_cur->used && woken->prio > s_cur->prio) switch_away(s_cur);   /* we stay ready */
+    if (pWoken && s_pCur && s_pCur->used && pWoken->prio > s_pCur->prio) SwitchAway(s_pCur);   /* we stay ready */
 }
 
-static void *trampoline(void *p)
+static void *Trampoline(void *pP)
 {
-    struct sim_task *t = p;
+    struct SimTask *pT = pP;
     pthread_mutex_lock(&s_big);
-    while (s_cur != t) pthread_cond_wait(&t->cv, &s_big);
-    t->fn(t->arg);
+    while (s_pCur != pT) pthread_cond_wait(&pT->cv, &s_big);
+    pT->fn(pT->pArg);
     vTaskDelete(NULL);
     return NULL;
 }
 
-BaseType_t xTaskCreate(TaskFunction_t fn, const char *name, uint32_t stack, void *arg, UBaseType_t prio, TaskHandle_t *out)
+BaseType_t xTaskCreate(TaskFunction_t fn, const char *pName, U32 stack, void *pArg, UBaseType_t prio, TaskHandle_t *pOut)
 {
     (void)stack;
-    struct sim_task *t = NULL;
-    for (int i = 0; i < MAX_TASKS; i++) if (!s_tasks[i].used) { t = &s_tasks[i]; t->id = i; break; }
-    if (!t) return pdFAIL;
-    if (sim_fault_task_create(name)) return pdFAIL;
-    t->used = true; t->dead = false; t->ready = true; t->wake_at = NEVER;
-    t->fn = fn; t->arg = arg; t->prio = (int)prio;
-    snprintf(t->name, sizeof t->name, "%s", name);
-    pthread_cond_init(&t->cv, NULL);
-    s_next_id++;
+    struct SimTask *pT = NULL;
+    for (int i = 0; i < MAX_TASKS; i++) if (!s_tasks[i].used) { pT = &s_tasks[i]; pT->id = i; break; }
+    if (!pT) return pdFAIL;
+    if (SimFaultTaskCreate(pName)) return pdFAIL;
+    pT->used = true; pT->dead = false; pT->ready = true; pT->wakeAt = NEVER;
+    pT->fn = fn; pT->pArg = pArg; pT->prio = (int)prio;
+    snprintf(pT->name, sizeof pT->name, "%s", pName);
+    pthread_cond_init(&pT->cv, NULL);
+    s_nextId++;
     pthread_attr_t a;
     pthread_attr_init(&a);
     pthread_attr_setstacksize(&a, 1 << 20);
-    pthread_create(&t->th, &a, trampoline, t);
-    pthread_detach(t->th);
-    if (out) *out = t;
-    maybe_preempt(t);
+    pthread_create(&pT->th, &a, Trampoline, pT);
+    pthread_detach(pT->th);
+    if (pOut) *pOut = pT;
+    MaybePreempt(pT);
     return pdPASS;
 }
 
 void vTaskDelete(TaskHandle_t h)
 {
-    struct sim_task *t = h ? h : s_cur;
-    t->dead = true;
-    t->ready = false;
-    if (t == s_cur) switch_away(t);   /* does not return for the current task */
+    struct SimTask *pT = h ? h : s_pCur;
+    pT->dead = true;
+    pT->ready = false;
+    if (pT == s_pCur) SwitchAway(pT);   /* does not return for the current task */
 }
 
 void vTaskDelay(TickType_t ticks)
 {
-    block((uint64_t)ticks * 1000u, NULL);
+    Block((U64)ticks * 1000u, NULL);
 }
 
-void vTaskDelayUntil(TickType_t *prev, TickType_t inc)
+void vTaskDelayUntil(TickType_t *pPrev, TickType_t inc)
 {
-    uint64_t target = ((uint64_t)*prev + inc) * 1000u;
-    *prev += inc;
-    if (target > s_now_us) block(target - s_now_us, NULL);
-    else block(0, NULL);   /* still let others run */
+    U64 target = ((U64)*pPrev + inc) * 1000u;
+    *pPrev += inc;
+    if (target > s_nowUs) Block(target - s_nowUs, NULL);
+    else Block(0, NULL);   /* still let others run */
 }
 
-TickType_t xTaskGetTickCount(void) { return (TickType_t)(s_now_us / 1000u); }
-TaskHandle_t xTaskGetCurrentTaskHandle(void) { return s_cur; }
+TickType_t xTaskGetTickCount(void) { return (TickType_t)(s_nowUs / 1000u); }
+TaskHandle_t xTaskGetCurrentTaskHandle(void) { return s_pCur; }
 
-uint32_t ulTaskNotifyTake(BaseType_t clear, TickType_t wait)
+U32 ulTaskNotifyTake(BaseType_t clear, TickType_t wait)
 {
-    struct sim_task *self = s_cur;
-    if (!self->notify && wait) {
-        self->notify_wait = true;
-        block(wait == portMAX_DELAY ? NEVER : (uint64_t)wait * 1000u, NULL);
+    struct SimTask *pSelf = s_pCur;
+    if (!pSelf->notify && wait) {
+        pSelf->notifyWait = true;
+        Block(wait == portMAX_DELAY ? NEVER : (U64)wait * 1000u, NULL);
     }
-    uint32_t v = self->notify;
-    if (clear) self->notify = 0; else if (v) self->notify--;
+    U32 v = pSelf->notify;
+    if (clear) pSelf->notify = 0; else if (v) pSelf->notify--;
     return v;
 }
 
 BaseType_t xTaskNotifyGive(TaskHandle_t t)
 {
     t->notify++;
-    if (t->notify_wait && !t->dead) { wake(t); maybe_preempt(t); }
+    if (t->notifyWait && !t->dead) { Wake(t); MaybePreempt(t); }
     return pdPASS;
 }
 
@@ -191,88 +192,88 @@ BaseType_t xTaskNotifyGive(TaskHandle_t t)
 
 QueueHandle_t xQueueCreate(UBaseType_t len, UBaseType_t item)
 {
-    struct sim_queue *q = calloc(1, sizeof *q);
-    q->item = item; q->len = len;
-    q->buf = calloc(len ? len : 1, item ? item : 1);
-    return q;
+    struct SimQueue *pQ = calloc(1, sizeof *pQ);
+    pQ->item = item; pQ->len = len;
+    pQ->pBuf = calloc(len ? len : 1, item ? item : 1);
+    return pQ;
 }
 
-static void wake_waiters(void *obj)
+static void WakeWaiters(void *pObj)
 {
     for (int i = 0; i < MAX_TASKS; i++) {
-        struct sim_task *t = &s_tasks[i];
-        if (t->used && !t->dead && !t->ready && t->wait_obj == obj) { wake(t); maybe_preempt(t); return; }
+        struct SimTask *pT = &s_tasks[i];
+        if (pT->used && !pT->dead && !pT->ready && pT->pWaitObj == pObj) { Wake(pT); MaybePreempt(pT); return; }
     }
 }
 
-BaseType_t xQueueSend(QueueHandle_t q, const void *item, TickType_t wait)
+BaseType_t xQueueSend(QueueHandle_t q, const void *pItem, TickType_t wait)
 {
-    uint64_t deadline = wait == portMAX_DELAY ? NEVER : s_now_us + (uint64_t)wait * 1000u;
+    U64 deadline = wait == portMAX_DELAY ? NEVER : s_nowUs + (U64)wait * 1000u;
     while (q->count == q->len) {
-        if (s_now_us >= deadline) return pdFAIL;
-        block(deadline == NEVER ? NEVER : deadline - s_now_us, q);
+        if (s_nowUs >= deadline) return pdFAIL;
+        Block(deadline == NEVER ? NEVER : deadline - s_nowUs, q);
     }
-    memcpy(q->buf + ((q->head + q->count) % q->len) * q->item, item, q->item);
+    memcpy(q->pBuf + ((q->head + q->count) % q->len) * q->item, pItem, q->item);
     q->count++;
-    wake_waiters(q);
+    WakeWaiters(q);
     return pdPASS;
 }
 
-BaseType_t xQueueReceive(QueueHandle_t q, void *item, TickType_t wait)
+BaseType_t xQueueReceive(QueueHandle_t q, void *pItem, TickType_t wait)
 {
-    uint64_t deadline = wait == portMAX_DELAY ? NEVER : s_now_us + (uint64_t)wait * 1000u;
+    U64 deadline = wait == portMAX_DELAY ? NEVER : s_nowUs + (U64)wait * 1000u;
     while (q->count == 0) {
-        if (s_now_us >= deadline) return pdFAIL;
-        block(deadline == NEVER ? NEVER : deadline - s_now_us, q);
+        if (s_nowUs >= deadline) return pdFAIL;
+        Block(deadline == NEVER ? NEVER : deadline - s_nowUs, q);
     }
-    memcpy(item, q->buf + q->head * q->item, q->item);
+    memcpy(pItem, q->pBuf + q->head * q->item, q->item);
     q->head = (q->head + 1) % q->len;
     q->count--;
-    wake_waiters(q);
+    WakeWaiters(q);
     return pdPASS;
 }
 
 SemaphoreHandle_t xSemaphoreCreateMutex(void)
 {
-    struct sim_queue *q = xQueueCreate(1, 0);
-    q->is_mutex = true;
-    return q;
+    struct SimQueue *pQ = xQueueCreate(1, 0);
+    pQ->isMutex = true;
+    return pQ;
 }
 
 BaseType_t xSemaphoreTake(SemaphoreHandle_t s, TickType_t wait)
 {
-    uint64_t deadline = wait == portMAX_DELAY ? NEVER : s_now_us + (uint64_t)wait * 1000u;
+    U64 deadline = wait == portMAX_DELAY ? NEVER : s_nowUs + (U64)wait * 1000u;
     while (s->owner) {
-        if (s_now_us >= deadline) return pdFAIL;
-        block(deadline == NEVER ? NEVER : deadline - s_now_us, s);
+        if (s_nowUs >= deadline) return pdFAIL;
+        Block(deadline == NEVER ? NEVER : deadline - s_nowUs, s);
     }
-    s->owner = s_cur;
+    s->owner = s_pCur;
     return pdPASS;
 }
 
 BaseType_t xSemaphoreGive(SemaphoreHandle_t s)
 {
     s->owner = NULL;
-    wake_waiters(s);
+    WakeWaiters(s);
     return pdPASS;
 }
 
-bool sim_mutex_held(void *m) { return m && ((struct sim_queue *)m)->owner != NULL; }
+bool SimMutexHeld(void *pM) { return pM && ((struct SimQueue *)pM)->owner != NULL; }
 
 /* ---------------- start ---------------- */
 
-static void main_task(void *arg) { ((void (*)(void))arg)(); }
+static void MainTask(void *pArg) { ((void (*)(void))pArg)(); }
 
-void sim_kernel_run(void (*first)(void))
+void SimKernelRun(void (*first)(void))
 {
     pthread_mutex_lock(&s_big);
-    struct sim_task boot = {.used = false};
-    s_cur = &boot;   /* placeholder: hand the baton to the real tasks */
+    struct SimTask boot = {.used = false};
+    s_pCur = &boot;   /* placeholder: hand the baton to the real tasks */
     pthread_cond_init(&boot.cv, NULL);
-    xTaskCreate(main_task, "main", 0, (void *)first, 1, NULL);
-    sim_start_service_tasks();
-    struct sim_task *n = pick();
-    s_cur = n;
-    pthread_cond_signal(&n->cv);
-    for (;;) pthread_cond_wait(&boot.cv, &s_big);   /* never handed back; process ends via sim_finish() */
+    xTaskCreate(MainTask, "main", 0, (void *)first, 1, NULL);
+    SimStartServiceTasks();
+    struct SimTask *pN = Pick();
+    s_pCur = pN;
+    pthread_cond_signal(&pN->cv);
+    for (;;) pthread_cond_wait(&boot.cv, &s_big);   /* never handed back; process ends via SimFinish() */
 }

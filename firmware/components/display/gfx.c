@@ -1,3 +1,4 @@
+#include "core.h"
 #include "gfx.h"
 #include <string.h>
 
@@ -9,73 +10,73 @@
 #define EPD_ROTATION 1
 #endif
 
-static inline bool map(int x, int y, int *nx, int *ny)
+static inline bool Map(int x, int y, int *pNx, int *pNy)
 {
     if (x < 0 || y < 0 || x >= GFX_W || y >= GFX_H) return false;
 #if EPD_ROTATION == 1
-    *nx = EPD_NATIVE_W - 1 - y;
-    *ny = x;
+    *pNx = EPD_NATIVE_W - 1 - y;
+    *pNy = x;
 #else
-    *nx = y;
-    *ny = EPD_NATIVE_H - 1 - x;
+    *pNx = y;
+    *pNy = EPD_NATIVE_H - 1 - x;
 #endif
     return true;
 }
 
-void gfx_clear(gfx_fb_t *fb) { memset(fb->buf, 0xFF, sizeof fb->buf); }
+void GfxClear(GfxFb *pFb) { memset(pFb->buf, 0xFF, sizeof pFb->buf); }
 
-void gfx_pixel(gfx_fb_t *fb, int x, int y, bool black)
+void GfxPixel(GfxFb *pFb, int x, int y, bool black)
 {
     int nx, ny;
-    if (!map(x, y, &nx, &ny)) return;
-    uint8_t *b = &fb->buf[ny * (EPD_NATIVE_W / 8) + nx / 8];
-    uint8_t m = 0x80 >> (nx & 7);
-    if (black) *b &= (uint8_t)~m; else *b |= m;
+    if (!Map(x, y, &nx, &ny)) return;
+    U8 *pB = &pFb->buf[ny * (EPD_NATIVE_W / 8) + nx / 8];
+    U8 m = 0x80 >> (nx & 7);
+    if (black) *pB &= (U8)~m; else *pB |= m;
 }
 
-bool gfx_get(const gfx_fb_t *fb, int x, int y)
+bool GfxGet(const GfxFb *pFb, int x, int y)
 {
     int nx, ny;
-    if (!map(x, y, &nx, &ny)) return false;
-    return !(fb->buf[ny * (EPD_NATIVE_W / 8) + nx / 8] & (0x80 >> (nx & 7)));
+    if (!Map(x, y, &nx, &ny)) return false;
+    return !(pFb->buf[ny * (EPD_NATIVE_W / 8) + nx / 8] & (0x80 >> (nx & 7)));
 }
 
-void gfx_fill_rect(gfx_fb_t *fb, int x, int y, int w, int h, bool black)
+void GfxFillRect(GfxFb *pFb, int x, int y, int w, int h, bool black)
 {
     for (int j = y; j < y + h; j++)
-        for (int i = x; i < x + w; i++) gfx_pixel(fb, i, j, black);
+        for (int i = x; i < x + w; i++) GfxPixel(pFb, i, j, black);
 }
 
-void gfx_hline(gfx_fb_t *fb, int x, int y, int w) { gfx_fill_rect(fb, x, y, w, 1, true); }
-void gfx_vline(gfx_fb_t *fb, int x, int y, int h) { gfx_fill_rect(fb, x, y, 1, h, true); }
+void GfxHline(GfxFb *pFb, int x, int y, int w) { GfxFillRect(pFb, x, y, w, 1, true); }
+void GfxVline(GfxFb *pFb, int x, int y, int h) { GfxFillRect(pFb, x, y, 1, h, true); }
 
-static const font_glyph_t *glyph(const font_t *f, char c)
+static const FontGlyph *Glyph(const Font *pF, char c)
 {
     unsigned u = (unsigned char)c;
     if (u < 32 || u > 127) u = '?';
-    const font_glyph_t *g = &f->glyphs[u - 32];
-    if (!g->w) g = &f->glyphs[0]; /* space */
-    return g;
+    const FontGlyph *pG = &pF->pGlyphs[u - 32];
+    if (!pG->w) pG = &pF->pGlyphs[0]; /* space */
+    return pG;
 }
 
-int gfx_text_width(const font_t *f, const char *s)
+int GfxTextWidth(const Font *pF, const char *pS)
 {
     int w = 0;
-    for (; *s; s++) w += glyph(f, *s)->w;
+    for (; *pS; pS++) w += Glyph(pF, *pS)->w;
     return w;
 }
 
-int gfx_text(gfx_fb_t *fb, const font_t *f, int x, int y, const char *s, bool black)
+int GfxText(GfxFb *pFb, const Font *pF, int x, int y, const char *pS, bool black)
 {
-    for (; *s; s++) {
-        const font_glyph_t *g = glyph(f, *s);
-        int bpr = (g->w + 7) / 8;
-        const uint8_t *p = f->bits + g->off;
-        if (g == &f->glyphs[0]) { x += g->w; continue; }
-        for (int r = 0; r < f->height; r++)
-            for (int c = 0; c < g->w; c++)
-                if (p[r * bpr + c / 8] & (0x80 >> (c & 7))) gfx_pixel(fb, x + c, y + r, black);
-        x += g->w;
+    for (; *pS; pS++) {
+        const FontGlyph *pG = Glyph(pF, *pS);
+        int bpr = (pG->w + 7) / 8;
+        const U8 *pP = pF->pBits + pG->off;
+        if (pG == &pF->pGlyphs[0]) { x += pG->w; continue; }
+        for (int r = 0; r < pF->height; r++)
+            for (int c = 0; c < pG->w; c++)
+                if (pP[r * bpr + c / 8] & (0x80 >> (c & 7))) GfxPixel(pFb, x + c, y + r, black);
+        x += pG->w;
     }
     return x;
 }

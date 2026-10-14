@@ -1,4 +1,5 @@
 /* zb_thermostat.c - see zb_thermostat.h. Written against esp-zigbee-lib 1.6.x. */
+#include "core.h"
 #include "zb_thermostat.h"
 #include <string.h>
 #include "esp_check.h"
@@ -15,7 +16,7 @@
 #include "zb_time.h"
 #include "zb_retry.h"
 
-static const char *TAG = "zb";
+static const char *kTag = "zb";
 
 #define EP ZB_THERMOSTAT_EP
 #define SERVER ESP_ZB_ZCL_CLUSTER_SERVER_ROLE
@@ -29,71 +30,71 @@ static const char *TAG = "zb";
 #define RUNNING_COOL 0x0002
 #define RUNNING_FAN  0x0004
 
-static zb_thermostat_cbs_t s_cbs;
-static int16_t  s_boost_sp;
-static uint16_t s_boost_min;
-static uint8_t  s_boost_dir;
-static uint16_t s_swing = CTRL_SWING_DEFAULT;   /* ZB_ATTR_SWING backing store */
-static ctrl_settings_t s_settings;           /* last value known to the stack */
-static volatile link_state_t s_link = LINK_OFFLINE;
+static ZbThermostatCbs s_cbs;
+static I16  s_boostSp;
+static U16 s_boostMin;
+static U8  s_boostDir;
+static U16 s_swing = CTRL_SWING_DEFAULT;   /* kZbAttrSwing backing store */
+static CtrlSettings s_settings;           /* last value known to the stack */
+static volatile LinkState s_link = kLinkOffline;
 static bool s_started;
-static sched_cfg_t s_sched;                   /* schedule attribute backing store */
-static uint8_t s_sched_state;                 /* ZB_ATTR_SCHED_STATE backing store */
-static volatile bool s_force_settings;        /* republish mode/setpoints (e.g. rejected AUTO write) */
+static SchedCfg s_sched;                   /* schedule attribute backing store */
+static U8 s_schedState;                 /* kZbAttrSchedState backing store */
+static volatile bool s_forceSettings;        /* republish mode/setpoints (e.g. rejected AUTO write) */
 
 /* Radio failure handling. The thermostat never depends on Zigbee: a failure
- * here only changes what zb_thermostat_link() reports. */
-static volatile bool s_radio_fault;           /* stack could not be started */
-static volatile uint64_t s_alive_ms;          /* Zigbee task heartbeat (stall detection) */
-static zb_retry_t s_retry;                     /* (re)join backoff, Zigbee task only */
-static bool s_steer_pending;                   /* a (re)join attempt is scheduled or running */
+ * here only changes what ZbThermostatLink() reports. */
+static volatile bool s_radioFault;           /* stack could not be started */
+static volatile U64 s_aliveMs;          /* Zigbee task heartbeat (stall detection) */
+static ZbRetry s_retry;                     /* (re)join backoff, Zigbee task only */
+static bool s_steerPending;                   /* a (re)join attempt is scheduled or running */
 #define HEARTBEAT_MS 5000
 
-/* Time sync: local seconds since midnight at s_time_at_ms (monotonic). */
-static uint8_t s_time_fails;                  /* consecutive reads without a usable answer */
-static bool s_time_req_open;                  /* a read is out and not yet answered usefully */
-static volatile bool s_time_known;
-static uint32_t s_time_local_s;               /* ZCL UTCTime-style seconds (local) at sync */
-static uint64_t s_time_at_ms;
-static portMUX_TYPE s_time_mux = portMUX_INITIALIZER_UNLOCKED;
+/* Time sync: local seconds since midnight at s_timeAtMs (monotonic). */
+static U8 s_timeFails;                  /* consecutive reads without a usable answer */
+static bool s_timeReqOpen;                  /* a read is out and not yet answered usefully */
+static volatile bool s_timeKnown;
+static U32 s_timeLocalS;               /* ZCL UTCTime-style seconds (local) at sync */
+static U64 s_timeAtMs;
+static portMUX_TYPE s_timeMux = portMUX_INITIALIZER_UNLOCKED;
 
-static uint64_t mono_ms(void) { return (uint64_t)(esp_timer_get_time() / 1000); }
+static U64 MonoMs(void) { return (U64)(esp_timer_get_time() / 1000); }
 
 /* attribute id -> field of s_sched (NULL if not a schedule attribute) */
-static void *sched_field(sched_cfg_t *c, uint16_t id)
+static void *SchedField(SchedCfg *pC, U16 id)
 {
     switch (id) {
-    case ZB_ATTR_DAY_COOL_START:    return &c->day_cool_start;
-    case ZB_ATTR_DAY_COOL_TEMP:     return &c->day_cool;
-    case ZB_ATTR_NIGHT_COOL_START:  return &c->night_cool_start;
-    case ZB_ATTR_NIGHT_COOL_TEMP:   return &c->night_cool;
-    case ZB_ATTR_DAY_HEAT_START:    return &c->day_heat_start;
-    case ZB_ATTR_DAY_HEAT_TEMP:     return &c->day_heat;
-    case ZB_ATTR_NIGHT_HEAT_START:  return &c->night_heat_start;
-    case ZB_ATTR_NIGHT_HEAT_TEMP:   return &c->night_heat;
-    case ZB_ATTR_MORNING_BOOST_MIN: return &c->boost_min;
-    case ZB_ATTR_MORNING_BOOST_OFS: return &c->boost_offset;
+    case kZbAttrDayCoolStart:    return &pC->dayCoolStart;
+    case kZbAttrDayCoolTemp:     return &pC->dayCool;
+    case kZbAttrNightCoolStart:  return &pC->nightCoolStart;
+    case kZbAttrNightCoolTemp:   return &pC->nightCool;
+    case kZbAttrDayHeatStart:    return &pC->dayHeatStart;
+    case kZbAttrDayHeatTemp:     return &pC->dayHeat;
+    case kZbAttrNightHeatStart:  return &pC->nightHeatStart;
+    case kZbAttrNightHeatTemp:   return &pC->nightHeat;
+    case kZbAttrMorningBoostMin: return &pC->boostMin;
+    case kZbAttrMorningBoostOfs: return &pC->boostOffset;
     default:                        return NULL;
     }
 }
-static bool sched_attr_signed(uint16_t id)
+static bool SchedAttrSigned(U16 id)
 {
-    return id == ZB_ATTR_DAY_COOL_TEMP || id == ZB_ATTR_NIGHT_COOL_TEMP || id == ZB_ATTR_DAY_HEAT_TEMP ||
-           id == ZB_ATTR_NIGHT_HEAT_TEMP || id == ZB_ATTR_MORNING_BOOST_OFS;
+    return id == kZbAttrDayCoolTemp || id == kZbAttrNightCoolTemp || id == kZbAttrDayHeatTemp ||
+           id == kZbAttrNightHeatTemp || id == kZbAttrMorningBoostOfs;
 }
 
 /* ------------------------------------------------------------------ */
 /* time of day (Time cluster client -> coordinator)                    */
 /* ------------------------------------------------------------------ */
 
-static void time_request(uint8_t unused)
+static void TimeRequest(U8 unused)
 {
     (void)unused;
-    if (s_time_req_open && s_time_fails < 255) s_time_fails++;   /* last read: no or unusable answer */
-    s_time_req_open = false;
-    if (s_link == LINK_JOINED) {
+    if (s_timeReqOpen && s_timeFails < 255) s_timeFails++;   /* last read: no or unusable answer */
+    s_timeReqOpen = false;
+    if (s_link == kLinkJoined) {
         /* LocalTime (0x0007) is what we want; Time + TimeZone + DstShift is the fallback. */
-        static uint16_t ids[] = {ESP_ZB_ZCL_ATTR_TIME_TIME_ID, ESP_ZB_ZCL_ATTR_TIME_TIME_STATUS_ID, ESP_ZB_ZCL_ATTR_TIME_TIME_ZONE_ID,
+        static U16 s_ids[] = {ESP_ZB_ZCL_ATTR_TIME_TIME_ID, ESP_ZB_ZCL_ATTR_TIME_TIME_STATUS_ID, ESP_ZB_ZCL_ATTR_TIME_TIME_ZONE_ID,
                                  ESP_ZB_ZCL_ATTR_TIME_DST_SHIFT_ID, ESP_ZB_ZCL_ATTR_TIME_LOCAL_TIME_ID};
         esp_zb_zcl_read_attr_cmd_t r = {0};
         r.zcl_basic_cmd.dst_addr_u.addr_short = 0x0000;   /* coordinator */
@@ -102,64 +103,64 @@ static void time_request(uint8_t unused)
         r.address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT;
         r.clusterID = ESP_ZB_ZCL_CLUSTER_ID_TIME;
         r.direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV;
-        r.attr_number = sizeof ids / sizeof ids[0];
-        r.attr_field = ids;
-        if (esp_zb_zcl_read_attr_cmd_req(&r) == ESP_OK) s_time_req_open = true;
+        r.attr_number = sizeof s_ids / sizeof s_ids[0];
+        r.attr_field = s_ids;
+        if (esp_zb_zcl_read_attr_cmd_req(&r) == ESP_OK) s_timeReqOpen = true;
     }
     /* hourly once known (drift + DST changes); 1, 2, 5 min, then hourly while unknown */
-    esp_zb_scheduler_alarm(time_request, 0, zb_time_next_delay_ms(s_time_fails, s_time_known));
+    esp_zb_scheduler_alarm(TimeRequest, 0, ZbTimeNextDelayMs(s_timeFails, s_timeKnown));
 }
 
-static void on_time_resp(const esp_zb_zcl_cmd_read_attr_resp_message_t *m)
+static void OnTimeResp(const esp_zb_zcl_cmd_read_attr_resp_message_t *pM)
 {
-    bool have_utc = false, have_local = false, have_status = false;
-    uint8_t status = 0;
-    uint32_t utc = 0, local = 0;
-    int32_t tz = 0, dst = 0;
-    for (const esp_zb_zcl_read_attr_resp_variable_t *v = m->variables; v; v = v->next) {
-        if (v->status != ESP_ZB_ZCL_STATUS_SUCCESS || !v->attribute.data.value) continue;
-        const void *d = v->attribute.data.value;
-        switch (v->attribute.id) {
-        case ESP_ZB_ZCL_ATTR_TIME_TIME_ID:       memcpy(&utc, d, 4); have_utc = utc != 0 && utc != 0xFFFFFFFFu; break;
-        case ESP_ZB_ZCL_ATTR_TIME_TIME_STATUS_ID: status = *(const uint8_t *)d; have_status = true; break;
-        case ESP_ZB_ZCL_ATTR_TIME_TIME_ZONE_ID:  memcpy(&tz, d, 4); break;
-        case ESP_ZB_ZCL_ATTR_TIME_DST_SHIFT_ID:  memcpy(&dst, d, 4); break;
-        case ESP_ZB_ZCL_ATTR_TIME_LOCAL_TIME_ID: memcpy(&local, d, 4); have_local = local != 0 && local != 0xFFFFFFFFu; break;
+    bool haveUtc = false, haveLocal = false, haveStatus = false;
+    U8 status = 0;
+    U32 utc = 0, local = 0;
+    I32 tz = 0, dst = 0;
+    for (const esp_zb_zcl_read_attr_resp_variable_t *pV = pM->variables; pV; pV = pV->next) {
+        if (pV->status != ESP_ZB_ZCL_STATUS_SUCCESS || !pV->attribute.data.value) continue;
+        const void *pD = pV->attribute.data.value;
+        switch (pV->attribute.id) {
+        case ESP_ZB_ZCL_ATTR_TIME_TIME_ID:       memcpy(&utc, pD, 4); haveUtc = utc != 0 && utc != 0xFFFFFFFFu; break;
+        case ESP_ZB_ZCL_ATTR_TIME_TIME_STATUS_ID: status = *(const U8 *)pD; haveStatus = true; break;
+        case ESP_ZB_ZCL_ATTR_TIME_TIME_ZONE_ID:  memcpy(&tz, pD, 4); break;
+        case ESP_ZB_ZCL_ATTR_TIME_DST_SHIFT_ID:  memcpy(&dst, pD, 4); break;
+        case ESP_ZB_ZCL_ATTR_TIME_LOCAL_TIME_ID: memcpy(&local, pD, 4); haveLocal = local != 0 && local != 0xFFFFFFFFu; break;
         default: break;
         }
     }
-    if (!have_local && have_utc) { local = (uint32_t)((int64_t)utc + tz + dst); have_local = true; }
-    if (!have_local || !zb_time_acceptable(have_status, status, local) ||
-        (have_utc && !zb_time_acceptable(have_status, status, utc))) {
-        ESP_LOGW(TAG, "time sync: coordinator returned no usable time (status 0x%02x)", status);
+    if (!haveLocal && haveUtc) { local = (U32)((I64)utc + tz + dst); haveLocal = true; }
+    if (!haveLocal || !ZbTimeAcceptable(haveStatus, status, local) ||
+        (haveUtc && !ZbTimeAcceptable(haveStatus, status, utc))) {
+        ESP_LOGW(kTag, "time sync: coordinator returned no usable time (status 0x%02x)", status);
         return;   /* counted as a failure at the next attempt */
     }
-    s_time_req_open = false;
-    s_time_fails = 0;
-    portENTER_CRITICAL(&s_time_mux);
-    s_time_local_s = local;
-    s_time_at_ms = mono_ms();
-    s_time_known = true;
-    portEXIT_CRITICAL(&s_time_mux);
-    ESP_LOGI(TAG, "time sync: local %02lu:%02lu", (unsigned long)(local / 3600 % 24), (unsigned long)(local / 60 % 60));
+    s_timeReqOpen = false;
+    s_timeFails = 0;
+    portENTER_CRITICAL(&s_timeMux);
+    s_timeLocalS = local;
+    s_timeAtMs = MonoMs();
+    s_timeKnown = true;
+    portEXIT_CRITICAL(&s_timeMux);
+    ESP_LOGI(kTag, "time sync: local %02lu:%02lu", (unsigned long)(local / 3600 % 24), (unsigned long)(local / 60 % 60));
 }
 
 /* one self-rescheduling poll chain, started on the first join */
-static void time_sync_start(void)
+static void TimeSyncStart(void)
 {
-    static bool running;
-    if (running) return;
-    running = true;
-    esp_zb_scheduler_alarm(time_request, 0, 5000);
+    static bool s_running;
+    if (s_running) return;
+    s_running = true;
+    esp_zb_scheduler_alarm(TimeRequest, 0, 5000);
 }
 
-bool zb_thermostat_local_minute(uint16_t *minute)
+bool ZbThermostatLocalMinute(U16 *pMinute)
 {
-    portENTER_CRITICAL(&s_time_mux);
-    bool known = s_time_known;
-    uint64_t secs = (uint64_t)s_time_local_s + (mono_ms() - s_time_at_ms) / 1000u;
-    portEXIT_CRITICAL(&s_time_mux);
-    if (known) *minute = (uint16_t)(secs % 86400u / 60u);
+    portENTER_CRITICAL(&s_timeMux);
+    bool known = s_timeKnown;
+    U64 secs = (U64)s_timeLocalS + (MonoMs() - s_timeAtMs) / 1000u;
+    portEXIT_CRITICAL(&s_timeMux);
+    if (known) *pMinute = (U16)(secs % 86400u / 60u);
     return known;
 }
 
@@ -167,41 +168,41 @@ bool zb_thermostat_local_minute(uint16_t *minute)
 /* commissioning                                                      */
 /* ------------------------------------------------------------------ */
 
-static void commissioning_cb(uint8_t mode)
+static void CommissioningCb(U8 mode)
 {
     if (mode == ESP_ZB_BDB_MODE_NETWORK_STEERING) {
-        s_steer_pending = false;
+        s_steerPending = false;
         if (esp_zb_bdb_dev_joined()) return;          /* already back (e.g. stack rejoined by itself) */
-        if (s_link != LINK_LOST) s_link = LINK_PAIRING;
-        s_steer_pending = true;
+        if (s_link != kLinkLost) s_link = kLinkPairing;
+        s_steerPending = true;
     }
     if (esp_zb_bdb_start_top_level_commissioning(mode) != ESP_OK) {
-        ESP_LOGE(TAG, "commissioning start failed");
-        s_steer_pending = false;
+        ESP_LOGE(kTag, "commissioning start failed");
+        s_steerPending = false;
     }
 }
 
 /* schedule the next (re)join attempt; at most one outstanding */
-static void schedule_steering(uint32_t delay_ms, const char *why)
+static void ScheduleSteering(U32 delayMs, const char *pWhy)
 {
-    if (s_steer_pending) return;
-    s_steer_pending = true;
-    ESP_LOGI(TAG, "EVT zb retry in %lu ms (%s, attempt %u)", (unsigned long)delay_ms, why, (unsigned)s_retry.fails);
-    esp_zb_scheduler_alarm(commissioning_cb, ESP_ZB_BDB_MODE_NETWORK_STEERING, delay_ms);
+    if (s_steerPending) return;
+    s_steerPending = true;
+    ESP_LOGI(kTag, "EVT zb retry in %lu ms (%s, attempt %u)", (unsigned long)delayMs, pWhy, (unsigned)s_retry.fails);
+    esp_zb_scheduler_alarm(CommissioningCb, ESP_ZB_BDB_MODE_NETWORK_STEERING, delayMs);
 }
 
-static void heartbeat(uint8_t unused)
+static void Heartbeat(U8 unused)
 {
     (void)unused;
-    s_alive_ms = mono_ms();
-    esp_zb_scheduler_alarm(heartbeat, 0, HEARTBEAT_MS);
+    s_aliveMs = MonoMs();
+    esp_zb_scheduler_alarm(Heartbeat, 0, HEARTBEAT_MS);
 }
 
-void esp_zb_app_signal_handler(esp_zb_app_signal_t *sig_s)
+void esp_zb_app_signal_handler(esp_zb_app_signal_t *pSigS)
 {
-    uint32_t *p = sig_s->p_app_signal;
-    esp_err_t st = sig_s->esp_err_status;
-    esp_zb_app_signal_type_t sig = *p;
+    U32 *pP = pSigS->p_app_signal;
+    esp_err_t st = pSigS->esp_err_status;
+    esp_zb_app_signal_type_t sig = *pP;
 
     switch (sig) {
     case ESP_ZB_ZDO_SIGNAL_SKIP_STARTUP:
@@ -210,87 +211,87 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *sig_s)
     case ESP_ZB_BDB_SIGNAL_DEVICE_FIRST_START:
     case ESP_ZB_BDB_SIGNAL_DEVICE_REBOOT:
         if (st != ESP_OK) {
-            uint32_t d = zb_retry_failed(&s_retry);
-            ESP_LOGW(TAG, "stack init failed (%s), retrying in %lu ms", esp_err_to_name(st), (unsigned long)d);
-            if (!esp_zb_bdb_is_factory_new()) s_link = LINK_LOST;   /* joined before: show "lost parent", not "offline" */
-            esp_zb_scheduler_alarm(commissioning_cb, ESP_ZB_BDB_MODE_INITIALIZATION, d);
+            U32 d = ZbRetryFailed(&s_retry);
+            ESP_LOGW(kTag, "stack init failed (%s), retrying in %lu ms", esp_err_to_name(st), (unsigned long)d);
+            if (!esp_zb_bdb_is_factory_new()) s_link = kLinkLost;   /* joined before: show "lost parent", not "offline" */
+            esp_zb_scheduler_alarm(CommissioningCb, ESP_ZB_BDB_MODE_INITIALIZATION, d);
             break;
         }
         if (esp_zb_bdb_is_factory_new()) {
-            ESP_LOGI(TAG, "factory new: start network steering (pairing)");
-            s_link = LINK_PAIRING;
-            s_steer_pending = true;
+            ESP_LOGI(kTag, "factory new: start network steering (pairing)");
+            s_link = kLinkPairing;
+            s_steerPending = true;
             esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
         } else {
-            ESP_LOGI(TAG, "rejoined existing network");
-            s_link = LINK_JOINED;
-            zb_retry_joined(&s_retry, mono_ms());
-            time_sync_start();
+            ESP_LOGI(kTag, "rejoined existing network");
+            s_link = kLinkJoined;
+            ZbRetryJoined(&s_retry, MonoMs());
+            TimeSyncStart();
         }
         break;
     case ESP_ZB_BDB_SIGNAL_STEERING:
         if (st == ESP_OK) {
-            ESP_LOGI(TAG, "joined PAN 0x%04hx ch %d addr 0x%04hx", esp_zb_get_pan_id(),
+            ESP_LOGI(kTag, "joined PAN 0x%04hx ch %d addr 0x%04hx", esp_zb_get_pan_id(),
                      esp_zb_get_current_channel(), esp_zb_get_short_address());
-            s_steer_pending = false;
-            s_link = LINK_JOINED;
-            zb_retry_joined(&s_retry, mono_ms());
-            time_sync_start();
+            s_steerPending = false;
+            s_link = kLinkJoined;
+            ZbRetryJoined(&s_retry, MonoMs());
+            TimeSyncStart();
         } else {
             /* Keep trying with backoff (zb_retry.h). The thermostat works fine unpaired. */
-            s_steer_pending = false;
-            if (s_link != LINK_LOST) s_link = LINK_PAIRING;
-            schedule_steering(zb_retry_failed(&s_retry), "steering failed");
+            s_steerPending = false;
+            if (s_link != kLinkLost) s_link = kLinkPairing;
+            ScheduleSteering(ZbRetryFailed(&s_retry), "steering failed");
         }
         break;
     case ESP_ZB_ZDO_SIGNAL_LEAVE:
         /* Removed from the network (e.g. by the coordinator): go back to pairing, slowly. */
-        ESP_LOGW(TAG, "left network");
-        s_link = LINK_OFFLINE;
-        schedule_steering(zb_retry_lost(&s_retry, mono_ms()), "left network");
+        ESP_LOGW(kTag, "left network");
+        s_link = kLinkOffline;
+        ScheduleSteering(ZbRetryLost(&s_retry, MonoMs()), "left network");
         break;
     case ESP_ZB_NWK_SIGNAL_NO_ACTIVE_LINKS_LEFT:
-        ESP_LOGW(TAG, "parent lost");
-        s_link = LINK_LOST;
-        schedule_steering(zb_retry_lost(&s_retry, mono_ms()), "parent lost");
+        ESP_LOGW(kTag, "parent lost");
+        s_link = kLinkLost;
+        ScheduleSteering(ZbRetryLost(&s_retry, MonoMs()), "parent lost");
         break;
     case ESP_ZB_COMMON_SIGNAL_CAN_SLEEP:
         esp_zb_sleep_now();   /* light sleep until the next poll / timer / GPIO */
         break;
     default:
-        ESP_LOGD(TAG, "signal %s (0x%x) %s", esp_zb_zdo_signal_to_string(sig), sig, esp_err_to_name(st));
+        ESP_LOGD(kTag, "signal %s (0x%x) %s", esp_zb_zdo_signal_to_string(sig), sig, esp_err_to_name(st));
         break;
     }
 }
 
-link_state_t zb_thermostat_link(void)
+LinkState ZbThermostatLink(void)
 {
-    if (s_radio_fault) return LINK_FAULT;
-    if (s_started && zb_retry_stalled(s_alive_ms, mono_ms())) return LINK_FAULT;   /* task dead or stuck */
+    if (s_radioFault) return kLinkFault;
+    if (s_started && ZbRetryStalled(s_aliveMs, MonoMs())) return kLinkFault;   /* task dead or stuck */
     return s_link;
 }
 
 /* Never wait for the stack forever: a stalled Zigbee task must not freeze the UI/control loop. */
 #define LOCK_WAIT_MS 1000
 
-void zb_thermostat_pair(void)
+void ZbThermostatPair(void)
 {
-    if (!s_started || zb_thermostat_link() == LINK_FAULT) return;
-    if (!esp_zb_lock_acquire(pdMS_TO_TICKS(LOCK_WAIT_MS))) { ESP_LOGE(TAG, "pair: stack busy"); return; }
+    if (!s_started || ZbThermostatLink() == kLinkFault) return;
+    if (!esp_zb_lock_acquire(pdMS_TO_TICKS(LOCK_WAIT_MS))) { ESP_LOGE(kTag, "pair: stack busy"); return; }
     if (!esp_zb_bdb_dev_joined()) {
-        s_link = LINK_PAIRING;
+        s_link = kLinkPairing;
         s_retry.fails = 0;                 /* user asked: start the backoff over */
-        s_steer_pending = true;
+        s_steerPending = true;
         esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
     }
     esp_zb_lock_release();
 }
 
-void zb_thermostat_factory_reset(void)
+void ZbThermostatFactoryReset(void)
 {
     if (!s_started) return;
     if (!esp_zb_lock_acquire(pdMS_TO_TICKS(LOCK_WAIT_MS))) {
-        ESP_LOGE(TAG, "factory reset: Zigbee stack not responding, network data kept");
+        ESP_LOGE(kTag, "factory reset: Zigbee stack not responding, network data kept");
         return;   /* caller restarts anyway */
     }
     esp_zb_factory_reset();   /* erases zb_storage and reboots */
@@ -301,93 +302,93 @@ void zb_thermostat_factory_reset(void)
 /* remote attribute writes                                            */
 /* ------------------------------------------------------------------ */
 
-static esp_err_t on_set_attr(const esp_zb_zcl_set_attr_value_message_t *m)
+static esp_err_t OnSetAttr(const esp_zb_zcl_set_attr_value_message_t *pM)
 {
-    ESP_RETURN_ON_FALSE(m && m->info.status == ESP_ZB_ZCL_STATUS_SUCCESS, ESP_ERR_INVALID_ARG, TAG, "bad msg");
-    if (m->info.dst_endpoint != EP || !m->attribute.data.value) return ESP_OK;
-    const void *v = m->attribute.data.value;
-    ctrl_settings_t s = s_settings;
-    uint8_t what = ZB_SET_MODE_FAN;
+    ESP_RETURN_ON_FALSE(pM && pM->info.status == ESP_ZB_ZCL_STATUS_SUCCESS, ESP_ERR_INVALID_ARG, kTag, "bad msg");
+    if (pM->info.dst_endpoint != EP || !pM->attribute.data.value) return ESP_OK;
+    const void *pV = pM->attribute.data.value;
+    CtrlSettings s = s_settings;
+    U8 what = kZbSetModeFan;
     bool changed = false;
 
-    switch (m->info.cluster) {
+    switch (pM->info.cluster) {
     case ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT:
-        switch (m->attribute.id) {
+        switch (pM->attribute.id) {
         case ESP_ZB_ZCL_ATTR_THERMOSTAT_OCCUPIED_HEATING_SETPOINT_ID:
-            s.heat_sp = *(const int16_t *)v; what = ZB_SET_HEAT_SP; changed = true; break;
+            s.heatSp = *(const I16 *)pV; what = kZbSetHeatSp; changed = true; break;
         case ESP_ZB_ZCL_ATTR_THERMOSTAT_OCCUPIED_COOLING_SETPOINT_ID:
-            s.cool_sp = *(const int16_t *)v; what = ZB_SET_COOL_SP; changed = true; break;
+            s.coolSp = *(const I16 *)pV; what = kZbSetCoolSp; changed = true; break;
         case ESP_ZB_ZCL_ATTR_THERMOSTAT_SYSTEM_MODE_ID: {
-            uint8_t mode = *(const uint8_t *)v;
-            if (ctrl_mode_valid(mode)) { s.mode = (ctrl_mode_t)mode; changed = true; }
+            U8 mode = *(const U8 *)pV;
+            if (CtrlModeValid(mode)) { s.mode = (CtrlMode)mode; changed = true; }
             else {   /* e.g. Auto / Heat-Cool: not supported, put the real mode back */
-                ESP_LOGW(TAG, "unsupported system mode %u ignored", mode);
-                s_force_settings = true;
+                ESP_LOGW(kTag, "unsupported system mode %u ignored", mode);
+                s_forceSettings = true;
             }
             break;
         }
         case ESP_ZB_ZCL_ATTR_THERMOSTAT_LOCAL_TEMPERATURE_CALIBRATION_ID:
-            if (s_cbs.on_calibration) s_cbs.on_calibration(*(const int8_t *)v);
+            if (s_cbs.onCalibration) s_cbs.onCalibration(*(const I8 *)pV);
             break;
         }
         break;
     case ESP_ZB_ZCL_CLUSTER_ID_FAN_CONTROL:
-        if (m->attribute.id == ESP_ZB_ZCL_ATTR_FAN_CONTROL_FAN_MODE_ID) {
-            uint8_t f = *(const uint8_t *)v;
+        if (pM->attribute.id == ESP_ZB_ZCL_ATTR_FAN_CONTROL_FAN_MODE_ID) {
+            U8 f = *(const U8 *)pV;
             /* Single-speed blower: anything other than Auto means On. */
             s.fan = (f == ESP_ZB_ZCL_FAN_CONTROL_FAN_MODE_AUTO || f == ESP_ZB_ZCL_FAN_CONTROL_FAN_MODE_OFF)
-                        ? CTRL_FAN_AUTO : CTRL_FAN_ON;
+                        ? kCtrlFanAuto : kCtrlFanOn;
             changed = true;
         }
         break;
     case ZB_BOOST_CLUSTER_ID: {
-        int16_t sp = s_boost_sp; uint16_t mins = s_boost_min; uint8_t dir = s_boost_dir;
-        switch (m->attribute.id) {
-        case ZB_BOOST_ATTR_SETPOINT: sp = *(const int16_t *)v; break;
-        case ZB_BOOST_ATTR_DURATION: mins = *(const uint16_t *)v; break;
-        case ZB_BOOST_ATTR_MODE:     dir = *(const uint8_t *)v; break;
-        case ZB_BOOST_ATTR_COMMAND:
-            if (s_cbs.on_boost_command) s_cbs.on_boost_command(*(const uint8_t *)v);
+        I16 sp = s_boostSp; U16 mins = s_boostMin; U8 dir = s_boostDir;
+        switch (pM->attribute.id) {
+        case kZbBoostAttrSetpoint: sp = *(const I16 *)pV; break;
+        case kZbBoostAttrDuration: mins = *(const U16 *)pV; break;
+        case kZbBoostAttrMode:     dir = *(const U8 *)pV; break;
+        case kZbBoostAttrCommand:
+            if (s_cbs.onBoostCommand) s_cbs.onBoostCommand(*(const U8 *)pV);
             return ESP_OK;
-        case ZB_ATTR_SWING: {
-            uint16_t raw = *(const uint16_t *)v;
-            int16_t sw = ctrl_clamp_swing(raw > 1000 ? 1000 : raw);
-            if (sw != (int16_t)raw) {   /* store the clamped value so a read-back shows reality */
-                s_swing = (uint16_t)sw;
-                esp_zb_zcl_set_manufacturer_attribute_val(EP, ZB_BOOST_CLUSTER_ID, SERVER, ZB_BOOST_MANUF_CODE, ZB_ATTR_SWING,
+        case kZbAttrSwing: {
+            U16 raw = *(const U16 *)pV;
+            I16 sw = CtrlClampSwing(raw > 1000 ? 1000 : raw);
+            if (sw != (I16)raw) {   /* store the clamped value so a read-back shows reality */
+                s_swing = (U16)sw;
+                esp_zb_zcl_set_manufacturer_attribute_val(EP, ZB_BOOST_CLUSTER_ID, SERVER, ZB_BOOST_MANUF_CODE, kZbAttrSwing,
                                                           &s_swing, false);
             }
-            s_swing = (uint16_t)sw;
-            if (s_cbs.on_swing) s_cbs.on_swing(sw);
+            s_swing = (U16)sw;
+            if (s_cbs.onSwing) s_cbs.onSwing(sw);
             return ESP_OK;
         }
         default: {
-            void *f = sched_field(&s_sched, m->attribute.id);
-            if (!f) return ESP_OK;
-            sched_cfg_t c = s_sched;
-            f = sched_field(&c, m->attribute.id);
-            if (sched_attr_signed(m->attribute.id)) *(int16_t *)f = *(const int16_t *)v;
-            else                                    *(uint16_t *)f = *(const uint16_t *)v;
-            ctrl_params_t prm = CTRL_PARAMS_DEFAULT();
-            sched_sanitize(&prm, &c);
+            void *pF = SchedField(&s_sched, pM->attribute.id);
+            if (!pF) return ESP_OK;
+            SchedCfg c = s_sched;
+            pF = SchedField(&c, pM->attribute.id);
+            if (SchedAttrSigned(pM->attribute.id)) *(I16 *)pF = *(const I16 *)pV;
+            else                                    *(U16 *)pF = *(const U16 *)pV;
+            CtrlParams prm = CTRL_PARAMS_DEFAULT();
+            SchedSanitize(&prm, &c);
             s_sched = c;
             /* store the clamped value so a read-back shows reality */
             esp_zb_zcl_set_manufacturer_attribute_val(EP, ZB_BOOST_CLUSTER_ID, SERVER, ZB_BOOST_MANUF_CODE,
-                                                      m->attribute.id, sched_field(&s_sched, m->attribute.id), false);
-            if (s_cbs.on_sched) s_cbs.on_sched(&s_sched);
+                                                      pM->attribute.id, SchedField(&s_sched, pM->attribute.id), false);
+            if (s_cbs.onSched) s_cbs.onSched(&s_sched);
             return ESP_OK;
         }
         }
         if (mins < BOOST_TIMED_MIN_MIN) mins = BOOST_TIMED_MIN_MIN;
         if (mins > BOOST_TIMED_MAX_MIN) mins = BOOST_TIMED_MAX_MIN;
-        if (dir > BOOST_DIR_COOL) dir = BOOST_DIR_AUTO;
-        s_boost_sp = sp; s_boost_min = mins; s_boost_dir = dir;
-        if (s_cbs.on_boost_params) s_cbs.on_boost_params(sp, mins, dir);
+        if (dir > kBoostDirCool) dir = kBoostDirAuto;
+        s_boostSp = sp; s_boostMin = mins; s_boostDir = dir;
+        if (s_cbs.onBoostParams) s_cbs.onBoostParams(sp, mins, dir);
         return ESP_OK;
     }
     case ESP_ZB_ZCL_CLUSTER_ID_IDENTIFY:
-        if (m->attribute.id == ESP_ZB_ZCL_ATTR_IDENTIFY_IDENTIFY_TIME_ID && s_cbs.on_identify)
-            s_cbs.on_identify(*(const uint16_t *)v);
+        if (pM->attribute.id == ESP_ZB_ZCL_ATTR_IDENTIFY_IDENTIFY_TIME_ID && s_cbs.onIdentify)
+            s_cbs.onIdentify(*(const U16 *)pV);
         break;
     }
     if (changed) {
@@ -395,7 +396,7 @@ static esp_err_t on_set_attr(const esp_zb_zcl_set_attr_value_message_t *m)
          * write before the app re-publishes (e.g. mode then fan in one burst) starts
          * from it instead of the stale copy and does not undo the first write. */
         s_settings = s;
-        if (s_cbs.on_settings) s_cbs.on_settings(&s, what);
+        if (s_cbs.onSettings) s_cbs.onSettings(&s, what);
     }
     return ESP_OK;
 }
@@ -406,112 +407,112 @@ static esp_err_t on_set_attr(const esp_zb_zcl_set_attr_value_message_t *m)
 
 #define OTA_ELEMENT_HEADER_LEN 6
 #define OTA_TAG_UPGRADE_IMAGE  0x0000
-static const esp_partition_t *s_ota_part;
+static const esp_partition_t *s_pOtaPart;
 static esp_ota_handle_t s_ota;
-static bool s_ota_tag_seen;
-static uint32_t s_ota_off, s_ota_total;
+static bool s_otaTagSeen;
+static U32 s_otaOff, s_otaTotal;
 
-static esp_err_t ota_element(uint32_t total, const uint8_t *p, uint16_t n, const uint8_t **out, uint16_t *outlen)
+static esp_err_t OtaElement(U32 total, const U8 *pP, U16 n, const U8 **pOut, U16 *pOutlen)
 {
-    if (!s_ota_tag_seen) {
-        ESP_RETURN_ON_FALSE(p && n > OTA_ELEMENT_HEADER_LEN, ESP_ERR_INVALID_ARG, TAG, "bad element");
-        uint16_t tag; uint32_t len;
-        memcpy(&tag, p, 2); memcpy(&len, p + 2, 4);
-        ESP_RETURN_ON_FALSE(tag == OTA_TAG_UPGRADE_IMAGE, ESP_ERR_INVALID_ARG, TAG, "unsupported tag %u", tag);
-        ESP_RETURN_ON_FALSE(len + OTA_ELEMENT_HEADER_LEN == total, ESP_ERR_INVALID_SIZE, TAG, "bad length");
-        s_ota_tag_seen = true;
-        *out = p + OTA_ELEMENT_HEADER_LEN;
-        *outlen = n - OTA_ELEMENT_HEADER_LEN;
+    if (!s_otaTagSeen) {
+        ESP_RETURN_ON_FALSE(pP && n > OTA_ELEMENT_HEADER_LEN, ESP_ERR_INVALID_ARG, kTag, "bad element");
+        U16 tag; U32 len;
+        memcpy(&tag, pP, 2); memcpy(&len, pP + 2, 4);
+        ESP_RETURN_ON_FALSE(tag == OTA_TAG_UPGRADE_IMAGE, ESP_ERR_INVALID_ARG, kTag, "unsupported tag %u", tag);
+        ESP_RETURN_ON_FALSE(len + OTA_ELEMENT_HEADER_LEN == total, ESP_ERR_INVALID_SIZE, kTag, "bad length");
+        s_otaTagSeen = true;
+        *pOut = pP + OTA_ELEMENT_HEADER_LEN;
+        *pOutlen = n - OTA_ELEMENT_HEADER_LEN;
     } else {
-        *out = p;
-        *outlen = n;
+        *pOut = pP;
+        *pOutlen = n;
     }
     return ESP_OK;
 }
 
-static void ota_reset(void)
+static void OtaReset(void)
 {
     if (s_ota) esp_ota_abort(s_ota);
     s_ota = 0;
-    s_ota_off = s_ota_total = 0;
-    s_ota_tag_seen = false;
+    s_otaOff = s_otaTotal = 0;
+    s_otaTagSeen = false;
 }
 
-static esp_err_t on_ota(const esp_zb_zcl_ota_upgrade_value_message_t *m)
+static esp_err_t OnOta(const esp_zb_zcl_ota_upgrade_value_message_t *pM)
 {
     esp_err_t ret = ESP_OK;
-    if (m->info.status != ESP_ZB_ZCL_STATUS_SUCCESS) return ESP_OK;
-    switch (m->upgrade_status) {
+    if (pM->info.status != ESP_ZB_ZCL_STATUS_SUCCESS) return ESP_OK;
+    switch (pM->upgrade_status) {
     case ESP_ZB_ZCL_OTA_UPGRADE_STATUS_START:
-        ESP_LOGI(TAG, "OTA start");
-        ota_reset();   /* drop any handle left by an earlier failed transfer */
-        s_ota_part = esp_ota_get_next_update_partition(NULL);
-        ESP_RETURN_ON_FALSE(s_ota_part, ESP_FAIL, TAG, "no OTA partition");
-        ret = esp_ota_begin(s_ota_part, OTA_WITH_SEQUENTIAL_WRITES, &s_ota);
+        ESP_LOGI(kTag, "OTA start");
+        OtaReset();   /* drop any handle left by an earlier failed transfer */
+        s_pOtaPart = esp_ota_get_next_update_partition(NULL);
+        ESP_RETURN_ON_FALSE(s_pOtaPart, ESP_FAIL, kTag, "no OTA partition");
+        ret = esp_ota_begin(s_pOtaPart, OTA_WITH_SEQUENTIAL_WRITES, &s_ota);
         if (ret != ESP_OK) s_ota = 0;
         break;
     case ESP_ZB_ZCL_OTA_UPGRADE_STATUS_RECEIVE: {
-        s_ota_total = m->ota_header.image_size;
-        s_ota_off += m->payload_size;
-        const uint8_t *d; uint16_t n;
-        if (m->payload_size && m->payload) {
-            ret = ota_element(s_ota_total, m->payload, m->payload_size, &d, &n);
-            if (ret == ESP_OK) ret = esp_ota_write(s_ota, d, n);
-            if (ret != ESP_OK) ESP_LOGE(TAG, "OTA write failed: %s", esp_err_to_name(ret));
+        s_otaTotal = pM->ota_header.image_size;
+        s_otaOff += pM->payload_size;
+        const U8 *pD; U16 n;
+        if (pM->payload_size && pM->payload) {
+            ret = OtaElement(s_otaTotal, pM->payload, pM->payload_size, &pD, &n);
+            if (ret == ESP_OK) ret = esp_ota_write(s_ota, pD, n);
+            if (ret != ESP_OK) ESP_LOGE(kTag, "OTA write failed: %s", esp_err_to_name(ret));
         }
-        if (s_cbs.on_ota_progress && s_ota_total)
-            s_cbs.on_ota_progress((int)((uint64_t)s_ota_off * 100 / s_ota_total));
+        if (s_cbs.onOtaProgress && s_otaTotal)
+            s_cbs.onOtaProgress((int)((U64)s_otaOff * 100 / s_otaTotal));
         break;
     }
     case ESP_ZB_ZCL_OTA_UPGRADE_STATUS_CHECK:
-        ret = (s_ota_off == s_ota_total) ? ESP_OK : ESP_FAIL;
+        ret = (s_otaOff == s_otaTotal) ? ESP_OK : ESP_FAIL;
         break;
     case ESP_ZB_ZCL_OTA_UPGRADE_STATUS_FINISH:
         ret = esp_ota_end(s_ota);
         s_ota = 0;   /* esp_ota_end frees the handle even on failure */
-        if (ret != ESP_OK) { ESP_LOGE(TAG, "ota end: %s", esp_err_to_name(ret)); break; }
-        ret = esp_ota_set_boot_partition(s_ota_part);
-        if (ret != ESP_OK) { ESP_LOGE(TAG, "set boot: %s", esp_err_to_name(ret)); break; }
-        ESP_LOGW(TAG, "OTA done (v0x%08lx), rebooting", (unsigned long)m->ota_header.file_version);
-        if (s_cbs.before_ota_reboot) s_cbs.before_ota_reboot();
+        if (ret != ESP_OK) { ESP_LOGE(kTag, "ota end: %s", esp_err_to_name(ret)); break; }
+        ret = esp_ota_set_boot_partition(s_pOtaPart);
+        if (ret != ESP_OK) { ESP_LOGE(kTag, "set boot: %s", esp_err_to_name(ret)); break; }
+        ESP_LOGW(kTag, "OTA done (v0x%08lx), rebooting", (unsigned long)pM->ota_header.file_version);
+        if (s_cbs.beforeOtaReboot) s_cbs.beforeOtaReboot();
         esp_restart();
         break;
     case ESP_ZB_ZCL_OTA_UPGRADE_STATUS_ABORT:
-        ESP_LOGW(TAG, "OTA aborted");
-        ota_reset();
-        if (s_cbs.on_ota_progress) s_cbs.on_ota_progress(-1);
+        ESP_LOGW(kTag, "OTA aborted");
+        OtaReset();
+        if (s_cbs.onOtaProgress) s_cbs.onOtaProgress(-1);
         break;
     default:
         break;
     }
     if (ret != ESP_OK) {
-        ota_reset();
-        if (s_cbs.on_ota_progress) s_cbs.on_ota_progress(-1);
+        OtaReset();
+        if (s_cbs.onOtaProgress) s_cbs.onOtaProgress(-1);
     }
     return ret;
 }
 
-static esp_err_t action_handler(esp_zb_core_action_callback_id_t id, const void *msg)
+static esp_err_t ActionHandler(esp_zb_core_action_callback_id_t id, const void *pMsg)
 {
     switch (id) {
     case ESP_ZB_CORE_SET_ATTR_VALUE_CB_ID:
-        return on_set_attr((const esp_zb_zcl_set_attr_value_message_t *)msg);
+        return OnSetAttr((const esp_zb_zcl_set_attr_value_message_t *)pMsg);
     case ESP_ZB_CORE_OTA_UPGRADE_VALUE_CB_ID:
-        return on_ota((const esp_zb_zcl_ota_upgrade_value_message_t *)msg);
+        return OnOta((const esp_zb_zcl_ota_upgrade_value_message_t *)pMsg);
     case ESP_ZB_CORE_CMD_READ_ATTR_RESP_CB_ID: {
-        const esp_zb_zcl_cmd_read_attr_resp_message_t *r = msg;
-        if (r->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_TIME) on_time_resp(r);
+        const esp_zb_zcl_cmd_read_attr_resp_message_t *pR = pMsg;
+        if (pR->info.cluster == ESP_ZB_ZCL_CLUSTER_ID_TIME) OnTimeResp(pR);
         return ESP_OK;
     }
     case ESP_ZB_CORE_OTA_UPGRADE_QUERY_IMAGE_RESP_CB_ID: {
-        const esp_zb_zcl_ota_upgrade_query_image_resp_message_t *r = msg;
-        if (r->info.status == ESP_ZB_ZCL_STATUS_SUCCESS)
-            ESP_LOGI(TAG, "OTA image available: v0x%08lx, %lu bytes", (unsigned long)r->file_version,
-                     (unsigned long)r->image_size);
+        const esp_zb_zcl_ota_upgrade_query_image_resp_message_t *pR = pMsg;
+        if (pR->info.status == ESP_ZB_ZCL_STATUS_SUCCESS)
+            ESP_LOGI(kTag, "OTA image available: v0x%08lx, %lu bytes", (unsigned long)pR->file_version,
+                     (unsigned long)pR->image_size);
         return ESP_OK;   /* approve */
     }
     default:
-        ESP_LOGD(TAG, "action 0x%x", id);
+        ESP_LOGD(kTag, "action 0x%x", id);
         return ESP_OK;
     }
 }
@@ -521,132 +522,132 @@ static esp_err_t action_handler(esp_zb_core_action_callback_id_t id, const void 
 /* ------------------------------------------------------------------ */
 
 /* any failure building the data model = radio fault (no reboot loop) */
-#define TRY(x) do { esp_err_t _e = (x); if (_e != ESP_OK) { ESP_LOGE(TAG, "%s: %s", #x, esp_err_to_name(_e)); return NULL; } } while (0)
+#define TRY(x) do { esp_err_t _e = (x); if (_e != ESP_OK) { ESP_LOGE(kTag, "%s: %s", #x, esp_err_to_name(_e)); return NULL; } } while (0)
 
-static esp_zb_ep_list_t *build_endpoint(const ctrl_settings_t *init, int8_t calib)
+static esp_zb_ep_list_t *BuildEndpoint(const CtrlSettings *pInit, I8 calib)
 {
-    esp_zb_cluster_list_t *cl = esp_zb_zcl_cluster_list_create();
+    esp_zb_cluster_list_t *pCl = esp_zb_zcl_cluster_list_create();
 
     /* Basic: mains powered (0x01 = mains single phase; closest for 24 VAC) */
-    esp_zb_basic_cluster_cfg_t basic_cfg = {.zcl_version = ESP_ZB_ZCL_BASIC_ZCL_VERSION_DEFAULT_VALUE, .power_source = 0x01};
-    esp_zb_attribute_list_t *basic = esp_zb_basic_cluster_create(&basic_cfg);
-    esp_zb_basic_cluster_add_attr(basic, ESP_ZB_ZCL_ATTR_BASIC_MANUFACTURER_NAME_ID, MANUFACTURER_NAME);
-    esp_zb_basic_cluster_add_attr(basic, ESP_ZB_ZCL_ATTR_BASIC_MODEL_IDENTIFIER_ID, MODEL_ID);
-    esp_zb_basic_cluster_add_attr(basic, ESP_ZB_ZCL_ATTR_BASIC_SW_BUILD_ID, SW_BUILD_ID);
-    TRY(esp_zb_cluster_list_add_basic_cluster(cl, basic, SERVER));
+    esp_zb_basic_cluster_cfg_t basicCfg = {.zcl_version = ESP_ZB_ZCL_BASIC_ZCL_VERSION_DEFAULT_VALUE, .power_source = 0x01};
+    esp_zb_attribute_list_t *pBasic = esp_zb_basic_cluster_create(&basicCfg);
+    esp_zb_basic_cluster_add_attr(pBasic, ESP_ZB_ZCL_ATTR_BASIC_MANUFACTURER_NAME_ID, MANUFACTURER_NAME);
+    esp_zb_basic_cluster_add_attr(pBasic, ESP_ZB_ZCL_ATTR_BASIC_MODEL_IDENTIFIER_ID, MODEL_ID);
+    esp_zb_basic_cluster_add_attr(pBasic, ESP_ZB_ZCL_ATTR_BASIC_SW_BUILD_ID, SW_BUILD_ID);
+    TRY(esp_zb_cluster_list_add_basic_cluster(pCl, pBasic, SERVER));
 
-    esp_zb_identify_cluster_cfg_t id_cfg = {.identify_time = 0};
-    TRY(esp_zb_cluster_list_add_identify_cluster(cl, esp_zb_identify_cluster_create(&id_cfg), SERVER));
+    esp_zb_identify_cluster_cfg_t idCfg = {.identify_time = 0};
+    TRY(esp_zb_cluster_list_add_identify_cluster(pCl, esp_zb_identify_cluster_create(&idCfg), SERVER));
 
     /* Thermostat */
-    esp_zb_thermostat_cluster_cfg_t th_cfg = {
-        .local_temperature = (int16_t)0x8000,              /* invalid until first reading */
-        .occupied_cooling_setpoint = init->cool_sp,
-        .occupied_heating_setpoint = init->heat_sp,
+    esp_zb_thermostat_cluster_cfg_t thCfg = {
+        .local_temperature = (I16)0x8000,              /* invalid until first reading */
+        .occupied_cooling_setpoint = pInit->coolSp,
+        .occupied_heating_setpoint = pInit->heatSp,
         .control_sequence_of_operation = 0x04,             /* cooling and heating (no Auto: writes of 1 are refused) */
-        .system_mode = (uint8_t)init->mode,
+        .system_mode = (U8)pInit->mode,
     };
-    esp_zb_attribute_list_t *th = esp_zb_thermostat_cluster_create(&th_cfg);
-    ctrl_params_t p = CTRL_PARAMS_DEFAULT();
-    int16_t min_sp = p.min_sp, max_sp = p.max_sp;
-    uint16_t running = 0;
-    esp_zb_thermostat_cluster_add_attr(th, ESP_ZB_ZCL_ATTR_THERMOSTAT_ABS_MIN_HEAT_SETPOINT_LIMIT_ID, &min_sp);
-    esp_zb_thermostat_cluster_add_attr(th, ESP_ZB_ZCL_ATTR_THERMOSTAT_ABS_MAX_HEAT_SETPOINT_LIMIT_ID, &max_sp);
-    esp_zb_thermostat_cluster_add_attr(th, ESP_ZB_ZCL_ATTR_THERMOSTAT_ABS_MIN_COOL_SETPOINT_LIMIT_ID, &min_sp);
-    esp_zb_thermostat_cluster_add_attr(th, ESP_ZB_ZCL_ATTR_THERMOSTAT_ABS_MAX_COOL_SETPOINT_LIMIT_ID, &max_sp);
-    esp_zb_thermostat_cluster_add_attr(th, ESP_ZB_ZCL_ATTR_THERMOSTAT_MIN_HEAT_SETPOINT_LIMIT_ID, &min_sp);
-    esp_zb_thermostat_cluster_add_attr(th, ESP_ZB_ZCL_ATTR_THERMOSTAT_MAX_HEAT_SETPOINT_LIMIT_ID, &max_sp);
-    esp_zb_thermostat_cluster_add_attr(th, ESP_ZB_ZCL_ATTR_THERMOSTAT_MIN_COOL_SETPOINT_LIMIT_ID, &min_sp);
-    esp_zb_thermostat_cluster_add_attr(th, ESP_ZB_ZCL_ATTR_THERMOSTAT_MAX_COOL_SETPOINT_LIMIT_ID, &max_sp);
-    esp_zb_thermostat_cluster_add_attr(th, ESP_ZB_ZCL_ATTR_THERMOSTAT_LOCAL_TEMPERATURE_CALIBRATION_ID, &calib);
-    esp_zb_thermostat_cluster_add_attr(th, ESP_ZB_ZCL_ATTR_THERMOSTAT_THERMOSTAT_RUNNING_STATE_ID, &running);
-    TRY(esp_zb_cluster_list_add_thermostat_cluster(cl, th, SERVER));
+    esp_zb_attribute_list_t *pTh = esp_zb_thermostat_cluster_create(&thCfg);
+    CtrlParams p = CTRL_PARAMS_DEFAULT();
+    I16 minSp = p.minSp, maxSp = p.maxSp;
+    U16 running = 0;
+    esp_zb_thermostat_cluster_add_attr(pTh, ESP_ZB_ZCL_ATTR_THERMOSTAT_ABS_MIN_HEAT_SETPOINT_LIMIT_ID, &minSp);
+    esp_zb_thermostat_cluster_add_attr(pTh, ESP_ZB_ZCL_ATTR_THERMOSTAT_ABS_MAX_HEAT_SETPOINT_LIMIT_ID, &maxSp);
+    esp_zb_thermostat_cluster_add_attr(pTh, ESP_ZB_ZCL_ATTR_THERMOSTAT_ABS_MIN_COOL_SETPOINT_LIMIT_ID, &minSp);
+    esp_zb_thermostat_cluster_add_attr(pTh, ESP_ZB_ZCL_ATTR_THERMOSTAT_ABS_MAX_COOL_SETPOINT_LIMIT_ID, &maxSp);
+    esp_zb_thermostat_cluster_add_attr(pTh, ESP_ZB_ZCL_ATTR_THERMOSTAT_MIN_HEAT_SETPOINT_LIMIT_ID, &minSp);
+    esp_zb_thermostat_cluster_add_attr(pTh, ESP_ZB_ZCL_ATTR_THERMOSTAT_MAX_HEAT_SETPOINT_LIMIT_ID, &maxSp);
+    esp_zb_thermostat_cluster_add_attr(pTh, ESP_ZB_ZCL_ATTR_THERMOSTAT_MIN_COOL_SETPOINT_LIMIT_ID, &minSp);
+    esp_zb_thermostat_cluster_add_attr(pTh, ESP_ZB_ZCL_ATTR_THERMOSTAT_MAX_COOL_SETPOINT_LIMIT_ID, &maxSp);
+    esp_zb_thermostat_cluster_add_attr(pTh, ESP_ZB_ZCL_ATTR_THERMOSTAT_LOCAL_TEMPERATURE_CALIBRATION_ID, &calib);
+    esp_zb_thermostat_cluster_add_attr(pTh, ESP_ZB_ZCL_ATTR_THERMOSTAT_THERMOSTAT_RUNNING_STATE_ID, &running);
+    TRY(esp_zb_cluster_list_add_thermostat_cluster(pCl, pTh, SERVER));
 
     /* Fan control: On/Auto */
-    esp_zb_fan_control_cluster_cfg_t fan_cfg = {
-        .fan_mode = (uint8_t)init->fan,
+    esp_zb_fan_control_cluster_cfg_t fanCfg = {
+        .fan_mode = (U8)pInit->fan,
         .fan_mode_sequence = ESP_ZB_ZCL_FAN_CONTROL_FAN_MODE_SEQUENCE_ON_AUTO,
     };
-    TRY(esp_zb_cluster_list_add_fan_control_cluster(cl, esp_zb_fan_control_cluster_create(&fan_cfg), SERVER));
+    TRY(esp_zb_cluster_list_add_fan_control_cluster(pCl, esp_zb_fan_control_cluster_create(&fanCfg), SERVER));
 
-    esp_zb_temperature_meas_cluster_cfg_t t_cfg = {
-        .measured_value = (int16_t)0x8000, .min_value = -4500, .max_value = 13000,
+    esp_zb_temperature_meas_cluster_cfg_t tCfg = {
+        .measured_value = (I16)0x8000, .min_value = -4500, .max_value = 13000,
     };
-    TRY(esp_zb_cluster_list_add_temperature_meas_cluster(cl, esp_zb_temperature_meas_cluster_create(&t_cfg), SERVER));
+    TRY(esp_zb_cluster_list_add_temperature_meas_cluster(pCl, esp_zb_temperature_meas_cluster_create(&tCfg), SERVER));
 
-    esp_zb_humidity_meas_cluster_cfg_t h_cfg = {.measured_value = 0xFFFF, .min_value = 0, .max_value = 10000};
-    TRY(esp_zb_cluster_list_add_humidity_meas_cluster(cl, esp_zb_humidity_meas_cluster_create(&h_cfg), SERVER));
+    esp_zb_humidity_meas_cluster_cfg_t hCfg = {.measured_value = 0xFFFF, .min_value = 0, .max_value = 10000};
+    TRY(esp_zb_cluster_list_add_humidity_meas_cluster(pCl, esp_zb_humidity_meas_cluster_create(&hCfg), SERVER));
 
     /* Manufacturer-specific Boost cluster (see zb_boost.h). */
-    esp_zb_attribute_list_t *bc = esp_zb_zcl_attr_list_create(ZB_BOOST_CLUSTER_ID);
-    static uint8_t b_cmd = 0, b_state = 0, b_result = 0;
-    static uint16_t b_rem = 0;
-    const uint8_t RW = ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE | ESP_ZB_ZCL_ATTR_MANUF_SPEC;
-    const uint8_t RO = ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY | ESP_ZB_ZCL_ATTR_ACCESS_REPORTING | ESP_ZB_ZCL_ATTR_MANUF_SPEC;
-    TRY(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_SETPOINT, ZB_BOOST_MANUF_CODE,
-                                                         ESP_ZB_ZCL_ATTR_TYPE_S16, RW, &s_boost_sp));
-    TRY(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_DURATION, ZB_BOOST_MANUF_CODE,
-                                                         ESP_ZB_ZCL_ATTR_TYPE_U16, RW, &s_boost_min));
-    TRY(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_MODE, ZB_BOOST_MANUF_CODE,
-                                                         ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, RW, &s_boost_dir));
-    TRY(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_COMMAND, ZB_BOOST_MANUF_CODE,
-                                                         ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, RW, &b_cmd));
-    TRY(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_STATE, ZB_BOOST_MANUF_CODE,
-                                                         ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, RO, &b_state));
-    TRY(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_REMAINING, ZB_BOOST_MANUF_CODE,
-                                                         ESP_ZB_ZCL_ATTR_TYPE_U16, RO, &b_rem));
-    TRY(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_BOOST_ATTR_LAST_RESULT, ZB_BOOST_MANUF_CODE,
-                                                         ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, RO, &b_result));
-    TRY(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_ATTR_SWING, ZB_BOOST_MANUF_CODE,
-                                                         ESP_ZB_ZCL_ATTR_TYPE_U16, RW, &s_swing));
-    for (uint16_t id = ZB_SCHED_ATTR_FIRST; id <= ZB_SCHED_ATTR_LAST; id++)
-        TRY(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, id, ZB_BOOST_MANUF_CODE,
-                                                             sched_attr_signed(id) ? ESP_ZB_ZCL_ATTR_TYPE_S16 : ESP_ZB_ZCL_ATTR_TYPE_U16,
-                                                             RW, sched_field(&s_sched, id)));
-    TRY(esp_zb_cluster_add_manufacturer_attr(bc, ZB_BOOST_CLUSTER_ID, ZB_ATTR_SCHED_STATE, ZB_BOOST_MANUF_CODE,
-                                                         ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, RO, &s_sched_state));
-    TRY(esp_zb_cluster_list_add_custom_cluster(cl, bc, SERVER));
+    esp_zb_attribute_list_t *pBc = esp_zb_zcl_attr_list_create(ZB_BOOST_CLUSTER_ID);
+    static U8 s_bCmd = 0, s_bState = 0, s_bResult = 0;
+    static U16 s_bRem = 0;
+    const U8 rw = ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE | ESP_ZB_ZCL_ATTR_MANUF_SPEC;
+    const U8 ro = ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY | ESP_ZB_ZCL_ATTR_ACCESS_REPORTING | ESP_ZB_ZCL_ATTR_MANUF_SPEC;
+    TRY(esp_zb_cluster_add_manufacturer_attr(pBc, ZB_BOOST_CLUSTER_ID, kZbBoostAttrSetpoint, ZB_BOOST_MANUF_CODE,
+                                                         ESP_ZB_ZCL_ATTR_TYPE_S16, rw, &s_boostSp));
+    TRY(esp_zb_cluster_add_manufacturer_attr(pBc, ZB_BOOST_CLUSTER_ID, kZbBoostAttrDuration, ZB_BOOST_MANUF_CODE,
+                                                         ESP_ZB_ZCL_ATTR_TYPE_U16, rw, &s_boostMin));
+    TRY(esp_zb_cluster_add_manufacturer_attr(pBc, ZB_BOOST_CLUSTER_ID, kZbBoostAttrMode, ZB_BOOST_MANUF_CODE,
+                                                         ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, rw, &s_boostDir));
+    TRY(esp_zb_cluster_add_manufacturer_attr(pBc, ZB_BOOST_CLUSTER_ID, kZbBoostAttrCommand, ZB_BOOST_MANUF_CODE,
+                                                         ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, rw, &s_bCmd));
+    TRY(esp_zb_cluster_add_manufacturer_attr(pBc, ZB_BOOST_CLUSTER_ID, kZbBoostAttrState, ZB_BOOST_MANUF_CODE,
+                                                         ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, ro, &s_bState));
+    TRY(esp_zb_cluster_add_manufacturer_attr(pBc, ZB_BOOST_CLUSTER_ID, kZbBoostAttrRemaining, ZB_BOOST_MANUF_CODE,
+                                                         ESP_ZB_ZCL_ATTR_TYPE_U16, ro, &s_bRem));
+    TRY(esp_zb_cluster_add_manufacturer_attr(pBc, ZB_BOOST_CLUSTER_ID, kZbBoostAttrLastResult, ZB_BOOST_MANUF_CODE,
+                                                         ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, ro, &s_bResult));
+    TRY(esp_zb_cluster_add_manufacturer_attr(pBc, ZB_BOOST_CLUSTER_ID, kZbAttrSwing, ZB_BOOST_MANUF_CODE,
+                                                         ESP_ZB_ZCL_ATTR_TYPE_U16, rw, &s_swing));
+    for (U16 id = ZB_SCHED_ATTR_FIRST; id <= ZB_SCHED_ATTR_LAST; id++)
+        TRY(esp_zb_cluster_add_manufacturer_attr(pBc, ZB_BOOST_CLUSTER_ID, id, ZB_BOOST_MANUF_CODE,
+                                                             SchedAttrSigned(id) ? ESP_ZB_ZCL_ATTR_TYPE_S16 : ESP_ZB_ZCL_ATTR_TYPE_U16,
+                                                             rw, SchedField(&s_sched, id)));
+    TRY(esp_zb_cluster_add_manufacturer_attr(pBc, ZB_BOOST_CLUSTER_ID, kZbAttrSchedState, ZB_BOOST_MANUF_CODE,
+                                                         ESP_ZB_ZCL_ATTR_TYPE_8BIT_ENUM, ro, &s_schedState));
+    TRY(esp_zb_cluster_list_add_custom_cluster(pCl, pBc, SERVER));
 
     /* Time client: we read the coordinator's clock for the program schedule. */
-    esp_zb_time_cluster_cfg_t time_cfg = {0};
-    TRY(esp_zb_cluster_list_add_time_cluster(cl, esp_zb_time_cluster_create(&time_cfg),
+    esp_zb_time_cluster_cfg_t timeCfg = {0};
+    TRY(esp_zb_cluster_list_add_time_cluster(pCl, esp_zb_time_cluster_create(&timeCfg),
                                                          ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
 
     /* OTA upgrade client */
-    esp_zb_ota_cluster_cfg_t ota_cfg = {
+    esp_zb_ota_cluster_cfg_t otaCfg = {
         .ota_upgrade_file_version = FW_OTA_FILE_VERSION,
         .ota_upgrade_downloaded_file_ver = FW_OTA_FILE_VERSION,
         .ota_upgrade_manufacturer = CONFIG_THERMO_OTA_MANUFACTURER,
         .ota_upgrade_image_type = CONFIG_THERMO_OTA_IMAGE_TYPE,
     };
-    esp_zb_attribute_list_t *ota = esp_zb_ota_cluster_create(&ota_cfg);
-    esp_zb_zcl_ota_upgrade_client_variable_t ota_var = {
+    esp_zb_attribute_list_t *pOta = esp_zb_ota_cluster_create(&otaCfg);
+    esp_zb_zcl_ota_upgrade_client_variable_t otaVar = {
         .timer_query = ESP_ZB_ZCL_OTA_UPGRADE_QUERY_TIMER_COUNT_DEF,   /* minutes (1 day) */
         .hw_version = CONFIG_THERMO_HW_VERSION,
         .max_data_size = 223,
     };
-    uint16_t srv_addr = 0xffff;
-    uint8_t srv_ep = 0xff;
-    esp_zb_ota_cluster_add_attr(ota, ESP_ZB_ZCL_ATTR_OTA_UPGRADE_CLIENT_DATA_ID, &ota_var);
-    esp_zb_ota_cluster_add_attr(ota, ESP_ZB_ZCL_ATTR_OTA_UPGRADE_SERVER_ADDR_ID, &srv_addr);
-    esp_zb_ota_cluster_add_attr(ota, ESP_ZB_ZCL_ATTR_OTA_UPGRADE_SERVER_ENDPOINT_ID, &srv_ep);
-    TRY(esp_zb_cluster_list_add_ota_cluster(cl, ota, ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
+    U16 srvAddr = 0xffff;
+    U8 srvEp = 0xff;
+    esp_zb_ota_cluster_add_attr(pOta, ESP_ZB_ZCL_ATTR_OTA_UPGRADE_CLIENT_DATA_ID, &otaVar);
+    esp_zb_ota_cluster_add_attr(pOta, ESP_ZB_ZCL_ATTR_OTA_UPGRADE_SERVER_ADDR_ID, &srvAddr);
+    esp_zb_ota_cluster_add_attr(pOta, ESP_ZB_ZCL_ATTR_OTA_UPGRADE_SERVER_ENDPOINT_ID, &srvEp);
+    TRY(esp_zb_cluster_list_add_ota_cluster(pCl, pOta, ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE));
 
-    esp_zb_ep_list_t *eps = esp_zb_ep_list_create();
-    esp_zb_endpoint_config_t ep_cfg = {
+    esp_zb_ep_list_t *pEps = esp_zb_ep_list_create();
+    esp_zb_endpoint_config_t epCfg = {
         .endpoint = EP,
         .app_profile_id = ESP_ZB_AF_HA_PROFILE_ID,
         .app_device_id = ESP_ZB_HA_THERMOSTAT_DEVICE_ID,
         .app_device_version = 0,
     };
-    TRY(esp_zb_ep_list_add_ep(eps, cl, ep_cfg));
-    return eps;
+    TRY(esp_zb_ep_list_add_ep(pEps, pCl, epCfg));
+    return pEps;
 }
 
-static ctrl_settings_t s_init;
-static int8_t s_init_calib;
+static CtrlSettings s_init;
+static I8 s_initCalib;
 
-static void zb_task(void *arg)
+static void ZbTask(void *pArg)
 {
     esp_zb_cfg_t cfg = {
         .esp_zb_role = ESP_ZB_DEVICE_TYPE_ED,
@@ -660,45 +661,45 @@ static void zb_task(void *arg)
     esp_zb_init(&cfg);
     esp_zb_set_rx_on_when_idle(false);              /* sleepy end device */
     esp_zb_set_default_long_poll_interval(CONFIG_THERMO_ZB_LONG_POLL_MS);
-    esp_zb_ep_list_t *eps = build_endpoint(&s_init, s_init_calib);
-    esp_err_t err = eps ? esp_zb_device_register(eps) : ESP_FAIL;
+    esp_zb_ep_list_t *pEps = BuildEndpoint(&s_init, s_initCalib);
+    esp_err_t err = pEps ? esp_zb_device_register(pEps) : ESP_FAIL;
     if (err == ESP_OK) {
-        esp_zb_core_action_handler_register(action_handler);
+        esp_zb_core_action_handler_register(ActionHandler);
         esp_zb_set_primary_network_channel_set(ESP_ZB_TRANSCEIVER_ALL_CHANNELS_MASK);
         err = esp_zb_start(false);
     }
     if (err != ESP_OK) {
         /* No reboot: the radio stays off, the thermostat keeps working locally and shows the fault. */
-        ESP_LOGE(TAG, "EVT zb radio fault: stack start failed (%s)", esp_err_to_name(err));
-        s_radio_fault = true;
+        ESP_LOGE(kTag, "EVT zb radio fault: stack start failed (%s)", esp_err_to_name(err));
+        s_radioFault = true;
         vTaskDelete(NULL);
         return;
     }
-    s_alive_ms = mono_ms();
-    esp_zb_scheduler_alarm(heartbeat, 0, HEARTBEAT_MS);
+    s_aliveMs = MonoMs();
+    esp_zb_scheduler_alarm(Heartbeat, 0, HEARTBEAT_MS);
     s_started = true;
     esp_zb_stack_main_loop();
 }
 
-esp_err_t zb_thermostat_start(const zb_thermostat_cbs_t *cbs, const zb_thermostat_init_t *init)
+esp_err_t ZbThermostatStart(const ZbThermostatCbs *pCbs, const ZbThermostatInit *pInit)
 {
-    s_cbs = *cbs;
-    s_settings = s_init = init->s;
-    s_init_calib = init->calib;
-    s_boost_sp = init->boost_sp;
-    s_boost_min = init->boost_minutes;
-    s_boost_dir = init->boost_dir;
-    s_swing = (uint16_t)ctrl_clamp_swing(init->swing);
-    s_sched = init->sched;
+    s_cbs = *pCbs;
+    s_settings = s_init = pInit->s;
+    s_initCalib = pInit->calib;
+    s_boostSp = pInit->boostSp;
+    s_boostMin = pInit->boostMinutes;
+    s_boostDir = pInit->boostDir;
+    s_swing = (U16)CtrlClampSwing(pInit->swing);
+    s_sched = pInit->sched;
     esp_zb_platform_config_t pc = {
         .radio_config = {.radio_mode = ZB_RADIO_MODE_NATIVE},
         .host_config = {.host_connection_mode = ZB_HOST_CONNECTION_MODE_NONE},
     };
     esp_err_t err = esp_zb_platform_config(&pc);
-    if (err == ESP_OK && xTaskCreate(zb_task, "zigbee", 6144, NULL, 5, NULL) != pdPASS) err = ESP_ERR_NO_MEM;
+    if (err == ESP_OK && xTaskCreate(ZbTask, "zigbee", 6144, NULL, 5, NULL) != pdPASS) err = ESP_ERR_NO_MEM;
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "EVT zb radio fault: %s", esp_err_to_name(err));
-        s_radio_fault = true;
+        ESP_LOGE(kTag, "EVT zb radio fault: %s", esp_err_to_name(err));
+        s_radioFault = true;
     }
     return err;
 }
@@ -707,13 +708,13 @@ esp_err_t zb_thermostat_start(const zb_thermostat_cbs_t *cbs, const zb_thermosta
 /* local -> stack                                                     */
 /* ------------------------------------------------------------------ */
 
-static void set_attr(uint16_t cluster, uint16_t attr, void *v)
+static void SetAttr(U16 cluster, U16 attr, void *pV)
 {
-    esp_zb_zcl_status_t st = esp_zb_zcl_set_attribute_val(EP, cluster, SERVER, attr, v, false);
-    if (st != ESP_ZB_ZCL_STATUS_SUCCESS) ESP_LOGW(TAG, "set 0x%04x/0x%04x: %d", cluster, attr, st);
+    esp_zb_zcl_status_t st = esp_zb_zcl_set_attribute_val(EP, cluster, SERVER, attr, pV, false);
+    if (st != ESP_ZB_ZCL_STATUS_SUCCESS) ESP_LOGW(kTag, "set 0x%04x/0x%04x: %d", cluster, attr, st);
 }
 
-static void report_boost_attr(uint16_t attr)
+static void ReportBoostAttr(U16 attr)
 {
     esp_zb_zcl_report_attr_cmd_t r = {0};
     r.zcl_basic_cmd.dst_addr_u.addr_short = 0x0000;   /* coordinator (ZHA) */
@@ -726,88 +727,88 @@ static void report_boost_attr(uint16_t attr)
     r.manuf_code = ZB_BOOST_MANUF_CODE;
     r.attributeID = attr;
     esp_err_t e = esp_zb_zcl_report_attr_cmd_req(&r);
-    if (e != ESP_OK) ESP_LOGW(TAG, "boost report 0x%04x: %s", attr, esp_err_to_name(e));
+    if (e != ESP_OK) ESP_LOGW(kTag, "boost report 0x%04x: %s", attr, esp_err_to_name(e));
 }
 
-void zb_thermostat_publish(const zb_thermostat_state_t *st)
+void ZbThermostatPublish(const ZbThermostatState *pSt)
 {
     if (!s_started) return;
-    static zb_thermostat_state_t last;
-    static bool have_last;
-    if (have_last && !s_force_settings && memcmp(&last, st, sizeof *st) == 0) return;
+    static ZbThermostatState s_last;
+    static bool s_haveLast;
+    if (s_haveLast && !s_forceSettings && memcmp(&s_last, pSt, sizeof *pSt) == 0) return;
     if (!esp_zb_lock_acquire(pdMS_TO_TICKS(100))) return;   /* never block the control loop for long */
 
-    int16_t t = st->temp_valid ? st->temp : (int16_t)0x8000;
-    uint16_t h = st->rh_valid ? st->rh : 0xFFFF;
-    uint16_t running = (st->w ? RUNNING_HEAT : 0) | (st->y ? RUNNING_COOL : 0) | (st->g ? RUNNING_FAN : 0);
-    uint8_t mode = (uint8_t)st->s.mode, fan = (uint8_t)st->s.fan;
-    int16_t hs = st->s.heat_sp, cs = st->s.cool_sp;
+    I16 t = pSt->tempValid ? pSt->temp : (I16)0x8000;
+    U16 h = pSt->rhValid ? pSt->rh : 0xFFFF;
+    U16 running = (pSt->w ? RUNNING_HEAT : 0) | (pSt->y ? RUNNING_COOL : 0) | (pSt->g ? RUNNING_FAN : 0);
+    U8 mode = (U8)pSt->s.mode, fan = (U8)pSt->s.fan;
+    I16 hs = pSt->s.heatSp, cs = pSt->s.coolSp;
 
-    set_attr(ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT, ESP_ZB_ZCL_ATTR_THERMOSTAT_LOCAL_TEMPERATURE_ID, &t);
-    set_attr(ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT, ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_VALUE_ID, &t);
-    set_attr(ESP_ZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT, ESP_ZB_ZCL_ATTR_REL_HUMIDITY_MEASUREMENT_VALUE_ID, &h);
-    set_attr(ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT, ESP_ZB_ZCL_ATTR_THERMOSTAT_THERMOSTAT_RUNNING_STATE_ID, &running);
-    if (s_force_settings || memcmp(&st->s, &s_settings, sizeof s_settings) != 0) {
-        s_force_settings = false;
-        set_attr(ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT, ESP_ZB_ZCL_ATTR_THERMOSTAT_SYSTEM_MODE_ID, &mode);
-        set_attr(ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT, ESP_ZB_ZCL_ATTR_THERMOSTAT_OCCUPIED_HEATING_SETPOINT_ID, &hs);
-        set_attr(ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT, ESP_ZB_ZCL_ATTR_THERMOSTAT_OCCUPIED_COOLING_SETPOINT_ID, &cs);
-        set_attr(ESP_ZB_ZCL_CLUSTER_ID_FAN_CONTROL, ESP_ZB_ZCL_ATTR_FAN_CONTROL_FAN_MODE_ID, &fan);
-        s_settings = st->s;
+    SetAttr(ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT, ESP_ZB_ZCL_ATTR_THERMOSTAT_LOCAL_TEMPERATURE_ID, &t);
+    SetAttr(ESP_ZB_ZCL_CLUSTER_ID_TEMP_MEASUREMENT, ESP_ZB_ZCL_ATTR_TEMP_MEASUREMENT_VALUE_ID, &t);
+    SetAttr(ESP_ZB_ZCL_CLUSTER_ID_REL_HUMIDITY_MEASUREMENT, ESP_ZB_ZCL_ATTR_REL_HUMIDITY_MEASUREMENT_VALUE_ID, &h);
+    SetAttr(ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT, ESP_ZB_ZCL_ATTR_THERMOSTAT_THERMOSTAT_RUNNING_STATE_ID, &running);
+    if (s_forceSettings || memcmp(&pSt->s, &s_settings, sizeof s_settings) != 0) {
+        s_forceSettings = false;
+        SetAttr(ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT, ESP_ZB_ZCL_ATTR_THERMOSTAT_SYSTEM_MODE_ID, &mode);
+        SetAttr(ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT, ESP_ZB_ZCL_ATTR_THERMOSTAT_OCCUPIED_HEATING_SETPOINT_ID, &hs);
+        SetAttr(ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT, ESP_ZB_ZCL_ATTR_THERMOSTAT_OCCUPIED_COOLING_SETPOINT_ID, &cs);
+        SetAttr(ESP_ZB_ZCL_CLUSTER_ID_FAN_CONTROL, ESP_ZB_ZCL_ATTR_FAN_CONTROL_FAN_MODE_ID, &fan);
+        s_settings = pSt->s;
     }
     /* Boost status: write the attributes and push an explicit report to the
      * coordinator whenever they change (ZHA does not configure reporting for
      * a quirk-added manufacturer cluster by itself). */
-    struct { uint16_t id; void *v; uint8_t was_changed; } battrs[] = {
-        {ZB_BOOST_ATTR_STATE, (void *)&st->boost_state, !have_last || st->boost_state != last.boost_state},
-        {ZB_BOOST_ATTR_REMAINING, (void *)&st->boost_remaining_min,
-         !have_last || st->boost_remaining_min != last.boost_remaining_min},
-        {ZB_BOOST_ATTR_LAST_RESULT, (void *)&st->boost_last_result,
-         !have_last || st->boost_last_result != last.boost_last_result},
+    struct { U16 id; void *pV; U8 wasChanged; } battrs[] = {
+        {kZbBoostAttrState, (void *)&pSt->boostState, !s_haveLast || pSt->boostState != s_last.boostState},
+        {kZbBoostAttrRemaining, (void *)&pSt->boostRemainingMin,
+         !s_haveLast || pSt->boostRemainingMin != s_last.boostRemainingMin},
+        {kZbBoostAttrLastResult, (void *)&pSt->boostLastResult,
+         !s_haveLast || pSt->boostLastResult != s_last.boostLastResult},
     };
     /* Settings changed on the device itself: update the attribute store and report.
      * Compare with what the app published last time (not with the attribute),
      * so a stale snapshot can never undo a write that just arrived from HA. */
-    bool sp_ch = have_last && st->boost_sp != last.boost_sp && st->boost_sp != s_boost_sp;
-    bool min_ch = have_last && st->boost_minutes != last.boost_minutes && st->boost_minutes != s_boost_min;
-    bool sw_ch = have_last && st->swing != last.swing && (uint16_t)st->swing != s_swing;
-    if (sp_ch) s_boost_sp = st->boost_sp;
-    if (min_ch) s_boost_min = st->boost_minutes;
-    if (sw_ch) s_swing = (uint16_t)st->swing;
-    struct { uint16_t id; void *v; uint8_t was_changed; } sattrs[] = {
-        {ZB_BOOST_ATTR_SETPOINT, &s_boost_sp, sp_ch},
-        {ZB_BOOST_ATTR_DURATION, &s_boost_min, min_ch},
-        {ZB_ATTR_SWING, &s_swing, sw_ch},
+    bool spCh = s_haveLast && pSt->boostSp != s_last.boostSp && pSt->boostSp != s_boostSp;
+    bool minCh = s_haveLast && pSt->boostMinutes != s_last.boostMinutes && pSt->boostMinutes != s_boostMin;
+    bool swCh = s_haveLast && pSt->swing != s_last.swing && (U16)pSt->swing != s_swing;
+    if (spCh) s_boostSp = pSt->boostSp;
+    if (minCh) s_boostMin = pSt->boostMinutes;
+    if (swCh) s_swing = (U16)pSt->swing;
+    struct { U16 id; void *pV; U8 wasChanged; } sattrs[] = {
+        {kZbBoostAttrSetpoint, &s_boostSp, spCh},
+        {kZbBoostAttrDuration, &s_boostMin, minCh},
+        {kZbAttrSwing, &s_swing, swCh},
     };
     /* schedule: same rule (local changes, e.g. setpoint edits of the current period) */
-    for (uint16_t id = ZB_SCHED_ATTR_FIRST; id <= ZB_SCHED_ATTR_LAST; id++) {
-        sched_cfg_t *lc = (sched_cfg_t *)&last.sched, *nc = (sched_cfg_t *)&st->sched;
-        uint16_t a = *(uint16_t *)sched_field(nc, id), b = *(uint16_t *)sched_field(lc, id);
-        uint16_t *cur = sched_field(&s_sched, id);
-        if (!have_last || a == b || a == *cur) continue;
-        *cur = a;
-        esp_zb_zcl_set_manufacturer_attribute_val(EP, ZB_BOOST_CLUSTER_ID, SERVER, ZB_BOOST_MANUF_CODE, id, cur, false);
-        if (s_link == LINK_JOINED) report_boost_attr(id);
+    for (U16 id = ZB_SCHED_ATTR_FIRST; id <= ZB_SCHED_ATTR_LAST; id++) {
+        SchedCfg *pLc = (SchedCfg *)&s_last.sched, *pNc = (SchedCfg *)&pSt->sched;
+        U16 a = *(U16 *)SchedField(pNc, id), b = *(U16 *)SchedField(pLc, id);
+        U16 *pCur = SchedField(&s_sched, id);
+        if (!s_haveLast || a == b || a == *pCur) continue;
+        *pCur = a;
+        esp_zb_zcl_set_manufacturer_attribute_val(EP, ZB_BOOST_CLUSTER_ID, SERVER, ZB_BOOST_MANUF_CODE, id, pCur, false);
+        if (s_link == kLinkJoined) ReportBoostAttr(id);
     }
-    if (!have_last || st->sched_state != last.sched_state) {
-        s_sched_state = st->sched_state;
-        esp_zb_zcl_set_manufacturer_attribute_val(EP, ZB_BOOST_CLUSTER_ID, SERVER, ZB_BOOST_MANUF_CODE, ZB_ATTR_SCHED_STATE,
-                                                  &s_sched_state, false);
-        if (s_link == LINK_JOINED) report_boost_attr(ZB_ATTR_SCHED_STATE);
+    if (!s_haveLast || pSt->schedState != s_last.schedState) {
+        s_schedState = pSt->schedState;
+        esp_zb_zcl_set_manufacturer_attribute_val(EP, ZB_BOOST_CLUSTER_ID, SERVER, ZB_BOOST_MANUF_CODE, kZbAttrSchedState,
+                                                  &s_schedState, false);
+        if (s_link == kLinkJoined) ReportBoostAttr(kZbAttrSchedState);
     }
     for (size_t i = 0; i < sizeof sattrs / sizeof sattrs[0]; i++) {
-        if (!sattrs[i].was_changed) continue;
+        if (!sattrs[i].wasChanged) continue;
         esp_zb_zcl_set_manufacturer_attribute_val(EP, ZB_BOOST_CLUSTER_ID, SERVER, ZB_BOOST_MANUF_CODE, sattrs[i].id,
-                                                  sattrs[i].v, false);
-        if (s_link == LINK_JOINED) report_boost_attr(sattrs[i].id);
+                                                  sattrs[i].pV, false);
+        if (s_link == kLinkJoined) ReportBoostAttr(sattrs[i].id);
     }
     for (size_t i = 0; i < sizeof battrs / sizeof battrs[0]; i++) {
-        if (!battrs[i].was_changed) continue;
+        if (!battrs[i].wasChanged) continue;
         esp_zb_zcl_set_manufacturer_attribute_val(EP, ZB_BOOST_CLUSTER_ID, SERVER, ZB_BOOST_MANUF_CODE, battrs[i].id,
-                                                  battrs[i].v, false);
-        if (s_link == LINK_JOINED) report_boost_attr(battrs[i].id);
+                                                  battrs[i].pV, false);
+        if (s_link == kLinkJoined) ReportBoostAttr(battrs[i].id);
     }
     esp_zb_lock_release();
-    last = *st;
-    have_last = true;
+    s_last = *pSt;
+    s_haveLast = true;
 }

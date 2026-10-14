@@ -5,6 +5,7 @@
  * Identical readings for SENSOR_STUCK_MS mean a latched sensor or a bus
  * returning stale data; the reading is then treated as invalid (failsafe). */
 #pragma once
+#include "core.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -12,10 +13,10 @@
 
 typedef struct {
     bool     have;
-    int16_t  t;
-    uint16_t rh;
-    uint64_t since_ms;
-} sensor_stuck_t;
+    I16  t;
+    U16 rh;
+    U64 sinceMs;
+} SensorStuck;
 
 /* Feed every valid reading. Returns true while the value has been frozen for SENSOR_STUCK_MS. */
-bool sensor_stuck_update(sensor_stuck_t *s, int16_t t_c100, uint16_t rh_c100, uint64_t now_ms);
+bool SensorStuckUpdate(SensorStuck *pS, I16 tC100, U16 rhC100, U64 nowMs);

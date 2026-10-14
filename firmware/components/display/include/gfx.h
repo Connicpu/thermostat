@@ -1,6 +1,7 @@
 /* gfx.h - tiny 1-bpp drawing on a landscape 296x128 canvas that maps onto
  * the SSD1680's native 128x296 (portrait) RAM layout. Pure C (host-testable). */
 #pragma once
+#include "core.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include "font.h"
@@ -12,14 +13,14 @@
 #define EPD_FB_SIZE (EPD_NATIVE_W / 8 * EPD_NATIVE_H)   /* 4736 bytes */
 
 /* Native RAM: 1 = white, 0 = black, row-major, 16 bytes per gate line. */
-typedef struct { uint8_t buf[EPD_FB_SIZE]; } gfx_fb_t;
+typedef struct { U8 buf[EPD_FB_SIZE]; } GfxFb;
 
-void gfx_clear(gfx_fb_t *fb);                          /* all white */
-void gfx_pixel(gfx_fb_t *fb, int x, int y, bool black);
-bool gfx_get(const gfx_fb_t *fb, int x, int y);
-void gfx_fill_rect(gfx_fb_t *fb, int x, int y, int w, int h, bool black);
-void gfx_hline(gfx_fb_t *fb, int x, int y, int w);
-void gfx_vline(gfx_fb_t *fb, int x, int y, int h);
-int  gfx_text_width(const font_t *f, const char *s);
+void GfxClear(GfxFb *pFb);                          /* all white */
+void GfxPixel(GfxFb *pFb, int x, int y, bool black);
+bool GfxGet(const GfxFb *pFb, int x, int y);
+void GfxFillRect(GfxFb *pFb, int x, int y, int w, int h, bool black);
+void GfxHline(GfxFb *pFb, int x, int y, int w);
+void GfxVline(GfxFb *pFb, int x, int y, int h);
+int  GfxTextWidth(const Font *pF, const char *pS);
 /* Draws text with its top-left at (x,y); returns end x. */
-int  gfx_text(gfx_fb_t *fb, const font_t *f, int x, int y, const char *s, bool black);
+int  GfxText(GfxFb *pFb, const Font *pF, int x, int y, const char *pS, bool black);

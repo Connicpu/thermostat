@@ -1,7 +1,8 @@
-/* sht40_parse.h - pure decoding of an SHT4x 6-byte measurement frame. */
+/* Sht40Parse.h - pure decoding of an SHT4x 6-byte measurement frame. */
 #pragma once
+#include "core.h"
 #include <stdbool.h>
 #include <stdint.h>
-uint8_t sht40_crc8(const uint8_t *d, int len);
+U8 Sht40Crc8(const U8 *pD, int len);
 /* Returns false on CRC error. Outputs c°C and c%RH (0..10000). */
-bool sht40_parse(const uint8_t frame[6], int16_t *temp_c100, uint16_t *rh_c100);
+bool Sht40Parse(const U8 frame[6], I16 *pTempC100, U16 *pRhC100);

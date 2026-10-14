@@ -1,6 +1,7 @@
 /* ssd1680.c - GDEY029T94 (SSD1680, 128x296) driver, sequences per Good
  * Display's GDEY029T94 sample code / datasheet. Panel is deep-slept
  * (cmd 0x10) between updates, which is also what the datasheet asks for. */
+#include "core.h"
 #include "ssd1680.h"
 #include "board.h"
 #include "driver/spi_master.h"
@@ -8,44 +9,44 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-static const char *TAG = "epd";
+static const char *kTag = "epd";
 static spi_device_handle_t s_spi;
 static esp_err_t s_err;   /* first SPI error since the start of the current refresh */
 
-static void xfer(spi_transaction_t *t)
+static void Xfer(spi_transaction_t *pT)
 {
-    esp_err_t e = spi_device_polling_transmit(s_spi, t);
+    esp_err_t e = spi_device_polling_transmit(s_spi, pT);
     if (e != ESP_OK && s_err == ESP_OK) s_err = e;
 }
 
-static void cmd(uint8_t c)
+static void Cmd(U8 c)
 {
     gpio_set_level(BOARD_GPIO_EPD_DC, 0);
     spi_transaction_t t = {.length = 8, .tx_buffer = &c};
-    xfer(&t);
+    Xfer(&t);
 }
 
-static void data(const uint8_t *d, size_t n)
+static void Data(const U8 *pD, size_t n)
 {
     gpio_set_level(BOARD_GPIO_EPD_DC, 1);
     while (n) {
         size_t chunk = n > 2048 ? 2048 : n;
-        spi_transaction_t t = {.length = chunk * 8, .tx_buffer = d};
-        xfer(&t);
-        d += chunk;
+        spi_transaction_t t = {.length = chunk * 8, .tx_buffer = pD};
+        Xfer(&t);
+        pD += chunk;
         n -= chunk;
     }
 }
 
-static void cmd_data(uint8_t c, const uint8_t *d, size_t n) { cmd(c); data(d, n); }
-#define CMD(c, ...) do { static const uint8_t _d[] = {__VA_ARGS__}; cmd_data((c), _d, sizeof _d); } while (0)
+static void CmdData(U8 c, const U8 *pD, size_t n) { Cmd(c); Data(pD, n); }
+#define CMD(c, ...) do { static const U8 _d[] = {__VA_ARGS__}; CmdData((c), _d, sizeof _d); } while (0)
 
-static esp_err_t wait_busy(int timeout_ms)
+static esp_err_t WaitBusy(int timeoutMs)
 {
     /* BUSY high = busy. Poll with vTaskDelay so other tasks keep running. */
     for (int t = 0; gpio_get_level(BOARD_GPIO_EPD_BUSY); t += 10) {
-        if (t >= timeout_ms) {
-            ESP_LOGE(TAG, "BUSY timeout");
+        if (t >= timeoutMs) {
+            ESP_LOGE(kTag, "BUSY timeout");
             return ESP_ERR_TIMEOUT;
         }
         vTaskDelay(pdMS_TO_TICKS(10));
@@ -53,7 +54,7 @@ static esp_err_t wait_busy(int timeout_ms)
     return ESP_OK;
 }
 
-esp_err_t ssd1680_bus_init(void)
+esp_err_t Ssd1680BusInit(void)
 {
     gpio_config_t out = {
         .pin_bit_mask = (1ULL << BOARD_GPIO_EPD_DC) | (1ULL << BOARD_GPIO_EPD_RST),
@@ -83,15 +84,15 @@ esp_err_t ssd1680_bus_init(void)
     return spi_bus_add_device(SPI2_HOST, &dev, &s_spi);
 }
 
-static esp_err_t panel_init(void)
+static esp_err_t PanelInit(void)
 {
     gpio_set_level(BOARD_GPIO_EPD_RST, 0);
     vTaskDelay(pdMS_TO_TICKS(10));
     gpio_set_level(BOARD_GPIO_EPD_RST, 1);
     vTaskDelay(pdMS_TO_TICKS(10));
-    if (wait_busy(1000) != ESP_OK) return ESP_ERR_TIMEOUT;
-    cmd(0x12);                                 /* SW reset */
-    if (wait_busy(1000) != ESP_OK) return ESP_ERR_TIMEOUT;
+    if (WaitBusy(1000) != ESP_OK) return ESP_ERR_TIMEOUT;
+    Cmd(0x12);                                 /* SW reset */
+    if (WaitBusy(1000) != ESP_OK) return ESP_ERR_TIMEOUT;
     CMD(0x01, 0x27, 0x01, 0x00);               /* 296 gate lines */
     CMD(0x11, 0x03);                           /* X+, Y+ */
     CMD(0x44, 0x00, 0x0F);                     /* RAM X 0..15 (x8 = 128) */
@@ -102,32 +103,32 @@ static esp_err_t panel_init(void)
     return ESP_OK;
 }
 
-static void set_cursor(void)
+static void SetCursor(void)
 {
     CMD(0x4E, 0x00);
     CMD(0x4F, 0x00, 0x00);
 }
 
-esp_err_t ssd1680_show(const gfx_fb_t *fb, const gfx_fb_t *prev, bool full)
+esp_err_t Ssd1680Show(const GfxFb *pFb, const GfxFb *pPrev, bool full)
 {
     s_err = ESP_OK;
-    esp_err_t err = panel_init();
+    esp_err_t err = PanelInit();
     if (err != ESP_OK) return err;
     if (full) {
-        set_cursor(); cmd_data(0x24, fb->buf, EPD_FB_SIZE);   /* new image */
-        set_cursor(); cmd_data(0x26, fb->buf, EPD_FB_SIZE);   /* base for next partial */
+        SetCursor(); CmdData(0x24, pFb->buf, EPD_FB_SIZE);   /* new image */
+        SetCursor(); CmdData(0x26, pFb->buf, EPD_FB_SIZE);   /* base for next partial */
         CMD(0x22, 0xF7);
     } else {
         CMD(0x3C, 0x80);                                      /* border: VCOM (no flash) */
-        set_cursor(); cmd_data(0x26, prev->buf, EPD_FB_SIZE); /* what is on glass now */
-        set_cursor(); cmd_data(0x24, fb->buf, EPD_FB_SIZE);
+        SetCursor(); CmdData(0x26, pPrev->buf, EPD_FB_SIZE); /* what is on glass now */
+        SetCursor(); CmdData(0x24, pFb->buf, EPD_FB_SIZE);
         CMD(0x22, 0xFF);                                      /* partial (display mode 2) */
     }
-    cmd(0x20);
-    err = wait_busy(full ? 5000 : 2000);
+    Cmd(0x20);
+    err = WaitBusy(full ? 5000 : 2000);
     CMD(0x10, 0x01);                                          /* deep sleep mode 1 */
     if (err == ESP_OK && s_err != ESP_OK) {
-        ESP_LOGE(TAG, "SPI error during refresh: %s", esp_err_to_name(s_err));
+        ESP_LOGE(kTag, "SPI error during refresh: %s", esp_err_to_name(s_err));
         err = s_err;
     }
     return err;

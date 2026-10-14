@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include "esp_err.h"
 #include "driver/gpio.h"
-typedef struct sim_spi_dev *spi_device_handle_t;
+typedef struct SimSpiDev *spi_device_handle_t;
 typedef enum { SPI1_HOST = 0, SPI2_HOST = 1 } spi_host_device_t;
 typedef enum { SPI_DMA_DISABLED = 0, SPI_DMA_CH_AUTO = 3 } spi_dma_chan_t;
 typedef struct { int mosi_io_num, miso_io_num, sclk_io_num, quadwp_io_num, quadhd_io_num; int max_transfer_sz; } spi_bus_config_t;

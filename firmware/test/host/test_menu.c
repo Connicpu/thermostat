@@ -1,502 +1,503 @@
 /* Host tests for the on-device menu state machine (+ PBM previews of every screen). */
+#include "core.h"
 #include "tinytest.h"
 #include "menu.h"
 #include "buttons.h"
 #include "gfx.h"
 #include <string.h>
 
-static menu_t M;
-static menu_ctx_t C;
-static uint64_t T;
+static Menu s_m;
+static MenuCtx s_c;
+static U64 s_t;
 
-static void reset(void)
+static void Reset(void)
 {
-    menu_init(&M);
-    T = 1000;
-    C = (menu_ctx_t){.mode = CTRL_MODE_HEAT, .boost_sp = 2200, .boost_minutes = 30, .swing = 50,
-                     .fahrenheit = false, .link = LINK_JOINED, .fw_version = "0.2.0",
-                     .raw_valid = true, .raw_temp = 2263, .raw_rh = 4512, .uptime_s = 2 * 86400 + 3 * 3600 + 7 * 60,
+    MenuInit(&s_m);
+    s_t = 1000;
+    s_c = (MenuCtx){.mode = kCtrlModeHeat, .boostSp = 2200, .boostMinutes = 30, .swing = 50,
+                     .fahrenheit = false, .link = kLinkJoined, .pFwVersion = "0.2.0",
+                     .rawValid = true, .rawTemp = 2263, .rawRh = 4512, .uptimeS = 2 * 86400 + 3 * 3600 + 7 * 60,
                      .sched = SCHED_CFG_DEFAULT()};
 }
-static menu_action_t key(menu_key_t k, btn_event_t ev) { T += 300; return menu_key(&M, &C, k, ev, T); }
-static menu_action_t up(void)   { return key(MENU_KEY_UP, BTN_EV_PRESS); }
-static menu_action_t down(void) { return key(MENU_KEY_DOWN, BTN_EV_PRESS); }
-static menu_action_t sel(void)  { return key(MENU_KEY_M, BTN_EV_PRESS); }
-static void goto_item(int i) { sel(); for (int k = 0; k < i; k++) down(); }
+static MenuAction Key(MenuKey k, BtnEvent ev) { s_t += 300; return MenuOnKey(&s_m, &s_c, k, ev, s_t); }
+static MenuAction Up(void)   { return Key(kMenuKeyUp, kBtnEvPress); }
+static MenuAction Down(void) { return Key(kMenuKeyDown, kBtnEvPress); }
+static MenuAction Sel(void)  { return Key(kMenuKeyM, kBtnEvPress); }
+static void GotoItem(int i) { Sel(); for (int k = 0; k < i; k++) Down(); }
 
-static void home_keys_pass_through(void)
+static void HomeKeysPassThrough(void)
 {
-    reset();
-    CHECK_EQ(up().kind, MA_HOME_KEY);
-    CHECK_EQ(down().kind, MA_HOME_KEY);
-    CHECK_EQ(key(MENU_KEY_COMBO, BTN_EV_PRESS).kind, MA_HOME_KEY);
-    CHECK(menu_is_home(&M));
-    menu_action_t a = sel();
-    CHECK_EQ(M.st, MS_LIST);
+    Reset();
+    CHECK_EQ(Up().kind, kMaHomeKey);
+    CHECK_EQ(Down().kind, kMaHomeKey);
+    CHECK_EQ(Key(kMenuKeyCombo, kBtnEvPress).kind, kMaHomeKey);
+    CHECK(MenuIsHome(&s_m));
+    MenuAction a = Sel();
+    CHECK_EQ(s_m.st, kMsList);
     CHECK(a.redraw);
-    CHECK(!menu_is_home(&M));
+    CHECK(!MenuIsHome(&s_m));
 }
 
-static void navigation_wraps_and_back(void)
+static void NavigationWrapsAndBack(void)
 {
-    reset();
-    sel();
-    CHECK_EQ(M.cursor, MI_MODE);
-    up();                                   /* wraps to the last row */
-    CHECK_EQ(M.cursor, MI_BACK);
-    down();
-    CHECK_EQ(M.cursor, MI_MODE);
-    for (int i = 0; i < MI_BACK; i++) down();
-    menu_action_t a = sel();
-    CHECK(menu_is_home(&M));
-    CHECK(a.full_refresh);
-    CHECK_EQ(a.kind, MA_NONE);
+    Reset();
+    Sel();
+    CHECK_EQ(s_m.cursor, kMiMode);
+    Up();                                   /* wraps to the last row */
+    CHECK_EQ(s_m.cursor, kMiBack);
+    Down();
+    CHECK_EQ(s_m.cursor, kMiMode);
+    for (int i = 0; i < kMiBack; i++) Down();
+    MenuAction a = Sel();
+    CHECK(MenuIsHome(&s_m));
+    CHECK(a.fullRefresh);
+    CHECK_EQ(a.kind, kMaNone);
 }
 
-static void timeout_discards_edit(void)
+static void TimeoutDiscardsEdit(void)
 {
-    reset();
-    goto_item(MI_SWING);
-    sel();
-    CHECK_EQ(M.st, MS_EDIT_SWING);
-    up(); up();
-    CHECK_EQ(M.edit, 70);
-    CHECK_EQ(menu_tick(&M, T + MENU_TIMEOUT_MS - 1).kind, MA_NONE);
-    CHECK(!menu_is_home(&M));
-    menu_action_t a = menu_tick(&M, T + MENU_TIMEOUT_MS);
-    CHECK(menu_is_home(&M));
-    CHECK_EQ(a.kind, MA_NONE);              /* nothing saved */
-    CHECK(a.full_refresh);
-    CHECK_EQ(menu_tick(&M, T + 3 * MENU_TIMEOUT_MS).kind, MA_NONE);   /* no-op at home */
+    Reset();
+    GotoItem(kMiSwing);
+    Sel();
+    CHECK_EQ(s_m.st, kMsEditSwing);
+    Up(); Up();
+    CHECK_EQ(s_m.edit, 70);
+    CHECK_EQ(MenuTick(&s_m, s_t + MENU_TIMEOUT_MS - 1).kind, kMaNone);
+    CHECK(!MenuIsHome(&s_m));
+    MenuAction a = MenuTick(&s_m, s_t + MENU_TIMEOUT_MS);
+    CHECK(MenuIsHome(&s_m));
+    CHECK_EQ(a.kind, kMaNone);              /* nothing saved */
+    CHECK(a.fullRefresh);
+    CHECK_EQ(MenuTick(&s_m, s_t + 3 * MENU_TIMEOUT_MS).kind, kMaNone);   /* no-op at home */
 }
 
 /* Regression (found by HOOTL menu_navigation_buttons): opening the menu long after
  * the last menu key must not time out on the very next tick. */
-static void open_after_long_idle_does_not_time_out(void)
+static void OpenAfterLongIdleDoesNotTimeOut(void)
 {
-    reset();
-    T += 10 * MENU_TIMEOUT_MS;
-    sel();
-    CHECK(!menu_is_home(&M));
-    CHECK_EQ(menu_tick(&M, T + 1).kind, MA_NONE);
-    CHECK(!menu_is_home(&M));
-    sel();
-    CHECK_EQ(M.st, MS_EDIT_MODE);
+    Reset();
+    s_t += 10 * MENU_TIMEOUT_MS;
+    Sel();
+    CHECK(!MenuIsHome(&s_m));
+    CHECK_EQ(MenuTick(&s_m, s_t + 1).kind, kMaNone);
+    CHECK(!MenuIsHome(&s_m));
+    Sel();
+    CHECK_EQ(s_m.st, kMsEditMode);
 }
 
-static void edit_mode_saves(void)
+static void EditModeSaves(void)
 {
-    reset();
-    goto_item(MI_MODE);
-    sel();
-    CHECK_EQ(M.st, MS_EDIT_MODE);
-    up();                                   /* Heat -> Cool */
-    up();                                   /* -> Off (no Auto any more) */
-    menu_action_t a = sel();
-    CHECK_EQ(a.kind, MA_SET_MODE);
-    CHECK_EQ(a.value, CTRL_MODE_OFF);
-    CHECK_EQ(M.st, MS_LIST);
-    goto_item(0); /* (already in list; sel opens Mode again) */
-    CHECK_EQ(M.st, MS_EDIT_MODE);
-    up(); up(); up(); up();                 /* Heat -> wraps past Off -> Cool */
-    CHECK_EQ(sel().value, CTRL_MODE_COOL);
+    Reset();
+    GotoItem(kMiMode);
+    Sel();
+    CHECK_EQ(s_m.st, kMsEditMode);
+    Up();                                   /* Heat -> Cool */
+    Up();                                   /* -> Off (no Auto any more) */
+    MenuAction a = Sel();
+    CHECK_EQ(a.kind, kMaSetMode);
+    CHECK_EQ(a.value, kCtrlModeOff);
+    CHECK_EQ(s_m.st, kMsList);
+    GotoItem(0); /* (already in list; sel opens Mode again) */
+    CHECK_EQ(s_m.st, kMsEditMode);
+    Up(); Up(); Up(); Up();                 /* Heat -> wraps past Off -> Cool */
+    CHECK_EQ(Sel().value, kCtrlModeCool);
 }
 
-static void edit_fan_toggles(void)
+static void EditFanToggles(void)
 {
-    reset();
-    C.fan = CTRL_FAN_AUTO;
-    goto_item(MI_FAN);
-    sel();
-    CHECK_EQ(M.st, MS_EDIT_FAN);
-    menu_view_t v;
-    menu_view(&M, &C, &v);
+    Reset();
+    s_c.fan = kCtrlFanAuto;
+    GotoItem(kMiFan);
+    Sel();
+    CHECK_EQ(s_m.st, kMsEditFan);
+    MenuView v;
+    MenuGetView(&s_m, &s_c, &v);
     CHECK(strcmp(v.big, "Auto") == 0);
-    up();
-    menu_view(&M, &C, &v);
+    Up();
+    MenuGetView(&s_m, &s_c, &v);
     CHECK(strcmp(v.big, "On") == 0);
-    menu_action_t a = sel();
-    CHECK_EQ(a.kind, MA_SET_FAN);
-    CHECK_EQ(a.value, CTRL_FAN_ON);
-    CHECK_EQ(M.st, MS_LIST);
-    C.fan = CTRL_FAN_ON;
-    menu_view(&M, &C, &v);
-    CHECK(strcmp(v.value[MI_FAN], "On") == 0);
-    sel();                                  /* cursor still on Fan: reopen, starts at On */
-    down();
-    CHECK_EQ(sel().value, CTRL_FAN_AUTO);
+    MenuAction a = Sel();
+    CHECK_EQ(a.kind, kMaSetFan);
+    CHECK_EQ(a.value, kCtrlFanOn);
+    CHECK_EQ(s_m.st, kMsList);
+    s_c.fan = kCtrlFanOn;
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK(strcmp(v.value[kMiFan], "On") == 0);
+    Sel();                                  /* cursor still on Fan: reopen, starts at On */
+    Down();
+    CHECK_EQ(Sel().value, kCtrlFanAuto);
 }
 
-static void open_sched_item(int it) { goto_item(MI_SCHED); sel(); for (int k = 0; k < it; k++) down(); sel(); }
+static void OpenSchedItem(int it) { GotoItem(kMiSched); Sel(); for (int k = 0; k < it; k++) Down(); Sel(); }
 
-static void schedule_list_shows_all_knobs(void)
+static void ScheduleListShowsAllKnobs(void)
 {
-    reset();
-    goto_item(MI_SCHED); sel();
-    CHECK_EQ(M.st, MS_SCHED);
-    menu_view_t v; menu_view(&M, &C, &v);
-    CHECK_EQ(v.n_rows, SCHED_IT_COUNT + 1);
-    CHECK(strcmp(v.value[SCHED_IT_DAY_HEAT_START], "06:00") == 0);
-    CHECK(strcmp(v.value[SCHED_IT_NIGHT_HEAT_START], "22:00") == 0);
-    CHECK(strcmp(v.value[SCHED_IT_DAY_HEAT], "20.0" "\x7f" "C") == 0);
-    CHECK(strcmp(v.value[SCHED_IT_BOOST_MIN], "120 min") == 0);
-    CHECK(strcmp(v.value[SCHED_IT_BOOST_OFS], "+0.5" "\x7f" "C") == 0);
-    CHECK(strcmp(v.label[SCHED_IT_COUNT], "Back") == 0);
-    up();                                   /* wraps to Back */
-    CHECK_EQ(M.scursor, SCHED_IT_COUNT);
-    sel();
-    CHECK_EQ(M.st, MS_LIST);
+    Reset();
+    GotoItem(kMiSched); Sel();
+    CHECK_EQ(s_m.st, kMsSched);
+    MenuView v; MenuGetView(&s_m, &s_c, &v);
+    CHECK_EQ(v.nRows, kSchedItCount + 1);
+    CHECK(strcmp(v.value[kSchedItDayHeatStart], "06:00") == 0);
+    CHECK(strcmp(v.value[kSchedItNightHeatStart], "22:00") == 0);
+    CHECK(strcmp(v.value[kSchedItDayHeat], "20.0" "\x7f" "C") == 0);
+    CHECK(strcmp(v.value[kSchedItBoostMin], "120 min") == 0);
+    CHECK(strcmp(v.value[kSchedItBoostOfs], "+0.5" "\x7f" "C") == 0);
+    CHECK(strcmp(v.label[kSchedItCount], "Back") == 0);
+    Up();                                   /* wraps to Back */
+    CHECK_EQ(s_m.scursor, kSchedItCount);
+    Sel();
+    CHECK_EQ(s_m.st, kMsList);
 }
 
-static void schedule_time_steps_wrap(void)
+static void ScheduleTimeStepsWrap(void)
 {
-    reset();
-    open_sched_item(SCHED_IT_DAY_HEAT_START);
-    CHECK_EQ(M.st, MS_EDIT_SCHED);
-    CHECK_EQ(M.edit, 360);
-    up();
-    menu_view_t v; menu_view(&M, &C, &v);
+    Reset();
+    OpenSchedItem(kSchedItDayHeatStart);
+    CHECK_EQ(s_m.st, kMsEditSched);
+    CHECK_EQ(s_m.edit, 360);
+    Up();
+    MenuView v; MenuGetView(&s_m, &s_c, &v);
     CHECK(strcmp(v.big, "06:15") == 0);
-    menu_action_t a = sel();
-    CHECK_EQ(a.kind, MA_SET_SCHED);
-    CHECK_EQ(a.item, SCHED_IT_DAY_HEAT_START);
+    MenuAction a = Sel();
+    CHECK_EQ(a.kind, kMaSetSched);
+    CHECK_EQ(a.item, kSchedItDayHeatStart);
     CHECK_EQ(a.value, 375);
-    CHECK_EQ(M.st, MS_SCHED);               /* back to the schedule list */
+    CHECK_EQ(s_m.st, kMsSched);               /* back to the schedule list */
     /* midnight wrap both ways; odd stored minute snaps to the 15-min grid */
-    reset();
-    C.sched.night_cool_start = 1432;        /* 23:52 -> 23:45 */
-    open_sched_item(SCHED_IT_NIGHT_COOL_START);
-    CHECK_EQ(M.edit, 1425);
-    up();
-    CHECK_EQ(M.edit, 0);
-    menu_view(&M, &C, &v);
+    Reset();
+    s_c.sched.nightCoolStart = 1432;        /* 23:52 -> 23:45 */
+    OpenSchedItem(kSchedItNightCoolStart);
+    CHECK_EQ(s_m.edit, 1425);
+    Up();
+    CHECK_EQ(s_m.edit, 0);
+    MenuGetView(&s_m, &s_c, &v);
     CHECK(strcmp(v.big, "00:00") == 0);
-    key(MENU_KEY_DOWN, BTN_EV_PRESS);
-    CHECK_EQ(M.edit, 1425);
+    Key(kMenuKeyDown, kBtnEvPress);
+    CHECK_EQ(s_m.edit, 1425);
 }
 
-static void schedule_temp_and_boost_clamps(void)
+static void ScheduleTempAndBoostClamps(void)
 {
-    reset();
-    open_sched_item(SCHED_IT_NIGHT_HEAT);
-    CHECK_EQ(M.edit, 1800);
-    down();
-    CHECK_EQ(M.edit, 1750);                 /* 0.5 °C steps */
-    for (int i = 0; i < 40; i++) key(MENU_KEY_DOWN, BTN_EV_REPEAT);
-    CHECK_EQ(M.edit, 1000);                 /* setpoint range like Zigbee */
-    CHECK_EQ(sel().value, 1000);
-    reset();
-    open_sched_item(SCHED_IT_DAY_COOL);
-    for (int i = 0; i < 40; i++) key(MENU_KEY_UP, BTN_EV_REPEAT);
-    CHECK_EQ(M.edit, 3200);
-    reset();
-    open_sched_item(SCHED_IT_BOOST_MIN);
-    for (int i = 0; i < 30; i++) up();
-    CHECK_EQ(M.edit, SCHED_BOOST_MAX_MIN);
-    for (int i = 0; i < 30; i++) down();
-    CHECK_EQ(M.edit, 0);
-    menu_view_t v; menu_view(&M, &C, &v);
-    CHECK(strcmp(v.big_unit, "off") == 0);
-    CHECK_EQ(sel().value, 0);
-    reset();
-    open_sched_item(SCHED_IT_BOOST_OFS);
-    CHECK_EQ(M.edit, 50);
-    up();
-    CHECK_EQ(M.edit, 60);                   /* 0.1 °C steps */
-    for (int i = 0; i < 40; i++) up();
-    CHECK_EQ(M.edit, SCHED_BOOST_OFS_MAX);
-    for (int i = 0; i < 40; i++) down();
-    CHECK_EQ(M.edit, 0);
+    Reset();
+    OpenSchedItem(kSchedItNightHeat);
+    CHECK_EQ(s_m.edit, 1800);
+    Down();
+    CHECK_EQ(s_m.edit, 1750);                 /* 0.5 °C steps */
+    for (int i = 0; i < 40; i++) Key(kMenuKeyDown, kBtnEvRepeat);
+    CHECK_EQ(s_m.edit, 1000);                 /* setpoint range like Zigbee */
+    CHECK_EQ(Sel().value, 1000);
+    Reset();
+    OpenSchedItem(kSchedItDayCool);
+    for (int i = 0; i < 40; i++) Key(kMenuKeyUp, kBtnEvRepeat);
+    CHECK_EQ(s_m.edit, 3200);
+    Reset();
+    OpenSchedItem(kSchedItBoostMin);
+    for (int i = 0; i < 30; i++) Up();
+    CHECK_EQ(s_m.edit, SCHED_BOOST_MAX_MIN);
+    for (int i = 0; i < 30; i++) Down();
+    CHECK_EQ(s_m.edit, 0);
+    MenuView v; MenuGetView(&s_m, &s_c, &v);
+    CHECK(strcmp(v.bigUnit, "off") == 0);
+    CHECK_EQ(Sel().value, 0);
+    Reset();
+    OpenSchedItem(kSchedItBoostOfs);
+    CHECK_EQ(s_m.edit, 50);
+    Up();
+    CHECK_EQ(s_m.edit, 60);                   /* 0.1 °C steps */
+    for (int i = 0; i < 40; i++) Up();
+    CHECK_EQ(s_m.edit, SCHED_BOOST_OFS_MAX);
+    for (int i = 0; i < 40; i++) Down();
+    CHECK_EQ(s_m.edit, 0);
     /* °F: temps step 1 °F, offset shown converted */
-    reset();
-    C.fahrenheit = true;
-    open_sched_item(SCHED_IT_DAY_HEAT);
-    up();
-    CHECK_EQ(M.edit, menu_step_temp(2000, 1, true));
-    reset();
-    C.fahrenheit = true;
-    open_sched_item(SCHED_IT_BOOST_OFS);
-    menu_view(&M, &C, &v);
+    Reset();
+    s_c.fahrenheit = true;
+    OpenSchedItem(kSchedItDayHeat);
+    Up();
+    CHECK_EQ(s_m.edit, MenuStepTemp(2000, 1, true));
+    Reset();
+    s_c.fahrenheit = true;
+    OpenSchedItem(kSchedItBoostOfs);
+    MenuGetView(&s_m, &s_c, &v);
     CHECK(strcmp(v.big, "0.9") == 0);       /* 0.5 °C = 0.9 °F difference */
 }
 
-static void schedule_edit_timeout_discards(void)
+static void ScheduleEditTimeoutDiscards(void)
 {
-    reset();
-    open_sched_item(SCHED_IT_DAY_HEAT);
-    up(); up();
-    menu_action_t a = menu_tick(&M, T + MENU_TIMEOUT_MS);
-    CHECK_EQ(a.kind, MA_NONE);
-    CHECK(menu_is_home(&M));
+    Reset();
+    OpenSchedItem(kSchedItDayHeat);
+    Up(); Up();
+    MenuAction a = MenuTick(&s_m, s_t + MENU_TIMEOUT_MS);
+    CHECK_EQ(a.kind, kMaNone);
+    CHECK(MenuIsHome(&s_m));
 }
 
 /* menu action applied the way main.c does it: values stay within the Zigbee clamps */
-static void schedule_action_roundtrip(void)
+static void ScheduleActionRoundtrip(void)
 {
-    ctrl_params_t P = CTRL_PARAMS_DEFAULT();
-    sched_cfg_t c = SCHED_CFG_DEFAULT();
-    for (int it = 0; it < SCHED_IT_COUNT; it++) {
-        reset();
-        open_sched_item(it);
-        for (int i = 0; i < 200; i++) key(MENU_KEY_UP, BTN_EV_REPEAT);
-        menu_action_t a = sel();
-        CHECK_EQ(a.kind, MA_SET_SCHED);
-        sched_set(&c, (sched_item_t)a.item, a.value);
-        sched_cfg_t before = c;
-        sched_sanitize(&P, &c);
+    CtrlParams p = CTRL_PARAMS_DEFAULT();
+    SchedCfg c = SCHED_CFG_DEFAULT();
+    for (int it = 0; it < kSchedItCount; it++) {
+        Reset();
+        OpenSchedItem(it);
+        for (int i = 0; i < 200; i++) Key(kMenuKeyUp, kBtnEvRepeat);
+        MenuAction a = Sel();
+        CHECK_EQ(a.kind, kMaSetSched);
+        SchedSet(&c, (SchedItem)a.item, a.value);
+        SchedCfg before = c;
+        SchedSanitize(&p, &c);
         CHECK(memcmp(&before, &c, sizeof c) == 0);   /* menu never produces an out-of-range value */
     }
 }
 
-static void edit_swing_clamps(void)
+static void EditSwingClamps(void)
 {
-    reset();
-    goto_item(MI_SWING); sel();
-    for (int i = 0; i < 20; i++) up();
-    CHECK_EQ(M.edit, CTRL_SWING_MAX);
-    for (int i = 0; i < 20; i++) key(MENU_KEY_DOWN, BTN_EV_REPEAT);
-    CHECK_EQ(M.edit, CTRL_SWING_MIN);
-    up();
-    menu_action_t a = sel();
-    CHECK_EQ(a.kind, MA_SET_SWING);
+    Reset();
+    GotoItem(kMiSwing); Sel();
+    for (int i = 0; i < 20; i++) Up();
+    CHECK_EQ(s_m.edit, CTRL_SWING_MAX);
+    for (int i = 0; i < 20; i++) Key(kMenuKeyDown, kBtnEvRepeat);
+    CHECK_EQ(s_m.edit, CTRL_SWING_MIN);
+    Up();
+    MenuAction a = Sel();
+    CHECK_EQ(a.kind, kMaSetSwing);
     CHECK_EQ(a.value, 20);
 }
 
-static void edit_units(void)
+static void EditUnits(void)
 {
-    reset();
-    goto_item(MI_UNITS); sel();
-    down();
-    menu_action_t a = sel();
-    CHECK_EQ(a.kind, MA_SET_UNITS);
+    Reset();
+    GotoItem(kMiUnits); Sel();
+    Down();
+    MenuAction a = Sel();
+    CHECK_EQ(a.kind, kMaSetUnits);
     CHECK_EQ(a.value, 1);
 }
 
-static void boost_target_and_timed(void)
+static void BoostTargetAndTimed(void)
 {
-    reset();
-    goto_item(MI_BOOST); sel();
-    CHECK_EQ(M.st, MS_BOOST);
-    sel();                                  /* To target */
-    CHECK_EQ(M.st, MS_EDIT_BOOST_SP);
-    up(); up();
-    menu_action_t a = sel();
-    CHECK_EQ(a.kind, MA_BOOST_TARGET);
+    Reset();
+    GotoItem(kMiBoost); Sel();
+    CHECK_EQ(s_m.st, kMsBoost);
+    Sel();                                  /* To target */
+    CHECK_EQ(s_m.st, kMsEditBoostSp);
+    Up(); Up();
+    MenuAction a = Sel();
+    CHECK_EQ(a.kind, kMaBoostTarget);
     CHECK_EQ(a.value, 2300);
-    CHECK(menu_is_home(&M) && a.full_refresh);
+    CHECK(MenuIsHome(&s_m) && a.fullRefresh);
 
-    C.fahrenheit = true;                    /* 1 °F steps */
-    goto_item(MI_BOOST); sel(); sel();
-    up();
-    a = sel();
+    s_c.fahrenheit = true;                    /* 1 °F steps */
+    GotoItem(kMiBoost); Sel(); Sel();
+    Up();
+    a = Sel();
     CHECK_EQ(a.value, 2278);                /* 72 F -> 73 F (22.78 C) */
 
-    C.boost_minutes = 37;                   /* from HA: snaps to the 15 min grid */
-    goto_item(MI_BOOST); sel(); down(); sel();
-    CHECK_EQ(M.st, MS_EDIT_BOOST_MIN);
-    CHECK_EQ(M.edit, 30);
-    for (int i = 0; i < 10; i++) up();
-    CHECK_EQ(M.edit, 120);
-    for (int i = 0; i < 10; i++) down();
-    CHECK_EQ(M.edit, 15);
-    up();
-    a = sel();
-    CHECK_EQ(a.kind, MA_BOOST_TIMED);
+    s_c.boostMinutes = 37;                   /* from HA: snaps to the 15 min grid */
+    GotoItem(kMiBoost); Sel(); Down(); Sel();
+    CHECK_EQ(s_m.st, kMsEditBoostMin);
+    CHECK_EQ(s_m.edit, 30);
+    for (int i = 0; i < 10; i++) Up();
+    CHECK_EQ(s_m.edit, 120);
+    for (int i = 0; i < 10; i++) Down();
+    CHECK_EQ(s_m.edit, 15);
+    Up();
+    a = Sel();
+    CHECK_EQ(a.kind, kMaBoostTimed);
     CHECK_EQ(a.value, 30);
 }
 
-static void boost_cancel_only_when_active(void)
+static void BoostCancelOnlyWhenActive(void)
 {
-    reset();
-    goto_item(MI_BOOST); sel();
-    down(); down();                         /* To target, For N, Back */
-    sel();
-    CHECK_EQ(M.st, MS_LIST);                /* that was Back */
-    C.boost_active = true;
-    sel();                                  /* Boost again (cursor still on Boost) */
-    CHECK_EQ(M.st, MS_BOOST);
-    down(); down();
-    menu_action_t a = sel();
-    CHECK_EQ(a.kind, MA_BOOST_CANCEL);
-    CHECK(menu_is_home(&M));
+    Reset();
+    GotoItem(kMiBoost); Sel();
+    Down(); Down();                         /* To target, For N, Back */
+    Sel();
+    CHECK_EQ(s_m.st, kMsList);                /* that was Back */
+    s_c.boostActive = true;
+    Sel();                                  /* Boost again (cursor still on Boost) */
+    CHECK_EQ(s_m.st, kMsBoost);
+    Down(); Down();
+    MenuAction a = Sel();
+    CHECK_EQ(a.kind, kMaBoostCancel);
+    CHECK(MenuIsHome(&s_m));
 }
 
-static void zigbee_hold_to_pair(void)
+static void ZigbeeHoldToPair(void)
 {
-    reset();
-    goto_item(MI_ZIGBEE); sel();
-    CHECK_EQ(M.st, MS_ZIGBEE);
-    menu_action_t a = key(MENU_KEY_M, BTN_EV_HOLD);
-    CHECK_EQ(a.kind, MA_PAIR);
-    CHECK(menu_is_home(&M));
+    Reset();
+    GotoItem(kMiZigbee); Sel();
+    CHECK_EQ(s_m.st, kMsZigbee);
+    MenuAction a = Key(kMenuKeyM, kBtnEvHold);
+    CHECK_EQ(a.kind, kMaPair);
+    CHECK(MenuIsHome(&s_m));
     /* the rest of that hold must not escalate into the home pairing/reset path */
-    CHECK_EQ(key(MENU_KEY_M, BTN_EV_LONG).kind, MA_NONE);
-    CHECK_EQ(key(MENU_KEY_M, BTN_EV_WARN).kind, MA_NONE);
-    CHECK_EQ(key(MENU_KEY_M, BTN_EV_VLONG).kind, MA_NONE);
-    CHECK_EQ(M.st, MS_HOME);
-    key(MENU_KEY_M, BTN_EV_RELEASE);
-    sel();
-    CHECK_EQ(M.st, MS_LIST);                /* normal again */
+    CHECK_EQ(Key(kMenuKeyM, kBtnEvLong).kind, kMaNone);
+    CHECK_EQ(Key(kMenuKeyM, kBtnEvWarn).kind, kMaNone);
+    CHECK_EQ(Key(kMenuKeyM, kBtnEvVlong).kind, kMaNone);
+    CHECK_EQ(s_m.st, kMsHome);
+    Key(kMenuKeyM, kBtnEvRelease);
+    Sel();
+    CHECK_EQ(s_m.st, kMsList);                /* normal again */
     /* short M on the Zigbee screen goes back, no pairing */
-    reset(); goto_item(MI_ZIGBEE); sel();
-    CHECK_EQ(sel().kind, MA_NONE);
-    CHECK_EQ(M.st, MS_LIST);
+    Reset(); GotoItem(kMiZigbee); Sel();
+    CHECK_EQ(Sel().kind, kMaNone);
+    CHECK_EQ(s_m.st, kMsList);
 }
 
-static void info_screen(void)
+static void InfoScreen(void)
 {
-    reset();
-    goto_item(MI_INFO); sel();
-    CHECK_EQ(M.st, MS_INFO);
-    menu_view_t v; menu_view(&M, &C, &v);
-    CHECK_EQ(v.kind, VIEW_TEXT);
+    Reset();
+    GotoItem(kMiInfo); Sel();
+    CHECK_EQ(s_m.st, kMsInfo);
+    MenuView v; MenuGetView(&s_m, &s_c, &v);
+    CHECK_EQ(v.kind, kViewText);
     CHECK(!strcmp(v.value[0], "0.2.0"));
     CHECK(!strcmp(v.value[1], "22.63\x7f" "C"));
     CHECK(!strcmp(v.value[2], "45.12%"));
     CHECK(!strcmp(v.value[3], "2d 03:07"));
-    sel();
-    CHECK_EQ(M.st, MS_LIST);
+    Sel();
+    CHECK_EQ(s_m.st, kMsList);
 }
 
 /* Drive the real button debouncer with a held MODE key and feed its events to the menu. */
-static menu_action_t hold_m(int ms, bool release, int *n_pair, int *n_reset)
+static MenuAction HoldM(int ms, bool release, int *pNPair, int *pNReset)
 {
-    btn_t b; btn_init(&b, false);
-    for (int t = 0; t < 50; t += BTN_TICK_MS) btn_tick(&b, false);   /* key seen released after boot */
-    menu_action_t last = {0};
+    Btn b; BtnInit(&b, false);
+    for (int t = 0; t < 50; t += BTN_TICK_MS) BtnTick(&b, false);   /* key seen released after boot */
+    MenuAction last = {0};
     for (int t = 0; t < ms + (release ? 200 : 0); t += BTN_TICK_MS) {
-        btn_event_t e = btn_tick(&b, t < ms);
-        T += BTN_TICK_MS;
-        if (e == BTN_EV_NONE) continue;
-        menu_action_t a = menu_key(&M, &C, MENU_KEY_M, e, T);
-        if (a.kind == MA_PAIR) (*n_pair)++;
-        if (a.kind == MA_FACTORY_RESET) (*n_reset)++;
-        if (a.kind != MA_NONE || a.redraw) last = a;
+        BtnEvent e = BtnTick(&b, t < ms);
+        s_t += BTN_TICK_MS;
+        if (e == kBtnEvNone) continue;
+        MenuAction a = MenuOnKey(&s_m, &s_c, kMenuKeyM, e, s_t);
+        if (a.kind == kMaPair) (*pNPair)++;
+        if (a.kind == kMaFactoryReset) (*pNReset)++;
+        if (a.kind != kMaNone || a.redraw) last = a;
     }
     return last;
 }
 
-static void mode_hold_timings(void)
+static void ModeHoldTimings(void)
 {
     int p, r;
-    menu_view_t v;
-    reset(); p = r = 0;
-    hold_m(800, true, &p, &r);              /* short press: menu */
-    CHECK_EQ(M.st, MS_LIST); CHECK_EQ(p, 0);
+    MenuView v;
+    Reset(); p = r = 0;
+    HoldM(800, true, &p, &r);              /* short press: menu */
+    CHECK_EQ(s_m.st, kMsList); CHECK_EQ(p, 0);
 
-    reset(); p = r = 0;
-    hold_m(3000, true, &p, &r);             /* 3 s: nothing */
-    CHECK(M.st == MS_HOME && p == 0 && r == 0);
+    Reset(); p = r = 0;
+    HoldM(3000, true, &p, &r);             /* 3 s: nothing */
+    CHECK(s_m.st == kMsHome && p == 0 && r == 0);
 
-    reset(); p = r = 0;
-    hold_m(5200, false, &p, &r);            /* reach 5 s: banner, no pairing yet */
-    CHECK_EQ(M.st, MS_HOLD_PAIR); CHECK_EQ(p, 0);
-    menu_view(&M, &C, &v); CHECK_EQ(v.kind, VIEW_HOME_BANNER);
+    Reset(); p = r = 0;
+    HoldM(5200, false, &p, &r);            /* reach 5 s: banner, no pairing yet */
+    CHECK_EQ(s_m.st, kMsHoldPair); CHECK_EQ(p, 0);
+    MenuGetView(&s_m, &s_c, &v); CHECK_EQ(v.kind, kViewHomeBanner);
 
-    reset(); p = r = 0;
-    hold_m(6500, true, &p, &r);             /* release between 5 and 8 s: pair once */
-    CHECK_EQ(p, 1); CHECK_EQ(r, 0); CHECK_EQ(M.st, MS_HOME);
+    Reset(); p = r = 0;
+    HoldM(6500, true, &p, &r);             /* release between 5 and 8 s: pair once */
+    CHECK_EQ(p, 1); CHECK_EQ(r, 0); CHECK_EQ(s_m.st, kMsHome);
 
-    reset(); p = r = 0;
-    menu_action_t a = hold_m(8200, false, &p, &r);   /* 8 s: warning, full refresh */
-    CHECK_EQ(M.st, MS_HOLD_RESET); CHECK(a.full_refresh); CHECK_EQ(p, 0);
-    menu_view(&M, &C, &v); CHECK_EQ(v.kind, VIEW_WARNING);
+    Reset(); p = r = 0;
+    MenuAction a = HoldM(8200, false, &p, &r);   /* 8 s: warning, full refresh */
+    CHECK_EQ(s_m.st, kMsHoldReset); CHECK(a.fullRefresh); CHECK_EQ(p, 0);
+    MenuGetView(&s_m, &s_c, &v); CHECK_EQ(v.kind, kViewWarning);
 
-    reset(); p = r = 0;
-    a = hold_m(12000, true, &p, &r);        /* release before 15 s: cancelled, screen restored */
-    CHECK_EQ(p, 0); CHECK_EQ(r, 0); CHECK_EQ(M.st, MS_HOME); CHECK(a.full_refresh);
+    Reset(); p = r = 0;
+    a = HoldM(12000, true, &p, &r);        /* release before 15 s: cancelled, screen restored */
+    CHECK_EQ(p, 0); CHECK_EQ(r, 0); CHECK_EQ(s_m.st, kMsHome); CHECK(a.fullRefresh);
 
-    reset(); p = r = 0;
-    hold_m(15100, true, &p, &r);            /* 15 s: reset, never pairing */
+    Reset(); p = r = 0;
+    HoldM(15100, true, &p, &r);            /* 15 s: reset, never pairing */
     CHECK_EQ(r, 1); CHECK_EQ(p, 0);
 
-    reset(); p = r = 0;                     /* holds inside the menu do nothing dangerous */
-    sel();
-    hold_m(16000, true, &p, &r);
-    CHECK(p == 0 && r == 0 && M.st == MS_LIST);
+    Reset(); p = r = 0;                     /* holds inside the menu do nothing dangerous */
+    Sel();
+    HoldM(16000, true, &p, &r);
+    CHECK(p == 0 && r == 0 && s_m.st == kMsList);
 }
 
-static void step_temp(void)
+static void StepTemp(void)
 {
-    CHECK_EQ(menu_step_temp(2010, 1, false), 2050);
-    CHECK_EQ(menu_step_temp(2000, -1, false), 1950);
-    CHECK_EQ(menu_step_temp(2000, 1, true), 2056);      /* 68 F -> 69 F */
+    CHECK_EQ(MenuStepTemp(2010, 1, false), 2050);
+    CHECK_EQ(MenuStepTemp(2000, -1, false), 1950);
+    CHECK_EQ(MenuStepTemp(2000, 1, true), 2056);      /* 68 F -> 69 F */
 }
 
 /* ---- previews ---- */
-static void write_pbm(const gfx_fb_t *fb, const char *name)
+static void WritePbm(const GfxFb *pFb, const char *pName)
 {
-    FILE *f = fopen(name, "w");
-    if (!f) return;
-    fprintf(f, "P1\n%d %d\n", GFX_W, GFX_H);
-    for (int y = 0; y < GFX_H; y++) { for (int x = 0; x < GFX_W; x++) fputc(gfx_get(fb, x, y) ? '1' : '0', f); fputc('\n', f); }
-    fclose(f);
+    FILE *pF = fopen(pName, "w");
+    if (!pF) return;
+    fprintf(pF, "P1\n%d %d\n", GFX_W, GFX_H);
+    for (int y = 0; y < GFX_H; y++) { for (int x = 0; x < GFX_W; x++) fputc(GfxGet(pFb, x, y) ? '1' : '0', pF); fputc('\n', pF); }
+    fclose(pF);
 }
 
-static void shot(const char *name)
+static void Shot(const char *pName)
 {
-    static gfx_fb_t fb;
-    display_model_t m;
+    static GfxFb s_fb;
+    DisplayModel m;
     memset(&m, 0, sizeof m);
-    m.temp_valid = true; m.temp = 2150; m.rh_valid = true; m.rh = 4500;
-    m.s = (ctrl_settings_t){.mode = CTRL_MODE_HEAT, .fan = CTRL_FAN_AUTO, .heat_sp = 2100, .cool_sp = 2450};
-    m.link = LINK_JOINED; m.fahrenheit = C.fahrenheit; m.swing = C.swing;
-    menu_view(&M, &C, &m.view);
-    display_render(&fb, &m);
+    m.tempValid = true; m.temp = 2150; m.rhValid = true; m.rh = 4500;
+    m.s = (CtrlSettings){.mode = kCtrlModeHeat, .fan = kCtrlFanAuto, .heatSp = 2100, .coolSp = 2450};
+    m.link = kLinkJoined; m.fahrenheit = s_c.fahrenheit; m.swing = s_c.swing;
+    MenuGetView(&s_m, &s_c, &m.view);
+    DisplayRender(&s_fb, &m);
     /* nothing drawn past the right edge in list/text screens except highlight/scroll marks */
-    write_pbm(&fb, name);
+    WritePbm(&s_fb, pName);
 }
 
-static void render_menu_previews(void)
+static void RenderMenuPreviews(void)
 {
-    reset();
-    sel();                                  shot("menu_main.pbm");
-    for (int i = 0; i < 5; i++) down();
-    shot("menu_main_scrolled.pbm");
-    reset(); goto_item(MI_MODE); sel();     shot("menu_mode.pbm");
-    reset(); C.boost_active = true; goto_item(MI_BOOST); sel(); shot("menu_boost.pbm");
-    sel();                                  shot("menu_boost_target.pbm");
-    reset(); goto_item(MI_BOOST); sel(); down(); sel(); shot("menu_boost_minutes.pbm");
-    reset(); C.fahrenheit = true; goto_item(MI_SWING); sel(); shot("menu_swing_f.pbm");
-    reset(); goto_item(MI_UNITS); sel();    shot("menu_units.pbm");
-    reset(); goto_item(MI_SCHED); sel();    shot("menu_schedule.pbm");
-    for (int i = 0; i < 5; i++) down();
-    shot("menu_schedule_scrolled.pbm");
-    reset(); open_sched_item(SCHED_IT_DAY_HEAT_START); shot("menu_schedule_time.pbm");
-    reset(); open_sched_item(SCHED_IT_NIGHT_HEAT); shot("menu_schedule_temp.pbm");
-    reset(); open_sched_item(SCHED_IT_BOOST_MIN); shot("menu_schedule_boost.pbm");
-    reset(); open_sched_item(SCHED_IT_BOOST_OFS); shot("menu_schedule_offset.pbm");
-    reset(); goto_item(MI_ZIGBEE); sel();   shot("menu_zigbee.pbm");
-    reset(); goto_item(MI_INFO); sel();     shot("menu_info.pbm");
-    reset(); M.st = MS_HOLD_PAIR;           shot("menu_hold_pair.pbm");
-    reset(); M.st = MS_HOLD_RESET;          shot("menu_reset_warning.pbm");
+    Reset();
+    Sel();                                  Shot("menu_main.pbm");
+    for (int i = 0; i < 5; i++) Down();
+    Shot("menu_main_scrolled.pbm");
+    Reset(); GotoItem(kMiMode); Sel();     Shot("menu_mode.pbm");
+    Reset(); s_c.boostActive = true; GotoItem(kMiBoost); Sel(); Shot("menu_boost.pbm");
+    Sel();                                  Shot("menu_boost_target.pbm");
+    Reset(); GotoItem(kMiBoost); Sel(); Down(); Sel(); Shot("menu_boost_minutes.pbm");
+    Reset(); s_c.fahrenheit = true; GotoItem(kMiSwing); Sel(); Shot("menu_swing_f.pbm");
+    Reset(); GotoItem(kMiUnits); Sel();    Shot("menu_units.pbm");
+    Reset(); GotoItem(kMiSched); Sel();    Shot("menu_schedule.pbm");
+    for (int i = 0; i < 5; i++) Down();
+    Shot("menu_schedule_scrolled.pbm");
+    Reset(); OpenSchedItem(kSchedItDayHeatStart); Shot("menu_schedule_time.pbm");
+    Reset(); OpenSchedItem(kSchedItNightHeat); Shot("menu_schedule_temp.pbm");
+    Reset(); OpenSchedItem(kSchedItBoostMin); Shot("menu_schedule_boost.pbm");
+    Reset(); OpenSchedItem(kSchedItBoostOfs); Shot("menu_schedule_offset.pbm");
+    Reset(); GotoItem(kMiZigbee); Sel();   Shot("menu_zigbee.pbm");
+    Reset(); GotoItem(kMiInfo); Sel();     Shot("menu_info.pbm");
+    Reset(); s_m.st = kMsHoldPair;           Shot("menu_hold_pair.pbm");
+    Reset(); s_m.st = kMsHoldReset;          Shot("menu_reset_warning.pbm");
     /* every label/value must fit: check the text in the list view is not clipped into the value column */
-    reset(); sel();
-    menu_view_t v; menu_view(&M, &C, &v);
-    CHECK_EQ(v.n_rows, MI_COUNT);
+    Reset(); Sel();
+    MenuView v; MenuGetView(&s_m, &s_c, &v);
+    CHECK_EQ(v.nRows, kMiCount);
 }
 
 int main(void)
 {
-    RUN(home_keys_pass_through);
-    RUN(navigation_wraps_and_back);
-    RUN(timeout_discards_edit);
-    RUN(open_after_long_idle_does_not_time_out);
-    RUN(edit_mode_saves);
-    RUN(edit_fan_toggles);
-    RUN(schedule_list_shows_all_knobs);
-    RUN(schedule_time_steps_wrap);
-    RUN(schedule_temp_and_boost_clamps);
-    RUN(schedule_edit_timeout_discards);
-    RUN(schedule_action_roundtrip);
-    RUN(edit_swing_clamps);
-    RUN(edit_units);
-    RUN(boost_target_and_timed);
-    RUN(boost_cancel_only_when_active);
-    RUN(zigbee_hold_to_pair);
-    RUN(info_screen);
-    RUN(mode_hold_timings);
-    RUN(step_temp);
-    RUN(render_menu_previews);
+    RUN(HomeKeysPassThrough);
+    RUN(NavigationWrapsAndBack);
+    RUN(TimeoutDiscardsEdit);
+    RUN(OpenAfterLongIdleDoesNotTimeOut);
+    RUN(EditModeSaves);
+    RUN(EditFanToggles);
+    RUN(ScheduleListShowsAllKnobs);
+    RUN(ScheduleTimeStepsWrap);
+    RUN(ScheduleTempAndBoostClamps);
+    RUN(ScheduleEditTimeoutDiscards);
+    RUN(ScheduleActionRoundtrip);
+    RUN(EditSwingClamps);
+    RUN(EditUnits);
+    RUN(BoostTargetAndTimed);
+    RUN(BoostCancelOnlyWhenActive);
+    RUN(ZigbeeHoldToPair);
+    RUN(InfoScreen);
+    RUN(ModeHoldTimings);
+    RUN(StepTemp);
+    RUN(RenderMenuPreviews);
     DONE();
 }

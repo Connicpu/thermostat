@@ -30,7 +30,7 @@ typedef int esp_err_t;
 #define ESP_ERR_OTA_ROLLBACK_INVALID_STATE (ESP_ERR_OTA_BASE + 0x05)
 #define ESP_ERR_OTA_ROLLBACK_FAILED (ESP_ERR_OTA_BASE + 0x08)
 const char *esp_err_to_name(esp_err_t code);
-void sim_abort(const char *why, const char *file, int line);
+void SimAbort(const char *why, const char *file, int line);
 #define ESP_ERROR_CHECK(x) do { esp_err_t _e = (x); if (_e != ESP_OK) { \
     printf("ESP_ERROR_CHECK failed: %s (0x%x) at %s:%d\n", esp_err_to_name(_e), _e, __FILE__, __LINE__); \
-    sim_abort("ESP_ERROR_CHECK", __FILE__, __LINE__); } } while (0)
+    SimAbort("ESP_ERROR_CHECK", __FILE__, __LINE__); } } while (0)

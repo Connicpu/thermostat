@@ -9,46 +9,46 @@
 #define ZB_BOOST_MANUF_CODE     0x131B
 
 enum {
-    ZB_BOOST_ATTR_SETPOINT    = 0x0000, /* int16  RW  c°C, boost-to-target setpoint            */
-    ZB_BOOST_ATTR_DURATION    = 0x0001, /* uint16 RW  minutes, timed boost length (1..120)      */
-    ZB_BOOST_ATTR_MODE        = 0x0002, /* enum8  RW  0 auto, 1 heat, 2 cool                    */
-    ZB_BOOST_ATTR_COMMAND     = 0x0003, /* enum8  RW  write 1 start-to-target, 2 start timed, 0 cancel */
-    ZB_BOOST_ATTR_STATE       = 0x0004, /* enum8  R   see ZB_BOOST_STATE_*                      */
-    ZB_BOOST_ATTR_REMAINING   = 0x0005, /* uint16 R   minutes left (0 when idle)                */
-    ZB_BOOST_ATTR_LAST_RESULT = 0x0006, /* enum8  R   see ZB_BOOST_RESULT_*                     */
+    kZbBoostAttrSetpoint    = 0x0000, /* int16  RW  c°C, boost-to-target setpoint            */
+    kZbBoostAttrDuration    = 0x0001, /* uint16 RW  minutes, timed boost length (1..120)      */
+    kZbBoostAttrMode        = 0x0002, /* enum8  RW  0 auto, 1 heat, 2 cool                    */
+    kZbBoostAttrCommand     = 0x0003, /* enum8  RW  write 1 start-to-target, 2 start timed, 0 cancel */
+    kZbBoostAttrState       = 0x0004, /* enum8  R   see kZbBoostState*                      */
+    kZbBoostAttrRemaining   = 0x0005, /* uint16 R   minutes left (0 when idle)                */
+    kZbBoostAttrLastResult = 0x0006, /* enum8  R   see kZbBoostResult*                     */
     /* not boost-specific, but lives here so there is one manufacturer cluster */
-    ZB_ATTR_SWING             = 0x0010, /* uint16 RW  c°C each side of setpoint, 10..100 (0.1..1.0 °C), default 50 */
+    kZbAttrSwing             = 0x0010, /* uint16 RW  c°C each side of setpoint, 10..100 (0.1..1.0 °C), default 50 */
 
     /* Day/night program schedule (see components/control/include/schedule.h).
      * Times: uint16 minutes after local midnight, 0..1439. Temps: int16 c°C, 1000..3200.
      * All RW ones are persisted; all are reported to the coordinator when changed on the device. */
-    ZB_ATTR_DAY_COOL_START    = 0x0020, /* uint16 RW  default 480  (08:00) */
-    ZB_ATTR_DAY_COOL_TEMP     = 0x0021, /* int16  RW  default 2450 (24.5 °C) */
-    ZB_ATTR_NIGHT_COOL_START  = 0x0022, /* uint16 RW  default 1320 (22:00) */
-    ZB_ATTR_NIGHT_COOL_TEMP   = 0x0023, /* int16  RW  default 2400 (24.0 °C) */
-    ZB_ATTR_DAY_HEAT_START    = 0x0024, /* uint16 RW  default 360  (06:00) */
-    ZB_ATTR_DAY_HEAT_TEMP     = 0x0025, /* int16  RW  default 2000 (20.0 °C) */
-    ZB_ATTR_NIGHT_HEAT_START  = 0x0026, /* uint16 RW  default 1320 (22:00) */
-    ZB_ATTR_NIGHT_HEAT_TEMP   = 0x0027, /* int16  RW  default 1800 (18.0 °C) */
-    ZB_ATTR_MORNING_BOOST_MIN = 0x0028, /* uint16 RW  0..240 min from day heat start, default 120; 0 = off */
-    ZB_ATTR_MORNING_BOOST_OFS = 0x0029, /* int16  RW  0..300 c°C added in HEAT mode, default 50 (+0.5 °C) */
-    ZB_ATTR_SCHED_STATE       = 0x002A, /* enum8  R   sched_state_t: 0 no clock (day used), 1 day, 2 night, 3 day + morning boost */
+    kZbAttrDayCoolStart    = 0x0020, /* uint16 RW  default 480  (08:00) */
+    kZbAttrDayCoolTemp     = 0x0021, /* int16  RW  default 2450 (24.5 °C) */
+    kZbAttrNightCoolStart  = 0x0022, /* uint16 RW  default 1320 (22:00) */
+    kZbAttrNightCoolTemp   = 0x0023, /* int16  RW  default 2400 (24.0 °C) */
+    kZbAttrDayHeatStart    = 0x0024, /* uint16 RW  default 360  (06:00) */
+    kZbAttrDayHeatTemp     = 0x0025, /* int16  RW  default 2000 (20.0 °C) */
+    kZbAttrNightHeatStart  = 0x0026, /* uint16 RW  default 1320 (22:00) */
+    kZbAttrNightHeatTemp   = 0x0027, /* int16  RW  default 1800 (18.0 °C) */
+    kZbAttrMorningBoostMin = 0x0028, /* uint16 RW  0..240 min from day heat start, default 120; 0 = off */
+    kZbAttrMorningBoostOfs = 0x0029, /* int16  RW  0..300 c°C added in HEAT mode, default 50 (+0.5 °C) */
+    kZbAttrSchedState       = 0x002A, /* enum8  R   SchedState: 0 no clock (day used), 1 day, 2 night, 3 day + morning boost */
 };
 
-#define ZB_SCHED_ATTR_FIRST ZB_ATTR_DAY_COOL_START
-#define ZB_SCHED_ATTR_LAST  ZB_ATTR_MORNING_BOOST_OFS
+#define ZB_SCHED_ATTR_FIRST kZbAttrDayCoolStart
+#define ZB_SCHED_ATTR_LAST  kZbAttrMorningBoostOfs
 
-enum { ZB_BOOST_CMD_CANCEL = 0, ZB_BOOST_CMD_START_TARGET = 1, ZB_BOOST_CMD_START_TIMED = 2 };
+enum { kZbBoostCmdCancel = 0, kZbBoostCmdStartTarget = 1, kZbBoostCmdStartTimed = 2 };
 
 enum {
-    ZB_BOOST_STATE_OFF = 0, ZB_BOOST_STATE_HEAT_TO_TARGET = 1, ZB_BOOST_STATE_COOL_TO_TARGET = 2,
-    ZB_BOOST_STATE_HEAT_TIMED = 3, ZB_BOOST_STATE_COOL_TIMED = 4,
+    kZbBoostStateOff = 0, kZbBoostStateHeatToTarget = 1, kZbBoostStateCoolToTarget = 2,
+    kZbBoostStateHeatTimed = 3, kZbBoostStateCoolTimed = 4,
 };
 
 enum {
-    ZB_BOOST_RESULT_NONE = 0, ZB_BOOST_RESULT_STARTED = 1, ZB_BOOST_RESULT_REACHED = 2,
-    ZB_BOOST_RESULT_EXPIRED = 3, ZB_BOOST_RESULT_CANCELLED = 4, ZB_BOOST_RESULT_MODE_CHANGED = 5,
-    ZB_BOOST_RESULT_FAULT = 6, ZB_BOOST_RESULT_LIMIT = 7,
-    ZB_BOOST_RESULT_REJECTED_ARG = 16, ZB_BOOST_RESULT_REJECTED_FAULT = 17,
-    ZB_BOOST_RESULT_REJECTED_AT_TARGET = 18, ZB_BOOST_RESULT_REJECTED_NO_DIRECTION = 19,
+    kZbBoostResultNone = 0, kZbBoostResultStarted = 1, kZbBoostResultReached = 2,
+    kZbBoostResultExpired = 3, kZbBoostResultCancelled = 4, kZbBoostResultModeChanged = 5,
+    kZbBoostResultFault = 6, kZbBoostResultLimit = 7,
+    kZbBoostResultRejectedArg = 16, kZbBoostResultRejectedFault = 17,
+    kZbBoostResultRejectedAtTarget = 18, kZbBoostResultRejectedNoDirection = 19,
 };

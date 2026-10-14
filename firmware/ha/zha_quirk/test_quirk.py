@@ -86,17 +86,17 @@ def test_enum_values_match_firmware_header():
         return int(re.search(rf"{name}\s*=\s*(0x[0-9A-Fa-f]+|\d+)", hdr).group(1), 0)
     assert int(re.search(r"ZB_BOOST_CLUSTER_ID\s+(0x\w+)", hdr).group(1), 16) == q.BOOST_CLUSTER_ID
     assert int(re.search(r"ZB_BOOST_MANUF_CODE\s+(0x\w+)", hdr).group(1), 16) == q.MANUF_CODE
-    assert val("ZB_BOOST_CMD_START_TIMED") == q.BoostCommand.Start_timed
-    assert val("ZB_BOOST_CMD_START_TARGET") == q.BoostCommand.Start_to_target
-    assert val("ZB_BOOST_STATE_COOL_TIMED") == q.BoostState.Timed_cool
-    assert val("ZB_BOOST_RESULT_REJECTED_NO_DIRECTION") == q.BoostResult.Rejected_no_direction
+    assert val("kZbBoostCmdStartTimed") == q.BoostCommand.Start_timed
+    assert val("kZbBoostCmdStartTarget") == q.BoostCommand.Start_to_target
+    assert val("kZbBoostStateCoolTimed") == q.BoostState.Timed_cool
+    assert val("kZbBoostResultRejectedNoDirection") == q.BoostResult.Rejected_no_direction
     attrs = q.ConnieBoostCluster.AttributeDefs
-    assert val("ZB_BOOST_ATTR_LAST_RESULT") == attrs.boost_last_result.id
-    assert val("ZB_BOOST_ATTR_REMAINING") == attrs.boost_remaining.id
-    assert val("ZB_ATTR_SWING") == attrs.temperature_swing.id
-    for hdr_name, attr in (("ZB_ATTR_DAY_COOL_START", attrs.day_cool_start), ("ZB_ATTR_NIGHT_HEAT_TEMP", attrs.night_heat_temp),
-                           ("ZB_ATTR_MORNING_BOOST_MIN", attrs.morning_boost_duration),
-                           ("ZB_ATTR_MORNING_BOOST_OFS", attrs.morning_boost_offset), ("ZB_ATTR_SCHED_STATE", attrs.schedule_state)):
+    assert val("kZbBoostAttrLastResult") == attrs.boost_last_result.id
+    assert val("kZbBoostAttrRemaining") == attrs.boost_remaining.id
+    assert val("kZbAttrSwing") == attrs.temperature_swing.id
+    for hdr_name, attr in (("kZbAttrDayCoolStart", attrs.day_cool_start), ("kZbAttrNightHeatTemp", attrs.night_heat_temp),
+                           ("kZbAttrMorningBoostMin", attrs.morning_boost_duration),
+                           ("kZbAttrMorningBoostOfs", attrs.morning_boost_offset), ("kZbAttrSchedState", attrs.schedule_state)):
         assert val(hdr_name) == attr.id
 
 

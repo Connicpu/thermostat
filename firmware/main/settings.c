@@ -1,5 +1,6 @@
 /* settings.c - NVS persistence: namespace "tstat", one versioned blob under the
  * stable key "cfg3" (0.2.x prototypes used "cfg" with another layout). Format and versioning: settings_codec.c. */
+#include "core.h"
 #include "settings.h"
 #include "nvs.h"
 #include "esp_log.h"
@@ -10,28 +11,28 @@
 #define KEY "cfg3"   /* new key: never collides with 0.2.x's tstat/cfg layout */
 #define FDEF (CONFIG_THERMO_DISPLAY_FAHRENHEIT ? true : false)
 
-static uint8_t s_buf[SETTINGS_BLOB_MAX];
+static U8 s_buf[SETTINGS_BLOB_MAX];
 
-void settings_load(persist_t *p)
+void SettingsLoad(Persist *pP)
 {
-    settings_defaults(p, FDEF);
+    SettingsDefaults(pP, FDEF);
     nvs_handle_t h;
     if (nvs_open(NS, NVS_READONLY, &h) == ESP_OK) {
         size_t n = sizeof s_buf;
         esp_err_t e = nvs_get_blob(h, KEY, s_buf, &n);
-        if (e == ESP_OK && !settings_decode(s_buf, n, p)) {
+        if (e == ESP_OK && !SettingsDecode(s_buf, n, pP)) {
             ESP_LOGW("settings", "unknown settings blob (%u bytes, version %d): defaults", (unsigned)n,
                      n ? (int)s_buf[0] : -1);
-            settings_defaults(p, FDEF);
+            SettingsDefaults(pP, FDEF);
         }
         nvs_close(h);
     }
-    settings_sanitize(p, FDEF);
+    SettingsSanitize(pP, FDEF);
 }
 
-bool settings_save(const persist_t *p)
+bool SettingsSave(const Persist *pP)
 {
-    size_t n = settings_encode(p, s_buf, sizeof s_buf);
+    size_t n = SettingsEncode(pP, s_buf, sizeof s_buf);
     if (!n) return false;
     nvs_handle_t h;
     if (nvs_open(NS, NVS_READWRITE, &h) != ESP_OK) return false;
@@ -42,7 +43,7 @@ bool settings_save(const persist_t *p)
     return e == ESP_OK;
 }
 
-void settings_erase(void)
+void SettingsErase(void)
 {
     nvs_handle_t h;
     if (nvs_open(NS, NVS_READWRITE, &h) != ESP_OK) return;

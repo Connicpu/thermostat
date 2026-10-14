@@ -1,247 +1,248 @@
 /* Host tests for the day/night program schedule and the morning heat boost. */
+#include "core.h"
 #include "tinytest.h"
 #include "schedule.h"
 #include "control.h"
 
-#define HM(h, m) ((uint16_t)((h) * 60 + (m)))
+#define HM(h, m) ((U16)((h) * 60 + (m)))
 
-static ctrl_params_t P;
-static sched_cfg_t C;
-static void reset(void) { P = (ctrl_params_t)CTRL_PARAMS_DEFAULT(); C = (sched_cfg_t)SCHED_CFG_DEFAULT(); }
+static CtrlParams s_p;
+static SchedCfg s_c;
+static void Reset(void) { s_p = (CtrlParams)CTRL_PARAMS_DEFAULT(); s_c = (SchedCfg)SCHED_CFG_DEFAULT(); }
 
-static void defaults_match_spec(void)
+static void DefaultsMatchSpec(void)
 {
-    reset();
-    CHECK_EQ(C.day_heat_start, HM(6, 0));
-    CHECK_EQ(C.boost_min, 120);
-    CHECK_EQ(C.boost_offset, 50);
+    Reset();
+    CHECK_EQ(s_c.dayHeatStart, HM(6, 0));
+    CHECK_EQ(s_c.boostMin, 120);
+    CHECK_EQ(s_c.boostOffset, 50);
     /* boost window is exactly 06:00..07:59 */
-    CHECK(!sched_boost_window(&C, HM(5, 59)));
-    CHECK(sched_boost_window(&C, HM(6, 0)));
-    CHECK(sched_boost_window(&C, HM(7, 59)));
-    CHECK(!sched_boost_window(&C, HM(8, 0)));
+    CHECK(!SchedBoostWindow(&s_c, HM(5, 59)));
+    CHECK(SchedBoostWindow(&s_c, HM(6, 0)));
+    CHECK(SchedBoostWindow(&s_c, HM(7, 59)));
+    CHECK(!SchedBoostWindow(&s_c, HM(8, 0)));
 }
 
-static void period_same_day(void)
+static void PeriodSameDay(void)
 {
     /* day 06:00, night 22:00 */
-    CHECK_EQ(sched_period(HM(6, 0), HM(22, 0), HM(5, 59)), SCHED_NIGHT);
-    CHECK_EQ(sched_period(HM(6, 0), HM(22, 0), HM(6, 0)), SCHED_DAY);
-    CHECK_EQ(sched_period(HM(6, 0), HM(22, 0), HM(12, 0)), SCHED_DAY);
-    CHECK_EQ(sched_period(HM(6, 0), HM(22, 0), HM(21, 59)), SCHED_DAY);
-    CHECK_EQ(sched_period(HM(6, 0), HM(22, 0), HM(22, 0)), SCHED_NIGHT);
-    CHECK_EQ(sched_period(HM(6, 0), HM(22, 0), HM(23, 59)), SCHED_NIGHT);
-    CHECK_EQ(sched_period(HM(6, 0), HM(22, 0), 0), SCHED_NIGHT);
+    CHECK_EQ(SchedPeriodAt(HM(6, 0), HM(22, 0), HM(5, 59)), kSchedNight);
+    CHECK_EQ(SchedPeriodAt(HM(6, 0), HM(22, 0), HM(6, 0)), kSchedDay);
+    CHECK_EQ(SchedPeriodAt(HM(6, 0), HM(22, 0), HM(12, 0)), kSchedDay);
+    CHECK_EQ(SchedPeriodAt(HM(6, 0), HM(22, 0), HM(21, 59)), kSchedDay);
+    CHECK_EQ(SchedPeriodAt(HM(6, 0), HM(22, 0), HM(22, 0)), kSchedNight);
+    CHECK_EQ(SchedPeriodAt(HM(6, 0), HM(22, 0), HM(23, 59)), kSchedNight);
+    CHECK_EQ(SchedPeriodAt(HM(6, 0), HM(22, 0), 0), kSchedNight);
 }
 
-static void period_crossing_midnight(void)
+static void PeriodCrossingMidnight(void)
 {
     /* night shift: "day" 20:00 -> 04:00 crosses midnight */
-    CHECK_EQ(sched_period(HM(20, 0), HM(4, 0), HM(19, 59)), SCHED_NIGHT);
-    CHECK_EQ(sched_period(HM(20, 0), HM(4, 0), HM(20, 0)), SCHED_DAY);
-    CHECK_EQ(sched_period(HM(20, 0), HM(4, 0), HM(23, 59)), SCHED_DAY);
-    CHECK_EQ(sched_period(HM(20, 0), HM(4, 0), 0), SCHED_DAY);
-    CHECK_EQ(sched_period(HM(20, 0), HM(4, 0), HM(3, 59)), SCHED_DAY);
-    CHECK_EQ(sched_period(HM(20, 0), HM(4, 0), HM(4, 0)), SCHED_NIGHT);
+    CHECK_EQ(SchedPeriodAt(HM(20, 0), HM(4, 0), HM(19, 59)), kSchedNight);
+    CHECK_EQ(SchedPeriodAt(HM(20, 0), HM(4, 0), HM(20, 0)), kSchedDay);
+    CHECK_EQ(SchedPeriodAt(HM(20, 0), HM(4, 0), HM(23, 59)), kSchedDay);
+    CHECK_EQ(SchedPeriodAt(HM(20, 0), HM(4, 0), 0), kSchedDay);
+    CHECK_EQ(SchedPeriodAt(HM(20, 0), HM(4, 0), HM(3, 59)), kSchedDay);
+    CHECK_EQ(SchedPeriodAt(HM(20, 0), HM(4, 0), HM(4, 0)), kSchedNight);
     /* night starting after midnight (day 07:00, night 01:30): night crosses nothing, day crosses midnight */
-    CHECK_EQ(sched_period(HM(7, 0), HM(1, 30), HM(0, 30)), SCHED_DAY);
-    CHECK_EQ(sched_period(HM(7, 0), HM(1, 30), HM(1, 30)), SCHED_NIGHT);
-    CHECK_EQ(sched_period(HM(7, 0), HM(1, 30), HM(6, 59)), SCHED_NIGHT);
+    CHECK_EQ(SchedPeriodAt(HM(7, 0), HM(1, 30), HM(0, 30)), kSchedDay);
+    CHECK_EQ(SchedPeriodAt(HM(7, 0), HM(1, 30), HM(1, 30)), kSchedNight);
+    CHECK_EQ(SchedPeriodAt(HM(7, 0), HM(1, 30), HM(6, 59)), kSchedNight);
     /* equal start times: schedule disabled, always day */
-    for (uint16_t m = 0; m < SCHED_MIN_PER_DAY; m += 7) CHECK_EQ(sched_period(HM(6, 0), HM(6, 0), m), SCHED_DAY);
+    for (U16 m = 0; m < SCHED_MIN_PER_DAY; m += 7) CHECK_EQ(SchedPeriodAt(HM(6, 0), HM(6, 0), m), kSchedDay);
     /* exhaustive: exactly one transition into each period per day */
-    uint16_t starts[][2] = {{HM(6, 0), HM(22, 0)}, {HM(20, 0), HM(4, 0)}, {0, HM(23, 59)}, {HM(23, 59), 0}};
+    U16 starts[][2] = {{HM(6, 0), HM(22, 0)}, {HM(20, 0), HM(4, 0)}, {0, HM(23, 59)}, {HM(23, 59), 0}};
     for (int k = 0; k < 4; k++) {
         int flips = 0;
-        for (uint16_t m = 0; m < SCHED_MIN_PER_DAY; m++)
-            flips += sched_period(starts[k][0], starts[k][1], m) != sched_period(starts[k][0], starts[k][1], (uint16_t)((m + 1) % SCHED_MIN_PER_DAY));
+        for (U16 m = 0; m < SCHED_MIN_PER_DAY; m++)
+            flips += SchedPeriodAt(starts[k][0], starts[k][1], m) != SchedPeriodAt(starts[k][0], starts[k][1], (U16)((m + 1) % SCHED_MIN_PER_DAY));
         CHECK_EQ(flips, 2);
     }
 }
 
-static void heat_and_cool_programs_independent(void)
+static void HeatAndCoolProgramsIndependent(void)
 {
-    reset();
+    Reset();
     /* 07:00: heat program is day (06:00..), cool program is still night (day starts 08:00) */
-    CHECK_EQ(sched_current(&C, CTRL_MODE_HEAT, true, HM(7, 0)), SCHED_DAY);
-    CHECK_EQ(sched_current(&C, CTRL_MODE_COOL, true, HM(7, 0)), SCHED_NIGHT);
-    int16_t h, c;
-    sched_program_sp(&C, true, HM(7, 0), &h, &c);
-    CHECK_EQ(h, C.day_heat);
-    CHECK_EQ(c, C.night_cool);
-    sched_program_sp(&C, true, HM(23, 0), &h, &c);
-    CHECK_EQ(h, C.night_heat);
-    CHECK_EQ(c, C.night_cool);
+    CHECK_EQ(SchedCurrent(&s_c, kCtrlModeHeat, true, HM(7, 0)), kSchedDay);
+    CHECK_EQ(SchedCurrent(&s_c, kCtrlModeCool, true, HM(7, 0)), kSchedNight);
+    I16 h, c;
+    SchedProgramSp(&s_c, true, HM(7, 0), &h, &c);
+    CHECK_EQ(h, s_c.dayHeat);
+    CHECK_EQ(c, s_c.nightCool);
+    SchedProgramSp(&s_c, true, HM(23, 0), &h, &c);
+    CHECK_EQ(h, s_c.nightHeat);
+    CHECK_EQ(c, s_c.nightCool);
 }
 
-static void boost_window_and_mode(void)
+static void BoostWindowAndMode(void)
 {
-    reset();
-    ctrl_settings_t s = {.mode = CTRL_MODE_HEAT, .fan = CTRL_FAN_AUTO};
-    CHECK_EQ(sched_apply(&P, &C, true, HM(6, 30), &s), SCHED_STATE_DAY_BOOST);
-    CHECK_EQ(s.heat_sp, C.day_heat + 50);
-    CHECK_EQ(sched_apply(&P, &C, true, HM(8, 0), &s), SCHED_STATE_DAY);
-    CHECK_EQ(s.heat_sp, C.day_heat);
-    CHECK_EQ(sched_apply(&P, &C, true, HM(5, 0), &s), SCHED_STATE_NIGHT);
-    CHECK_EQ(s.heat_sp, C.night_heat);
+    Reset();
+    CtrlSettings s = {.mode = kCtrlModeHeat, .fan = kCtrlFanAuto};
+    CHECK_EQ(SchedApply(&s_p, &s_c, true, HM(6, 30), &s), kSchedStateDayBoost);
+    CHECK_EQ(s.heatSp, s_c.dayHeat + 50);
+    CHECK_EQ(SchedApply(&s_p, &s_c, true, HM(8, 0), &s), kSchedStateDay);
+    CHECK_EQ(s.heatSp, s_c.dayHeat);
+    CHECK_EQ(SchedApply(&s_p, &s_c, true, HM(5, 0), &s), kSchedStateNight);
+    CHECK_EQ(s.heatSp, s_c.nightHeat);
     /* cool mode: never boosted (heat SP untouched, cool SP from the cool program) */
-    s.mode = CTRL_MODE_COOL;
-    CHECK_EQ(sched_apply(&P, &C, true, HM(6, 30), &s), SCHED_STATE_NIGHT);
-    CHECK_EQ(s.heat_sp, C.day_heat);
-    CHECK_EQ(s.cool_sp, C.night_cool);
-    s.mode = CTRL_MODE_OFF;
-    sched_apply(&P, &C, true, HM(6, 30), &s);
-    CHECK_EQ(s.heat_sp, C.day_heat);
+    s.mode = kCtrlModeCool;
+    CHECK_EQ(SchedApply(&s_p, &s_c, true, HM(6, 30), &s), kSchedStateNight);
+    CHECK_EQ(s.heatSp, s_c.dayHeat);
+    CHECK_EQ(s.coolSp, s_c.nightCool);
+    s.mode = kCtrlModeOff;
+    SchedApply(&s_p, &s_c, true, HM(6, 30), &s);
+    CHECK_EQ(s.heatSp, s_c.dayHeat);
     /* time unknown: day setpoints, no boost */
-    s.mode = CTRL_MODE_HEAT;
-    CHECK_EQ(sched_apply(&P, &C, false, HM(6, 30), &s), SCHED_STATE_TIME_UNKNOWN);
-    CHECK_EQ(s.heat_sp, C.day_heat);
-    CHECK_EQ(s.cool_sp, C.day_cool);
+    s.mode = kCtrlModeHeat;
+    CHECK_EQ(SchedApply(&s_p, &s_c, false, HM(6, 30), &s), kSchedStateTimeUnknown);
+    CHECK_EQ(s.heatSp, s_c.dayHeat);
+    CHECK_EQ(s.coolSp, s_c.dayCool);
     /* disabled by duration 0 or offset 0 */
-    C.boost_min = 0;
-    CHECK(!sched_boost_window(&C, HM(6, 0)));
-    C.boost_min = 120; C.boost_offset = 0;
-    CHECK(!sched_boost_window(&C, HM(6, 0)));
+    s_c.boostMin = 0;
+    CHECK(!SchedBoostWindow(&s_c, HM(6, 0)));
+    s_c.boostMin = 120; s_c.boostOffset = 0;
+    CHECK(!SchedBoostWindow(&s_c, HM(6, 0)));
     /* window crossing midnight: day heat start 23:30, 60 min */
-    C.boost_offset = 50; C.day_heat_start = HM(23, 30); C.boost_min = 60;
-    CHECK(sched_boost_window(&C, HM(23, 45)));
-    CHECK(sched_boost_window(&C, HM(0, 29)));
-    CHECK(!sched_boost_window(&C, HM(0, 30)));
-    CHECK(!sched_boost_window(&C, HM(23, 29)));
-    /* boost clamped to max_sp */
-    reset();
-    C.day_heat = P.max_sp;
-    s.mode = CTRL_MODE_HEAT;
-    sched_apply(&P, &C, true, HM(6, 0), &s);
-    CHECK_EQ(s.heat_sp, P.max_sp);
+    s_c.boostOffset = 50; s_c.dayHeatStart = HM(23, 30); s_c.boostMin = 60;
+    CHECK(SchedBoostWindow(&s_c, HM(23, 45)));
+    CHECK(SchedBoostWindow(&s_c, HM(0, 29)));
+    CHECK(!SchedBoostWindow(&s_c, HM(0, 30)));
+    CHECK(!SchedBoostWindow(&s_c, HM(23, 29)));
+    /* boost clamped to maxSp */
+    Reset();
+    s_c.dayHeat = s_p.maxSp;
+    s.mode = kCtrlModeHeat;
+    SchedApply(&s_p, &s_c, true, HM(6, 0), &s);
+    CHECK_EQ(s.heatSp, s_p.maxSp);
 }
 
-static void edit_changes_current_period_only(void)
+static void EditChangesCurrentPeriodOnly(void)
 {
-    reset();
-    sched_cfg_t before = C;
+    Reset();
+    SchedCfg before = s_c;
     /* 12:00 heating: day */
-    CHECK(sched_edit_current(&P, &C, true, true, HM(12, 0), 2150));
-    CHECK_EQ(C.day_heat, 2150);
-    CHECK_EQ(C.night_heat, before.night_heat);
+    CHECK(SchedEditCurrent(&s_p, &s_c, true, true, HM(12, 0), 2150));
+    CHECK_EQ(s_c.dayHeat, 2150);
+    CHECK_EQ(s_c.nightHeat, before.nightHeat);
     /* 23:00 heating: night */
-    CHECK(sched_edit_current(&P, &C, true, true, HM(23, 0), 1750));
-    CHECK_EQ(C.night_heat, 1750);
-    CHECK_EQ(C.day_heat, 2150);
+    CHECK(SchedEditCurrent(&s_p, &s_c, true, true, HM(23, 0), 1750));
+    CHECK_EQ(s_c.nightHeat, 1750);
+    CHECK_EQ(s_c.dayHeat, 2150);
     /* 07:00 cooling: night (cool day starts 08:00) */
-    CHECK(sched_edit_current(&P, &C, false, true, HM(7, 0), 2300));
-    CHECK_EQ(C.night_cool, 2300);
-    CHECK_EQ(C.day_cool, before.day_cool);
+    CHECK(SchedEditCurrent(&s_p, &s_c, false, true, HM(7, 0), 2300));
+    CHECK_EQ(s_c.nightCool, 2300);
+    CHECK_EQ(s_c.dayCool, before.dayCool);
     /* time unknown: day period */
-    CHECK(sched_edit_current(&P, &C, false, false, HM(7, 0), 2500));
-    CHECK_EQ(C.day_cool, 2500);
-    CHECK_EQ(C.night_cool, 2300);
+    CHECK(SchedEditCurrent(&s_p, &s_c, false, false, HM(7, 0), 2500));
+    CHECK_EQ(s_c.dayCool, 2500);
+    CHECK_EQ(s_c.nightCool, 2300);
     /* unchanged value -> false; clamped */
-    CHECK(!sched_edit_current(&P, &C, false, false, 0, 2500));
-    CHECK(sched_edit_current(&P, &C, true, true, HM(12, 0), 9999));
-    CHECK_EQ(C.day_heat, P.max_sp);
+    CHECK(!SchedEditCurrent(&s_p, &s_c, false, false, 0, 2500));
+    CHECK(SchedEditCurrent(&s_p, &s_c, true, true, HM(12, 0), 9999));
+    CHECK_EQ(s_c.dayHeat, s_p.maxSp);
     /* editing during the morning boost changes the base (day) value, not boost */
-    reset();
-    CHECK(sched_edit_current(&P, &C, true, true, HM(6, 30), 2100));
-    CHECK_EQ(C.day_heat, 2100);
-    CHECK_EQ(C.boost_offset, 50);
-    ctrl_settings_t s = {.mode = CTRL_MODE_HEAT};
-    sched_apply(&P, &C, true, HM(6, 30), &s);
-    CHECK_EQ(s.heat_sp, 2150);
+    Reset();
+    CHECK(SchedEditCurrent(&s_p, &s_c, true, true, HM(6, 30), 2100));
+    CHECK_EQ(s_c.dayHeat, 2100);
+    CHECK_EQ(s_c.boostOffset, 50);
+    CtrlSettings s = {.mode = kCtrlModeHeat};
+    SchedApply(&s_p, &s_c, true, HM(6, 30), &s);
+    CHECK_EQ(s.heatSp, 2150);
     /* across midnight: day 20:00 -> 04:00, edit at 01:00 lands in day */
-    reset();
-    C.day_heat_start = HM(20, 0); C.night_heat_start = HM(4, 0);
-    CHECK(sched_edit_current(&P, &C, true, true, HM(1, 0), 1900));
-    CHECK_EQ(C.day_heat, 1900);
-    CHECK_EQ(C.night_heat, 1800);
+    Reset();
+    s_c.dayHeatStart = HM(20, 0); s_c.nightHeatStart = HM(4, 0);
+    CHECK(SchedEditCurrent(&s_p, &s_c, true, true, HM(1, 0), 1900));
+    CHECK_EQ(s_c.dayHeat, 1900);
+    CHECK_EQ(s_c.nightHeat, 1800);
 }
 
-static void boost_clamped_to_night_start(void)
+static void BoostClampedToNightStart(void)
 {
-    reset();
+    Reset();
     /* day heat 06:00, night 07:00, boost 120 min -> boost only 06:00..06:59 */
-    C.night_heat_start = HM(7, 0);
-    CHECK_EQ(sched_boost_length(&C), 60);
-    CHECK(sched_boost_window(&C, HM(6, 59)));
-    CHECK(!sched_boost_window(&C, HM(7, 0)));
-    CHECK(!sched_boost_window(&C, HM(7, 59)));
-    ctrl_settings_t s = {.mode = CTRL_MODE_HEAT};
-    CHECK_EQ(sched_apply(&P, &C, true, HM(7, 30), &s), SCHED_STATE_NIGHT);
-    CHECK_EQ(s.heat_sp, C.night_heat);       /* night setpoint, not boosted */
+    s_c.nightHeatStart = HM(7, 0);
+    CHECK_EQ(SchedBoostLength(&s_c), 60);
+    CHECK(SchedBoostWindow(&s_c, HM(6, 59)));
+    CHECK(!SchedBoostWindow(&s_c, HM(7, 0)));
+    CHECK(!SchedBoostWindow(&s_c, HM(7, 59)));
+    CtrlSettings s = {.mode = kCtrlModeHeat};
+    CHECK_EQ(SchedApply(&s_p, &s_c, true, HM(7, 30), &s), kSchedStateNight);
+    CHECK_EQ(s.heatSp, s_c.nightHeat);       /* night setpoint, not boosted */
     /* crossing midnight: day 23:00, night 00:30, boost 120 -> 23:00..00:29 */
-    C.day_heat_start = HM(23, 0); C.night_heat_start = HM(0, 30);
-    CHECK_EQ(sched_boost_length(&C), 90);
-    CHECK(sched_boost_window(&C, HM(0, 29)));
-    CHECK(!sched_boost_window(&C, HM(0, 30)));
+    s_c.dayHeatStart = HM(23, 0); s_c.nightHeatStart = HM(0, 30);
+    CHECK_EQ(SchedBoostLength(&s_c), 90);
+    CHECK(SchedBoostWindow(&s_c, HM(0, 29)));
+    CHECK(!SchedBoostWindow(&s_c, HM(0, 30)));
     /* long day: full duration */
-    reset();
-    CHECK_EQ(sched_boost_length(&C), 120);
+    Reset();
+    CHECK_EQ(SchedBoostLength(&s_c), 120);
 }
 
-static void boost_off_when_starts_equal(void)
+static void BoostOffWhenStartsEqual(void)
 {
-    reset();
-    C.night_heat_start = C.day_heat_start;
-    CHECK_EQ(sched_boost_length(&C), 0);
-    for (uint16_t m = 0; m < SCHED_MIN_PER_DAY; m++) CHECK(!sched_boost_window(&C, m));
-    ctrl_settings_t s = {.mode = CTRL_MODE_HEAT};
-    CHECK_EQ(sched_apply(&P, &C, true, C.day_heat_start, &s), SCHED_STATE_DAY);
-    CHECK_EQ(s.heat_sp, C.day_heat);
+    Reset();
+    s_c.nightHeatStart = s_c.dayHeatStart;
+    CHECK_EQ(SchedBoostLength(&s_c), 0);
+    for (U16 m = 0; m < SCHED_MIN_PER_DAY; m++) CHECK(!SchedBoostWindow(&s_c, m));
+    CtrlSettings s = {.mode = kCtrlModeHeat};
+    CHECK_EQ(SchedApply(&s_p, &s_c, true, s_c.dayHeatStart, &s), kSchedStateDay);
+    CHECK_EQ(s.heatSp, s_c.dayHeat);
 }
 
-static void off_mode_reports_heating_program(void)
+static void OffModeReportsHeatingProgram(void)
 {
-    reset();
-    ctrl_settings_t s = {.mode = CTRL_MODE_OFF};
+    Reset();
+    CtrlSettings s = {.mode = kCtrlModeOff};
     /* 07:00: heating program = day, cooling program = night (starts 08:00) */
-    CHECK_EQ(sched_apply(&P, &C, true, HM(7, 0), &s), SCHED_STATE_DAY);
-    CHECK_EQ(s.heat_sp, C.day_heat);         /* and no morning boost in OFF */
-    s.mode = CTRL_MODE_COOL;
-    CHECK_EQ(sched_apply(&P, &C, true, HM(7, 0), &s), SCHED_STATE_NIGHT);
-    s.mode = CTRL_MODE_OFF;
-    CHECK_EQ(sched_apply(&P, &C, true, HM(23, 0), &s), SCHED_STATE_NIGHT);
+    CHECK_EQ(SchedApply(&s_p, &s_c, true, HM(7, 0), &s), kSchedStateDay);
+    CHECK_EQ(s.heatSp, s_c.dayHeat);         /* and no morning boost in OFF */
+    s.mode = kCtrlModeCool;
+    CHECK_EQ(SchedApply(&s_p, &s_c, true, HM(7, 0), &s), kSchedStateNight);
+    s.mode = kCtrlModeOff;
+    CHECK_EQ(SchedApply(&s_p, &s_c, true, HM(23, 0), &s), kSchedStateNight);
 }
 
-static void sanitize_ranges(void)
+static void SanitizeRanges(void)
 {
-    reset();
-    C.day_cool_start = 5000; C.night_heat_start = 1440;
-    C.day_heat = -100; C.night_cool = 9000;
-    C.boost_min = 999; C.boost_offset = -5;
-    sched_sanitize(&P, &C);
-    CHECK_EQ(C.day_cool_start, 1439);
-    CHECK_EQ(C.night_heat_start, 1439);
-    CHECK_EQ(C.day_heat, P.min_sp);
-    CHECK_EQ(C.night_cool, P.max_sp);
-    CHECK_EQ(C.boost_min, SCHED_BOOST_MAX_MIN);
-    CHECK_EQ(C.boost_offset, 0);
-    C.boost_offset = 1000;
-    sched_sanitize(&P, &C);
-    CHECK_EQ(C.boost_offset, SCHED_BOOST_OFS_MAX);
+    Reset();
+    s_c.dayCoolStart = 5000; s_c.nightHeatStart = 1440;
+    s_c.dayHeat = -100; s_c.nightCool = 9000;
+    s_c.boostMin = 999; s_c.boostOffset = -5;
+    SchedSanitize(&s_p, &s_c);
+    CHECK_EQ(s_c.dayCoolStart, 1439);
+    CHECK_EQ(s_c.nightHeatStart, 1439);
+    CHECK_EQ(s_c.dayHeat, s_p.minSp);
+    CHECK_EQ(s_c.nightCool, s_p.maxSp);
+    CHECK_EQ(s_c.boostMin, SCHED_BOOST_MAX_MIN);
+    CHECK_EQ(s_c.boostOffset, 0);
+    s_c.boostOffset = 1000;
+    SchedSanitize(&s_p, &s_c);
+    CHECK_EQ(s_c.boostOffset, SCHED_BOOST_OFS_MAX);
 }
 
 /* End to end with the controller: heat mode at 05:59 holds night SP, the 06:00
  * boost raises it by 0.5 °C and the furnace starts, 08:00 drops back. */
-static void controller_follows_schedule(void)
+static void ControllerFollowsSchedule(void)
 {
-    reset();
-    P.hysteresis = 30;
-    ctrl_t c;
-    ctrl_init(&c, &P, 0);
-    uint64_t now = 0;
-    ctrl_output_t o = {0};
-    ctrl_settings_t base = {.mode = CTRL_MODE_HEAT, .fan = CTRL_FAN_AUTO};
-    for (uint16_t minute = HM(5, 50); minute < HM(8, 10); minute++) {
+    Reset();
+    s_p.hysteresis = 30;
+    Ctrl c;
+    CtrlInit(&c, &s_p, 0);
+    U64 now = 0;
+    CtrlOutput o = {0};
+    CtrlSettings base = {.mode = kCtrlModeHeat, .fan = kCtrlFanAuto};
+    for (U16 minute = HM(5, 50); minute < HM(8, 10); minute++) {
         for (int k = 0; k < 60; k++) {
             now += 1000;
             /* 20.1: no call at night (18.0); calls under the boost (20.5-0.3); after 08:00
              * 20.35 is above day 20.0+0.3 (off) but would still be heating under the boost */
-            int16_t room = minute >= HM(8, 0) ? 2035 : 2010;
-            ctrl_input_t in = {.valid = true, .temp = room};
-            ctrl_feed_sensor(&c, &in, now);
-            ctrl_settings_t eff = base;
-            sched_apply(&P, &C, true, minute, &eff);
-            o = ctrl_step(&c, &eff, now);
+            I16 room = minute >= HM(8, 0) ? 2035 : 2010;
+            CtrlInput in = {.valid = true, .temp = room};
+            CtrlFeedSensor(&c, &in, now);
+            CtrlSettings eff = base;
+            SchedApply(&s_p, &s_c, true, minute, &eff);
+            o = CtrlStep(&c, &eff, now);
         }
         if (minute == HM(5, 59)) CHECK(!o.w);            /* night 18.0 */
         if (minute == HM(6, 5))  CHECK(o.w);             /* boosted 20.5 */
@@ -252,16 +253,16 @@ static void controller_follows_schedule(void)
 
 int main(void)
 {
-    RUN(defaults_match_spec);
-    RUN(period_same_day);
-    RUN(period_crossing_midnight);
-    RUN(heat_and_cool_programs_independent);
-    RUN(boost_window_and_mode);
-    RUN(edit_changes_current_period_only);
-    RUN(boost_clamped_to_night_start);
-    RUN(boost_off_when_starts_equal);
-    RUN(off_mode_reports_heating_program);
-    RUN(sanitize_ranges);
-    RUN(controller_follows_schedule);
+    RUN(DefaultsMatchSpec);
+    RUN(PeriodSameDay);
+    RUN(PeriodCrossingMidnight);
+    RUN(HeatAndCoolProgramsIndependent);
+    RUN(BoostWindowAndMode);
+    RUN(EditChangesCurrentPeriodOnly);
+    RUN(BoostClampedToNightStart);
+    RUN(BoostOffWhenStartsEqual);
+    RUN(OffModeReportsHeatingProgram);
+    RUN(SanitizeRanges);
+    RUN(ControllerFollowsSchedule);
     DONE();
 }

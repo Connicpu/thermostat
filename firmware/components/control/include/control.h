@@ -9,6 +9,7 @@
  *        time in milliseconds since boot (uint64, never wraps in practice).
  */
 #pragma once
+#include "core.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -20,40 +21,40 @@ extern "C" {
  * There is deliberately no AUTO (heat/cool changeover) mode: the day/night
  * program schedule (schedule.h) replaced it. */
 typedef enum {
-    CTRL_MODE_OFF  = 0x00,
-    CTRL_MODE_COOL = 0x03,
-    CTRL_MODE_HEAT = 0x04,
-} ctrl_mode_t;
+    kCtrlModeOff  = 0x00,
+    kCtrlModeCool = 0x03,
+    kCtrlModeHeat = 0x04,
+} CtrlMode;
 
 /* Values intentionally equal the ZCL Fan Control FanMode enum (0x0000). */
 typedef enum {
-    CTRL_FAN_ON   = 0x04,
-    CTRL_FAN_AUTO = 0x05,
-} ctrl_fan_t;
+    kCtrlFanOn   = 0x04,
+    kCtrlFanAuto = 0x05,
+} CtrlFan;
 
 typedef struct {
-    ctrl_mode_t mode;
-    ctrl_fan_t  fan;
-    int16_t     heat_sp;   /* occupied heating setpoint, c°C */
-    int16_t     cool_sp;   /* occupied cooling setpoint, c°C */
-} ctrl_settings_t;
+    CtrlMode mode;
+    CtrlFan  fan;
+    I16     heatSp;   /* occupied heating setpoint, c°C */
+    I16     coolSp;   /* occupied cooling setpoint, c°C */
+} CtrlSettings;
 
 typedef struct {
-    int16_t  hysteresis;          /* swing, c°C each side of the setpoint (user setting,
+    I16  hysteresis;          /* swing, c°C each side of the setpoint (user setting,
                                    * CTRL_SWING_MIN..MAX, default 0.5 °C)       */
-    int16_t  min_sp, max_sp;      /* allowed setpoint range                    */
-    int16_t  temp_min, temp_max;  /* plausible room temp; outside -> failsafe  */
-    uint32_t sensor_timeout_ms;   /* no valid reading for this long -> failsafe*/
-    uint8_t  recover_samples;     /* good samples needed to leave failsafe     */
-    uint32_t comp_min_off_ms;     /* compressor (Y) anti-short-cycle            */
-    uint32_t comp_min_on_ms;
-    uint32_t heat_min_off_ms;
-    uint32_t heat_min_on_ms;
-    uint32_t changeover_ms;       /* min gap between heat stop and cool start (and vice versa) */
-    uint32_t fan_runon_heat_ms;   /* G stays on after W drops                  */
-    uint32_t fan_runon_cool_ms;   /* G stays on after Y drops                  */
-    bool     heat_drives_fan;     /* energise G with W (electric/hydro-air); false for gas furnace */
-} ctrl_params_t;
+    I16  minSp, maxSp;      /* allowed setpoint range                    */
+    I16  tempMin, tempMax;  /* plausible room temp; outside -> failsafe  */
+    U32 sensorTimeoutMs;   /* no valid reading for this long -> failsafe*/
+    U8  recoverSamples;     /* good samples needed to leave failsafe     */
+    U32 compMinOffMs;     /* compressor (Y) anti-short-cycle            */
+    U32 compMinOnMs;
+    U32 heatMinOffMs;
+    U32 heatMinOnMs;
+    U32 changeoverMs;       /* min gap between heat stop and cool start (and vice versa) */
+    U32 fanRunonHeatMs;   /* G stays on after W drops                  */
+    U32 fanRunonCoolMs;   /* G stays on after Y drops                  */
+    bool     heatDrivesFan;     /* energise G with W (electric/hydro-air); false for gas furnace */
+} CtrlParams;
 
 /* Temperature swing (hysteresis), c°C each side of the setpoint. Heat turns on
  * at SP-swing and off at SP+swing; cooling is the mirror image. */
@@ -64,124 +65,124 @@ typedef struct {
 /* Sensible defaults for a single-stage gas furnace + AC. */
 #define CTRL_PARAMS_DEFAULT() {            \
     .hysteresis        = CTRL_SWING_DEFAULT,             \
-    .min_sp            = 1000,             \
-    .max_sp            = 3200,             \
-    .temp_min          = 0,                \
-    .temp_max          = 4500,             \
-    .sensor_timeout_ms = 30000,            \
-    .recover_samples   = 3,                \
-    .comp_min_off_ms   = 5u * 60u * 1000u, \
-    .comp_min_on_ms    = 3u * 60u * 1000u, \
-    .heat_min_off_ms   = 60u * 1000u,      \
-    .heat_min_on_ms    = 2u * 60u * 1000u, \
-    .changeover_ms     = 5u * 60u * 1000u, \
-    .fan_runon_heat_ms = 90u * 1000u,      \
-    .fan_runon_cool_ms = 45u * 1000u,      \
-    .heat_drives_fan   = false,            \
+    .minSp            = 1000,             \
+    .maxSp            = 3200,             \
+    .tempMin          = 0,                \
+    .tempMax          = 4500,             \
+    .sensorTimeoutMs = 30000,            \
+    .recoverSamples   = 3,                \
+    .compMinOffMs   = 5u * 60u * 1000u, \
+    .compMinOnMs    = 3u * 60u * 1000u, \
+    .heatMinOffMs   = 60u * 1000u,      \
+    .heatMinOnMs    = 2u * 60u * 1000u, \
+    .changeoverMs     = 5u * 60u * 1000u, \
+    .fanRunonHeatMs = 90u * 1000u,      \
+    .fanRunonCoolMs = 45u * 1000u,      \
+    .heatDrivesFan   = false,            \
 }
 
 typedef enum {
-    CTRL_FAULT_NONE = 0,
-    CTRL_FAULT_SENSOR_TIMEOUT,  /* no valid reading recently        */
-    CTRL_FAULT_TEMP_RANGE,      /* reading outside temp_min..temp_max */
-} ctrl_fault_t;
+    kCtrlFaultNone = 0,
+    kCtrlFaultSensorTimeout,  /* no valid reading recently        */
+    kCtrlFaultTempRange,      /* reading outside tempMin..tempMax */
+} CtrlFault;
 
 typedef struct {
     bool    valid;      /* reading succeeded (CRC ok etc.) */
-    int16_t temp;       /* c°C */
-} ctrl_input_t;
+    I16 temp;       /* c°C */
+} CtrlInput;
 
 typedef struct {
     bool w, y, g;               /* requested outputs (still pass through the interlock!) */
-    ctrl_fault_t fault;         /* != NONE -> failsafe active, all outputs off */
-    bool heat_demand, cool_demand; /* thermostat wants heat/cool (may be held off by timers) */
+    CtrlFault fault;         /* != NONE -> failsafe active, all outputs off */
+    bool heatDemand, coolDemand; /* thermostat wants heat/cool (may be held off by timers) */
     bool waiting;               /* demand present but blocked by min-off / changeover */
-} ctrl_output_t;
+} CtrlOutput;
 
 /* ---------------- boost (runtime only, never persisted) ---------------- */
-typedef enum { BOOST_NONE = 0, BOOST_TO_TARGET = 1, BOOST_TIMED = 2 } ctrl_boost_kind_t;
+typedef enum { kBoostNone = 0, kBoostToTarget = 1, kBoostTimed = 2 } CtrlBoostKind;
 /* Requested direction. Values match the Zigbee boost_mode attribute. */
-typedef enum { BOOST_DIR_AUTO = 0, BOOST_DIR_HEAT = 1, BOOST_DIR_COOL = 2 } ctrl_boost_dir_t;
+typedef enum { kBoostDirAuto = 0, kBoostDirHeat = 1, kBoostDirCool = 2 } CtrlBoostDir;
 typedef enum {
-    BOOST_END_NONE = 0, BOOST_END_REACHED, BOOST_END_EXPIRED, BOOST_END_CANCELLED,
-    BOOST_END_MODE_CHANGED, BOOST_END_FAULT, BOOST_END_LIMIT,
-} ctrl_boost_end_t;
+    kBoostEndNone = 0, kBoostEndReached, kBoostEndExpired, kBoostEndCancelled,
+    kBoostEndModeChanged, kBoostEndFault, kBoostEndLimit,
+} CtrlBoostEnd;
 typedef enum {
-    BOOST_OK = 0, BOOST_ERR_ARG, BOOST_ERR_FAULT, BOOST_ERR_AT_TARGET, BOOST_ERR_NO_DIRECTION,
-} ctrl_boost_result_t;
+    kBoostOk = 0, kBoostErrArg, kBoostErrFault, kBoostErrAtTarget, kBoostErrNoDirection,
+} CtrlBoostResult;
 
 #define BOOST_TIMED_MIN_MIN     1
 #define BOOST_TIMED_MAX_MIN     120     /* timed boost: 1..120 min */
 #define BOOST_TARGET_MAX_MIN    180     /* boost-to-target gives up after 3 h */
 
 typedef struct {
-    ctrl_boost_kind_t kind;
-    ctrl_mode_t dir;          /* resolved: CTRL_MODE_HEAT or CTRL_MODE_COOL */
-    int16_t     sp;           /* target (BOOST_TO_TARGET) */
-    uint64_t    end_at;       /* hard deadline */
-    ctrl_mode_t base_mode;    /* system mode when started; changing it cancels */
-    ctrl_boost_end_t last_end;
-} ctrl_boost_t;
+    CtrlBoostKind kind;
+    CtrlMode dir;          /* resolved: kCtrlModeHeat or kCtrlModeCool */
+    I16     sp;           /* target (kBoostToTarget) */
+    U64    endAt;       /* hard deadline */
+    CtrlMode baseMode;    /* system mode when started; changing it cancels */
+    CtrlBoostEnd lastEnd;
+} CtrlBoost;
 
 typedef struct {
-    ctrl_boost_kind_t kind;   /* BOOST_NONE if inactive */
-    ctrl_mode_t dir;
-    int16_t     sp;
-    uint32_t    remaining_s;
-    ctrl_boost_end_t last_end;
-} ctrl_boost_status_t;
+    CtrlBoostKind kind;   /* kBoostNone if inactive */
+    CtrlMode dir;
+    I16     sp;
+    U32    remainingS;
+    CtrlBoostEnd lastEnd;
+} CtrlBoostStatus;
 
 typedef struct {
-    ctrl_params_t p;
-    ctrl_boost_t boost;
-    bool     soft_stop;   /* boost just ended: running stage still honours its min on-time */
+    CtrlParams p;
+    CtrlBoost boost;
+    bool     softStop;   /* boost just ended: running stage still honours its min on-time */
     bool     w, y, g;
-    bool     heat_call, cool_call;     /* latched hysteresis state */
-    uint64_t w_on_at, w_off_at, y_on_at, y_off_at;
-    bool     w_ran, y_ran;              /* changeover only applies after a real run */
-    uint64_t fan_runon_until;
-    uint64_t last_valid_at;
-    int16_t  last_temp;
-    bool     have_temp;
-    ctrl_fault_t fault;
-    uint8_t  good_streak;
-} ctrl_t;
+    bool     heatCall, coolCall;     /* latched hysteresis state */
+    U64 wOnAt, wOffAt, yOnAt, yOffAt;
+    bool     wRan, yRan;              /* changeover only applies after a real run */
+    U64 fanRunonUntil;
+    U64 lastValidAt;
+    I16  lastTemp;
+    bool     haveTemp;
+    CtrlFault fault;
+    U8  goodStreak;
+} Ctrl;
 
-void ctrl_init(ctrl_t *c, const ctrl_params_t *p, uint64_t now_ms);
+void CtrlInit(Ctrl *pC, const CtrlParams *pP, U64 nowMs);
 
-/* Validate mode/fan and clamp both setpoints into min_sp..max_sp. Heating and
+/* Validate mode/fan and clamp both setpoints into minSp..maxSp. Heating and
  * cooling never run from the same mode, so the two setpoints are independent
  * (no deadband). `keep_heat` is kept for API compatibility and ignored. */
-void ctrl_sanitize_settings(const ctrl_params_t *p, ctrl_settings_t *s, bool keep_heat);
+void CtrlSanitizeSettings(const CtrlParams *pP, CtrlSettings *pS, bool keepHeat);
 
 /* Feed a sensor sample (call on every read attempt, valid or not). */
-void ctrl_feed_sensor(ctrl_t *c, const ctrl_input_t *in, uint64_t now_ms);
+void CtrlFeedSensor(Ctrl *pC, const CtrlInput *pIn, U64 nowMs);
 
 /* Run one control step; call at least once a second. */
-ctrl_output_t ctrl_step(ctrl_t *c, const ctrl_settings_t *s, uint64_t now_ms);
+CtrlOutput CtrlStep(Ctrl *pC, const CtrlSettings *pS, U64 nowMs);
 
 /* Next mode: OFF -> HEAT -> COOL -> OFF. */
-ctrl_mode_t ctrl_next_mode(ctrl_mode_t m);
-bool ctrl_mode_valid(int v);
+CtrlMode CtrlNextMode(CtrlMode m);
+bool CtrlModeValid(int v);
 
-const char *ctrl_fault_str(ctrl_fault_t f);
+const char *CtrlFaultStr(CtrlFault f);
 
 /* Start a boost. `s` = current normal settings (used for the AUTO boost direction of a
- * timed boost and for detecting later mode changes). BOOST_TO_TARGET uses
- * `sp` (clamped to min_sp..max_sp) and ends when reached or after
- * BOOST_TARGET_MAX_MIN. BOOST_TIMED runs `minutes` (1..120). Starting a new
+ * timed boost and for detecting later mode changes). kBoostToTarget uses
+ * `sp` (clamped to minSp..maxSp) and ends when reached or after
+ * BOOST_TARGET_MAX_MIN. kBoostTimed runs `minutes` (1..120). Starting a new
  * boost replaces a running one. All safety rules still apply: the boost only
  * changes what the thermostat *asks for*. */
-ctrl_boost_result_t ctrl_boost_start(ctrl_t *c, const ctrl_settings_t *s, ctrl_boost_kind_t kind,
-                                     ctrl_boost_dir_t dir, int16_t sp, uint16_t minutes, uint64_t now_ms);
-void ctrl_boost_cancel(ctrl_t *c);
+CtrlBoostResult CtrlBoostStart(Ctrl *pC, const CtrlSettings *pS, CtrlBoostKind kind,
+                                     CtrlBoostDir dir, I16 sp, U16 minutes, U64 nowMs);
+void CtrlBoostCancel(Ctrl *pC);
 
 /* Clamp a swing value into CTRL_SWING_MIN..MAX. */
-int16_t ctrl_clamp_swing(int32_t swing);
+I16 CtrlClampSwing(I32 swing);
 /* Change the swing at runtime (clamped). Latched heat/cool calls are kept, so
  * a running stage simply finishes against the new off threshold. */
-void ctrl_set_swing(ctrl_t *c, int16_t swing);
-ctrl_boost_status_t ctrl_boost_status(const ctrl_t *c, uint64_t now_ms);
+void CtrlSetSwing(Ctrl *pC, I16 swing);
+CtrlBoostStatus CtrlGetBoostStatus(const Ctrl *pC, U64 nowMs);
 
 #ifdef __cplusplus
 }

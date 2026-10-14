@@ -1,10 +1,11 @@
 cmake_minimum_required(VERSION 3.16)
 project(thermostat_host_tests C)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)   # used by tools/check_naming.py
 set(CMAKE_C_STANDARD 11)
 set(FW ${CMAKE_CURRENT_SOURCE_DIR}/../../components)
 add_compile_options(-Wall -Wextra -Werror -fsanitize=address,undefined -g)
 add_link_options(-fsanitize=address,undefined)
-include_directories(${FW}/control/include ${FW}/hvac_outputs/include ${FW}/sensor/include
+include_directories(${FW}/core/include ${FW}/control/include ${FW}/hvac_outputs/include ${FW}/sensor/include
                     ${FW}/ui/include ${FW}/display/include ${FW}/zigbee/include
                     ${CMAKE_CURRENT_SOURCE_DIR}/../../main .)
 add_executable(test_control test_control.c

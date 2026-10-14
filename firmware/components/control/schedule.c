@@ -1,135 +1,136 @@
 /* schedule.c - see schedule.h. Pure C99. */
+#include "core.h"
 #include "schedule.h"
 #include <stddef.h>
 
-static int16_t clamp16(int32_t v, int16_t lo, int16_t hi) { return v < lo ? lo : (v > hi ? hi : (int16_t)v); }
-static uint16_t clamp_min(uint16_t m) { return m >= SCHED_MIN_PER_DAY ? SCHED_MIN_PER_DAY - 1 : m; }
+static I16 Clamp16(I32 v, I16 lo, I16 hi) { return v < lo ? lo : (v > hi ? hi : (I16)v); }
+static U16 ClampMin(U16 m) { return m >= SCHED_MIN_PER_DAY ? SCHED_MIN_PER_DAY - 1 : m; }
 
-void sched_sanitize(const ctrl_params_t *p, sched_cfg_t *c)
+void SchedSanitize(const CtrlParams *pP, SchedCfg *pC)
 {
-    c->day_cool_start = clamp_min(c->day_cool_start);
-    c->night_cool_start = clamp_min(c->night_cool_start);
-    c->day_heat_start = clamp_min(c->day_heat_start);
-    c->night_heat_start = clamp_min(c->night_heat_start);
-    c->day_cool = clamp16(c->day_cool, p->min_sp, p->max_sp);
-    c->night_cool = clamp16(c->night_cool, p->min_sp, p->max_sp);
-    c->day_heat = clamp16(c->day_heat, p->min_sp, p->max_sp);
-    c->night_heat = clamp16(c->night_heat, p->min_sp, p->max_sp);
-    if (c->boost_min > SCHED_BOOST_MAX_MIN) c->boost_min = SCHED_BOOST_MAX_MIN;
-    c->boost_offset = clamp16(c->boost_offset, 0, SCHED_BOOST_OFS_MAX);
+    pC->dayCoolStart = ClampMin(pC->dayCoolStart);
+    pC->nightCoolStart = ClampMin(pC->nightCoolStart);
+    pC->dayHeatStart = ClampMin(pC->dayHeatStart);
+    pC->nightHeatStart = ClampMin(pC->nightHeatStart);
+    pC->dayCool = Clamp16(pC->dayCool, pP->minSp, pP->maxSp);
+    pC->nightCool = Clamp16(pC->nightCool, pP->minSp, pP->maxSp);
+    pC->dayHeat = Clamp16(pC->dayHeat, pP->minSp, pP->maxSp);
+    pC->nightHeat = Clamp16(pC->nightHeat, pP->minSp, pP->maxSp);
+    if (pC->boostMin > SCHED_BOOST_MAX_MIN) pC->boostMin = SCHED_BOOST_MAX_MIN;
+    pC->boostOffset = Clamp16(pC->boostOffset, 0, SCHED_BOOST_OFS_MAX);
 }
 
-sched_period_t sched_period(uint16_t day, uint16_t night, uint16_t minute)
+SchedPeriod SchedPeriodAt(U16 day, U16 night, U16 minute)
 {
     minute %= SCHED_MIN_PER_DAY;
-    if (day == night) return SCHED_DAY;
-    if (day < night) return (minute >= day && minute < night) ? SCHED_DAY : SCHED_NIGHT;
+    if (day == night) return kSchedDay;
+    if (day < night) return (minute >= day && minute < night) ? kSchedDay : kSchedNight;
     /* day period crosses midnight (e.g. day 20:00, night 04:00) */
-    return (minute >= day || minute < night) ? SCHED_DAY : SCHED_NIGHT;
+    return (minute >= day || minute < night) ? kSchedDay : kSchedNight;
 }
 
-uint16_t sched_boost_length(const sched_cfg_t *c)
+U16 SchedBoostLength(const SchedCfg *pC)
 {
-    if (!c->boost_min || !c->boost_offset) return 0;
-    uint16_t day = c->day_heat_start % SCHED_MIN_PER_DAY, night = c->night_heat_start % SCHED_MIN_PER_DAY;
+    if (!pC->boostMin || !pC->boostOffset) return 0;
+    U16 day = pC->dayHeatStart % SCHED_MIN_PER_DAY, night = pC->nightHeatStart % SCHED_MIN_PER_DAY;
     if (day == night) return 0;           /* program disabled: no "morning" to boost */
-    uint16_t day_len = (uint16_t)((night + SCHED_MIN_PER_DAY - day) % SCHED_MIN_PER_DAY);
-    return c->boost_min < day_len ? c->boost_min : day_len;   /* never runs into the night period */
+    U16 dayLen = (U16)((night + SCHED_MIN_PER_DAY - day) % SCHED_MIN_PER_DAY);
+    return pC->boostMin < dayLen ? pC->boostMin : dayLen;   /* never runs into the night period */
 }
 
-bool sched_boost_window(const sched_cfg_t *c, uint16_t minute)
+bool SchedBoostWindow(const SchedCfg *pC, U16 minute)
 {
-    uint16_t len = sched_boost_length(c);
+    U16 len = SchedBoostLength(pC);
     if (!len) return false;
     minute %= SCHED_MIN_PER_DAY;
-    uint16_t since = (uint16_t)((minute + SCHED_MIN_PER_DAY - c->day_heat_start % SCHED_MIN_PER_DAY) % SCHED_MIN_PER_DAY);
+    U16 since = (U16)((minute + SCHED_MIN_PER_DAY - pC->dayHeatStart % SCHED_MIN_PER_DAY) % SCHED_MIN_PER_DAY);
     return since < len;
 }
 
-sched_period_t sched_current(const sched_cfg_t *c, ctrl_mode_t mode, bool time_known, uint16_t minute)
+SchedPeriod SchedCurrent(const SchedCfg *pC, CtrlMode mode, bool timeKnown, U16 minute)
 {
-    if (!time_known) return SCHED_DAY;
-    return mode == CTRL_MODE_HEAT ? sched_period(c->day_heat_start, c->night_heat_start, minute)
-                                  : sched_period(c->day_cool_start, c->night_cool_start, minute);
+    if (!timeKnown) return kSchedDay;
+    return mode == kCtrlModeHeat ? SchedPeriodAt(pC->dayHeatStart, pC->nightHeatStart, minute)
+                                  : SchedPeriodAt(pC->dayCoolStart, pC->nightCoolStart, minute);
 }
 
-void sched_program_sp(const sched_cfg_t *c, bool known, uint16_t minute, int16_t *heat, int16_t *cool)
+void SchedProgramSp(const SchedCfg *pC, bool known, U16 minute, I16 *pHeat, I16 *pCool)
 {
-    *heat = sched_current(c, CTRL_MODE_HEAT, known, minute) == SCHED_DAY ? c->day_heat : c->night_heat;
-    *cool = sched_current(c, CTRL_MODE_COOL, known, minute) == SCHED_DAY ? c->day_cool : c->night_cool;
+    *pHeat = SchedCurrent(pC, kCtrlModeHeat, known, minute) == kSchedDay ? pC->dayHeat : pC->nightHeat;
+    *pCool = SchedCurrent(pC, kCtrlModeCool, known, minute) == kSchedDay ? pC->dayCool : pC->nightCool;
 }
 
-sched_state_t sched_apply(const ctrl_params_t *p, const sched_cfg_t *c, bool known, uint16_t minute,
-                          ctrl_settings_t *s)
+SchedState SchedApply(const CtrlParams *pP, const SchedCfg *pC, bool known, U16 minute,
+                          CtrlSettings *pS)
 {
-    sched_program_sp(c, known, minute, &s->heat_sp, &s->cool_sp);
-    if (!known) return SCHED_STATE_TIME_UNKNOWN;
+    SchedProgramSp(pC, known, minute, &pS->heatSp, &pS->coolSp);
+    if (!known) return kSchedStateTimeUnknown;
     /* the period shown/reported follows the active program; OFF shows the heating program */
-    sched_period_t per = sched_current(c, s->mode == CTRL_MODE_COOL ? CTRL_MODE_COOL : CTRL_MODE_HEAT, true, minute);
-    if (s->mode == CTRL_MODE_HEAT && sched_boost_window(c, minute)) {
-        s->heat_sp = clamp16((int32_t)s->heat_sp + c->boost_offset, p->min_sp, p->max_sp);
-        return SCHED_STATE_DAY_BOOST;
+    SchedPeriod per = SchedCurrent(pC, pS->mode == kCtrlModeCool ? kCtrlModeCool : kCtrlModeHeat, true, minute);
+    if (pS->mode == kCtrlModeHeat && SchedBoostWindow(pC, minute)) {
+        pS->heatSp = Clamp16((I32)pS->heatSp + pC->boostOffset, pP->minSp, pP->maxSp);
+        return kSchedStateDayBoost;
     }
-    return per == SCHED_DAY ? SCHED_STATE_DAY : SCHED_STATE_NIGHT;
+    return per == kSchedDay ? kSchedStateDay : kSchedStateNight;
 }
 
-bool sched_edit_current(const ctrl_params_t *p, sched_cfg_t *c, bool heat, bool known, uint16_t minute, int16_t sp)
+bool SchedEditCurrent(const CtrlParams *pP, SchedCfg *pC, bool heat, bool known, U16 minute, I16 sp)
 {
-    sp = clamp16(sp, p->min_sp, p->max_sp);
-    sched_period_t per = sched_current(c, heat ? CTRL_MODE_HEAT : CTRL_MODE_COOL, known, minute);
-    int16_t *dst = heat ? (per == SCHED_DAY ? &c->day_heat : &c->night_heat)
-                        : (per == SCHED_DAY ? &c->day_cool : &c->night_cool);
-    if (*dst == sp) return false;
-    *dst = sp;
+    sp = Clamp16(sp, pP->minSp, pP->maxSp);
+    SchedPeriod per = SchedCurrent(pC, heat ? kCtrlModeHeat : kCtrlModeCool, known, minute);
+    I16 *pDst = heat ? (per == kSchedDay ? &pC->dayHeat : &pC->nightHeat)
+                        : (per == kSchedDay ? &pC->dayCool : &pC->nightCool);
+    if (*pDst == sp) return false;
+    *pDst = sp;
     return true;
 }
 
-sched_kind_t sched_item_kind(sched_item_t it)
+SchedKind SchedItemKind(SchedItem it)
 {
     switch (it) {
-    case SCHED_IT_DAY_HEAT_START: case SCHED_IT_NIGHT_HEAT_START:
-    case SCHED_IT_DAY_COOL_START: case SCHED_IT_NIGHT_COOL_START: return SCHED_KIND_TIME;
-    case SCHED_IT_BOOST_MIN: return SCHED_KIND_MINUTES;
-    case SCHED_IT_BOOST_OFS: return SCHED_KIND_DELTA;
-    default: return SCHED_KIND_TEMP;
+    case kSchedItDayHeatStart: case kSchedItNightHeatStart:
+    case kSchedItDayCoolStart: case kSchedItNightCoolStart: return kSchedKindTime;
+    case kSchedItBoostMin: return kSchedKindMinutes;
+    case kSchedItBoostOfs: return kSchedKindDelta;
+    default: return kSchedKindTemp;
     }
 }
 
-static void *item_ptr(const sched_cfg_t *c, sched_item_t it)
+static void *ItemPtr(const SchedCfg *pC, SchedItem it)
 {
-    sched_cfg_t *m = (sched_cfg_t *)c;
+    SchedCfg *pM = (SchedCfg *)pC;
     switch (it) {
-    case SCHED_IT_DAY_HEAT_START:   return &m->day_heat_start;
-    case SCHED_IT_DAY_HEAT:         return &m->day_heat;
-    case SCHED_IT_NIGHT_HEAT_START: return &m->night_heat_start;
-    case SCHED_IT_NIGHT_HEAT:       return &m->night_heat;
-    case SCHED_IT_BOOST_MIN:        return &m->boost_min;
-    case SCHED_IT_BOOST_OFS:        return &m->boost_offset;
-    case SCHED_IT_DAY_COOL_START:   return &m->day_cool_start;
-    case SCHED_IT_DAY_COOL:         return &m->day_cool;
-    case SCHED_IT_NIGHT_COOL_START: return &m->night_cool_start;
-    case SCHED_IT_NIGHT_COOL:       return &m->night_cool;
+    case kSchedItDayHeatStart:   return &pM->dayHeatStart;
+    case kSchedItDayHeat:         return &pM->dayHeat;
+    case kSchedItNightHeatStart: return &pM->nightHeatStart;
+    case kSchedItNightHeat:       return &pM->nightHeat;
+    case kSchedItBoostMin:        return &pM->boostMin;
+    case kSchedItBoostOfs:        return &pM->boostOffset;
+    case kSchedItDayCoolStart:   return &pM->dayCoolStart;
+    case kSchedItDayCool:         return &pM->dayCool;
+    case kSchedItNightCoolStart: return &pM->nightCoolStart;
+    case kSchedItNightCool:       return &pM->nightCool;
     default:                        return NULL;
     }
 }
 
-static bool item_unsigned(sched_item_t it)
+static bool ItemUnsigned(SchedItem it)
 {
-    sched_kind_t k = sched_item_kind(it);
-    return k == SCHED_KIND_TIME || k == SCHED_KIND_MINUTES;
+    SchedKind k = SchedItemKind(it);
+    return k == kSchedKindTime || k == kSchedKindMinutes;
 }
 
-int32_t sched_get(const sched_cfg_t *c, sched_item_t it)
+I32 SchedGet(const SchedCfg *pC, SchedItem it)
 {
-    void *p = item_ptr(c, it);
-    if (!p) return 0;
-    return item_unsigned(it) ? *(uint16_t *)p : *(int16_t *)p;
+    void *pP = ItemPtr(pC, it);
+    if (!pP) return 0;
+    return ItemUnsigned(it) ? *(U16 *)pP : *(I16 *)pP;
 }
 
-void sched_set(sched_cfg_t *c, sched_item_t it, int32_t v)
+void SchedSet(SchedCfg *pC, SchedItem it, I32 v)
 {
-    void *p = item_ptr(c, it);
-    if (!p) return;
-    if (item_unsigned(it)) *(uint16_t *)p = (uint16_t)(v < 0 ? 0 : v > 0xFFFF ? 0xFFFF : v);
-    else                   *(int16_t *)p = (int16_t)(v < -32768 ? -32768 : v > 32767 ? 32767 : v);
+    void *pP = ItemPtr(pC, it);
+    if (!pP) return;
+    if (ItemUnsigned(it)) *(U16 *)pP = (U16)(v < 0 ? 0 : v > 0xFFFF ? 0xFFFF : v);
+    else                   *(I16 *)pP = (I16)(v < -32768 ? -32768 : v > 32767 ? 32767 : v);
 }

@@ -1,287 +1,288 @@
 /* control.c - see control.h. Pure C99, no platform dependencies. */
+#include "core.h"
 #include "control.h"
 #include <string.h>
 
-static int16_t clamp16(int32_t v, int16_t lo, int16_t hi)
+static I16 Clamp16(I32 v, I16 lo, I16 hi)
 {
-    return v < lo ? lo : (v > hi ? hi : (int16_t)v);
+    return v < lo ? lo : (v > hi ? hi : (I16)v);
 }
 
-static bool elapsed(uint64_t now, uint64_t since, uint32_t dur)
+static bool Elapsed(U64 now, U64 since, U32 dur)
 {
     return now >= since && (now - since) >= dur;
 }
 
-void ctrl_init(ctrl_t *c, const ctrl_params_t *p, uint64_t now_ms)
+void CtrlInit(Ctrl *pC, const CtrlParams *pP, U64 nowMs)
 {
-    memset(c, 0, sizeof(*c));
-    c->p = *p;
-    c->p.hysteresis = ctrl_clamp_swing(p->hysteresis);
+    memset(pC, 0, sizeof(*pC));
+    pC->p = *pP;
+    pC->p.hysteresis = CtrlClampSwing(pP->hysteresis);
     /* Treat boot as "everything just turned off": after a power blip the
      * compressor gets its full minimum off-time before restarting. */
-    c->w_off_at = c->y_off_at = now_ms;
-    c->last_valid_at = now_ms;
+    pC->wOffAt = pC->yOffAt = nowMs;
+    pC->lastValidAt = nowMs;
     /* Start in failsafe until the first good samples arrive. */
-    c->fault = CTRL_FAULT_SENSOR_TIMEOUT;
+    pC->fault = kCtrlFaultSensorTimeout;
 }
 
-void ctrl_sanitize_settings(const ctrl_params_t *p, ctrl_settings_t *s, bool keep_heat)
+void CtrlSanitizeSettings(const CtrlParams *pP, CtrlSettings *pS, bool keepHeat)
 {
-    if (!ctrl_mode_valid(s->mode)) s->mode = CTRL_MODE_OFF;
-    if (s->fan != CTRL_FAN_ON && s->fan != CTRL_FAN_AUTO) s->fan = CTRL_FAN_AUTO;
-    (void)keep_heat;
-    s->heat_sp = clamp16(s->heat_sp, p->min_sp, p->max_sp);
-    s->cool_sp = clamp16(s->cool_sp, p->min_sp, p->max_sp);
+    if (!CtrlModeValid(pS->mode)) pS->mode = kCtrlModeOff;
+    if (pS->fan != kCtrlFanOn && pS->fan != kCtrlFanAuto) pS->fan = kCtrlFanAuto;
+    (void)keepHeat;
+    pS->heatSp = Clamp16(pS->heatSp, pP->minSp, pP->maxSp);
+    pS->coolSp = Clamp16(pS->coolSp, pP->minSp, pP->maxSp);
 }
 
-void ctrl_feed_sensor(ctrl_t *c, const ctrl_input_t *in, uint64_t now_ms)
+void CtrlFeedSensor(Ctrl *pC, const CtrlInput *pIn, U64 nowMs)
 {
-    if (!in->valid) {
-        c->good_streak = 0;
-        return; /* timeout logic in ctrl_step handles a dead sensor */
+    if (!pIn->valid) {
+        pC->goodStreak = 0;
+        return; /* timeout logic in CtrlStep handles a dead sensor */
     }
-    if (in->temp < c->p.temp_min || in->temp > c->p.temp_max) {
-        c->fault = CTRL_FAULT_TEMP_RANGE;
-        c->good_streak = 0;
-        c->last_temp = in->temp;
-        c->have_temp = true;
+    if (pIn->temp < pC->p.tempMin || pIn->temp > pC->p.tempMax) {
+        pC->fault = kCtrlFaultTempRange;
+        pC->goodStreak = 0;
+        pC->lastTemp = pIn->temp;
+        pC->haveTemp = true;
         return;
     }
-    c->last_valid_at = now_ms;
-    c->last_temp = in->temp;
-    c->have_temp = true;
-    if (c->fault != CTRL_FAULT_NONE) {
-        if (++c->good_streak >= c->p.recover_samples) {
-            c->fault = CTRL_FAULT_NONE;
-            c->good_streak = 0;
+    pC->lastValidAt = nowMs;
+    pC->lastTemp = pIn->temp;
+    pC->haveTemp = true;
+    if (pC->fault != kCtrlFaultNone) {
+        if (++pC->goodStreak >= pC->p.recoverSamples) {
+            pC->fault = kCtrlFaultNone;
+            pC->goodStreak = 0;
         }
     }
 }
 
-static void set_w(ctrl_t *c, bool on, uint64_t now)
+static void SetW(Ctrl *pC, bool on, U64 now)
 {
-    if (on == c->w) return;
-    c->w = on;
-    if (on) { c->w_on_at = now; c->w_ran = true; }
+    if (on == pC->w) return;
+    pC->w = on;
+    if (on) { pC->wOnAt = now; pC->wRan = true; }
     else {
-        c->w_off_at = now;
-        c->fan_runon_until = now + c->p.fan_runon_heat_ms;
+        pC->wOffAt = now;
+        pC->fanRunonUntil = now + pC->p.fanRunonHeatMs;
     }
 }
 
-static void set_y(ctrl_t *c, bool on, uint64_t now)
+static void SetY(Ctrl *pC, bool on, U64 now)
 {
-    if (on == c->y) return;
-    c->y = on;
-    if (on) { c->y_on_at = now; c->y_ran = true; }
+    if (on == pC->y) return;
+    pC->y = on;
+    if (on) { pC->yOnAt = now; pC->yRan = true; }
     else {
-        c->y_off_at = now;
-        c->fan_runon_until = now + c->p.fan_runon_cool_ms;
+        pC->yOffAt = now;
+        pC->fanRunonUntil = now + pC->p.fanRunonCoolMs;
     }
 }
 
-ctrl_output_t ctrl_step(ctrl_t *c, const ctrl_settings_t *s_in, uint64_t now)
+CtrlOutput CtrlStep(Ctrl *pC, const CtrlSettings *pIn, U64 now)
 {
-    ctrl_output_t o = {0};
-    ctrl_settings_t s = *s_in;
-    ctrl_sanitize_settings(&c->p, &s, true);
+    CtrlOutput o = {0};
+    CtrlSettings s = *pIn;
+    CtrlSanitizeSettings(&pC->p, &s, true);
 
     /* ---- failsafe: stale or implausible sensor => everything off, now. ---- */
-    if (!elapsed(now, c->last_valid_at, 0) || (now - c->last_valid_at) > c->p.sensor_timeout_ms) {
-        if (c->fault == CTRL_FAULT_NONE) c->good_streak = 0;
-        if (c->fault != CTRL_FAULT_TEMP_RANGE) c->fault = CTRL_FAULT_SENSOR_TIMEOUT;
+    if (!Elapsed(now, pC->lastValidAt, 0) || (now - pC->lastValidAt) > pC->p.sensorTimeoutMs) {
+        if (pC->fault == kCtrlFaultNone) pC->goodStreak = 0;
+        if (pC->fault != kCtrlFaultTempRange) pC->fault = kCtrlFaultSensorTimeout;
     }
-    if (c->fault != CTRL_FAULT_NONE || !c->have_temp) {
-        set_w(c, false, now);
-        set_y(c, false, now);
-        c->g = false;
-        c->fan_runon_until = 0;      /* no run-on in failsafe */
-        c->heat_call = c->cool_call = false;
-        if (c->boost.kind) { c->boost.kind = BOOST_NONE; c->boost.last_end = BOOST_END_FAULT; }
-        o.fault = c->fault != CTRL_FAULT_NONE ? c->fault : CTRL_FAULT_SENSOR_TIMEOUT;
+    if (pC->fault != kCtrlFaultNone || !pC->haveTemp) {
+        SetW(pC, false, now);
+        SetY(pC, false, now);
+        pC->g = false;
+        pC->fanRunonUntil = 0;      /* no run-on in failsafe */
+        pC->heatCall = pC->coolCall = false;
+        if (pC->boost.kind) { pC->boost.kind = kBoostNone; pC->boost.lastEnd = kBoostEndFault; }
+        o.fault = pC->fault != kCtrlFaultNone ? pC->fault : kCtrlFaultSensorTimeout;
         return o;
     }
 
-    const int16_t t = c->last_temp, h = c->p.hysteresis;
+    const I16 t = pC->lastTemp, h = pC->p.hysteresis;
 
     /* ---- boost: end conditions, then override what we ask for ---- */
-    bool force_heat = false, force_cool = false;
-    if (c->boost.kind != BOOST_NONE) {
-        ctrl_boost_t *b = &c->boost;
-        ctrl_boost_end_t end = BOOST_END_NONE;
-        if (s.mode != b->base_mode) end = BOOST_END_MODE_CHANGED;
-        else if (now >= b->end_at) end = BOOST_END_EXPIRED;
-        else if (b->kind == BOOST_TO_TARGET &&
-                 ((b->dir == CTRL_MODE_HEAT && t >= b->sp) || (b->dir == CTRL_MODE_COOL && t <= b->sp)))
-            end = BOOST_END_REACHED;
-        else if (b->kind == BOOST_TIMED &&
-                 ((b->dir == CTRL_MODE_HEAT && t >= c->p.max_sp) || (b->dir == CTRL_MODE_COOL && t <= c->p.min_sp)))
-            end = BOOST_END_LIMIT;            /* comfort cap on timed boosts */
-        if (end != BOOST_END_NONE) {
-            b->kind = BOOST_NONE;
-            b->last_end = end;
-            c->soft_stop = true;
+    bool forceHeat = false, forceCool = false;
+    if (pC->boost.kind != kBoostNone) {
+        CtrlBoost *pB = &pC->boost;
+        CtrlBoostEnd end = kBoostEndNone;
+        if (s.mode != pB->baseMode) end = kBoostEndModeChanged;
+        else if (now >= pB->endAt) end = kBoostEndExpired;
+        else if (pB->kind == kBoostToTarget &&
+                 ((pB->dir == kCtrlModeHeat && t >= pB->sp) || (pB->dir == kCtrlModeCool && t <= pB->sp)))
+            end = kBoostEndReached;
+        else if (pB->kind == kBoostTimed &&
+                 ((pB->dir == kCtrlModeHeat && t >= pC->p.maxSp) || (pB->dir == kCtrlModeCool && t <= pC->p.minSp)))
+            end = kBoostEndLimit;            /* comfort cap on timed boosts */
+        if (end != kBoostEndNone) {
+            pB->kind = kBoostNone;
+            pB->lastEnd = end;
+            pC->softStop = true;
             /* drop the boost's latched call; normal hysteresis re-evaluates below */
-            if (b->dir == CTRL_MODE_HEAT) c->heat_call = false; else c->cool_call = false;
+            if (pB->dir == kCtrlModeHeat) pC->heatCall = false; else pC->coolCall = false;
         } else {
-            s.mode = b->dir;
-            if (b->dir == CTRL_MODE_HEAT) { force_heat = true; }
-            else                          { force_cool = true; }
+            s.mode = pB->dir;
+            if (pB->dir == kCtrlModeHeat) { forceHeat = true; }
+            else                          { forceCool = true; }
         }
     }
-    const bool heat_allowed = (s.mode == CTRL_MODE_HEAT);
-    const bool cool_allowed = (s.mode == CTRL_MODE_COOL);
+    const bool heatAllowed = (s.mode == kCtrlModeHeat);
+    const bool coolAllowed = (s.mode == kCtrlModeCool);
 
     /* ---- hysteresis (latched calls) ---- */
-    if (!heat_allowed)               c->heat_call = false;
-    else if (t <= s.heat_sp - h)     c->heat_call = true;
-    else if (t >= s.heat_sp + h)     c->heat_call = false;
+    if (!heatAllowed)               pC->heatCall = false;
+    else if (t <= s.heatSp - h)     pC->heatCall = true;
+    else if (t >= s.heatSp + h)     pC->heatCall = false;
 
-    if (!cool_allowed)               c->cool_call = false;
-    else if (t >= s.cool_sp + h)     c->cool_call = true;
-    else if (t <= s.cool_sp - h)     c->cool_call = false;
+    if (!coolAllowed)               pC->coolCall = false;
+    else if (t >= s.coolSp + h)     pC->coolCall = true;
+    else if (t <= s.coolSp - h)     pC->coolCall = false;
 
-    if (force_heat) { c->heat_call = true; c->cool_call = false; }
-    if (force_cool) { c->cool_call = true; c->heat_call = false; }
+    if (forceHeat) { pC->heatCall = true; pC->coolCall = false; }
+    if (forceCool) { pC->coolCall = true; pC->heatCall = false; }
 
     /* One mode at a time makes both calls impossible, but be explicit: an active stage wins. */
-    if (c->heat_call && c->cool_call) {
-        if (c->y) c->heat_call = false; else c->cool_call = false;
+    if (pC->heatCall && pC->coolCall) {
+        if (pC->y) pC->heatCall = false; else pC->coolCall = false;
     }
-    o.heat_demand = c->heat_call;
-    o.cool_demand = c->cool_call;
+    o.heatDemand = pC->heatCall;
+    o.coolDemand = pC->coolCall;
 
     /* ---- heat (W) ---- */
-    if (c->w) {
-        bool stop = (!heat_allowed && (!c->soft_stop || elapsed(now, c->w_on_at, c->p.heat_min_on_ms))) ||
-                    (!c->heat_call && elapsed(now, c->w_on_at, c->p.heat_min_on_ms));
-        if (stop) set_w(c, false, now);
-    } else if (c->heat_call && !c->y) {
-        if (elapsed(now, c->w_off_at, c->p.heat_min_off_ms) &&
-            (!c->y_ran || elapsed(now, c->y_off_at, c->p.changeover_ms)))
-            set_w(c, true, now);
+    if (pC->w) {
+        bool stop = (!heatAllowed && (!pC->softStop || Elapsed(now, pC->wOnAt, pC->p.heatMinOnMs))) ||
+                    (!pC->heatCall && Elapsed(now, pC->wOnAt, pC->p.heatMinOnMs));
+        if (stop) SetW(pC, false, now);
+    } else if (pC->heatCall && !pC->y) {
+        if (Elapsed(now, pC->wOffAt, pC->p.heatMinOffMs) &&
+            (!pC->yRan || Elapsed(now, pC->yOffAt, pC->p.changeoverMs)))
+            SetW(pC, true, now);
         else
             o.waiting = true;
     }
 
     /* ---- cool (Y, compressor) ---- */
-    if (c->y) {
-        bool stop = (!cool_allowed && (!c->soft_stop || elapsed(now, c->y_on_at, c->p.comp_min_on_ms))) ||
-                    (!c->cool_call && elapsed(now, c->y_on_at, c->p.comp_min_on_ms));
-        if (stop) set_y(c, false, now);
-    } else if (c->cool_call && !c->w) {
-        if (elapsed(now, c->y_off_at, c->p.comp_min_off_ms) &&
-            (!c->w_ran || elapsed(now, c->w_off_at, c->p.changeover_ms)))
-            set_y(c, true, now);
+    if (pC->y) {
+        bool stop = (!coolAllowed && (!pC->softStop || Elapsed(now, pC->yOnAt, pC->p.compMinOnMs))) ||
+                    (!pC->coolCall && Elapsed(now, pC->yOnAt, pC->p.compMinOnMs));
+        if (stop) SetY(pC, false, now);
+    } else if (pC->coolCall && !pC->w) {
+        if (Elapsed(now, pC->yOffAt, pC->p.compMinOffMs) &&
+            (!pC->wRan || Elapsed(now, pC->wOffAt, pC->p.changeoverMs)))
+            SetY(pC, true, now);
         else
             o.waiting = true;
     }
 
-    if (!c->w && !c->y) c->soft_stop = false;
+    if (!pC->w && !pC->y) pC->softStop = false;
 
     /* ---- fan (G) ---- */
-    bool g = (s.fan == CTRL_FAN_ON) || c->y || (c->w && c->p.heat_drives_fan) ||
-             (now < c->fan_runon_until);
-    c->g = g;
+    bool g = (s.fan == kCtrlFanOn) || pC->y || (pC->w && pC->p.heatDrivesFan) ||
+             (now < pC->fanRunonUntil);
+    pC->g = g;
 
-    o.w = c->w;
-    o.y = c->y;
-    o.g = c->g;
-    o.fault = CTRL_FAULT_NONE;
+    o.w = pC->w;
+    o.y = pC->y;
+    o.g = pC->g;
+    o.fault = kCtrlFaultNone;
     return o;
 }
 
-ctrl_mode_t ctrl_next_mode(ctrl_mode_t m)
+CtrlMode CtrlNextMode(CtrlMode m)
 {
     switch (m) {
-    case CTRL_MODE_OFF:  return CTRL_MODE_HEAT;
-    case CTRL_MODE_HEAT: return CTRL_MODE_COOL;
-    default:             return CTRL_MODE_OFF;
+    case kCtrlModeOff:  return kCtrlModeHeat;
+    case kCtrlModeHeat: return kCtrlModeCool;
+    default:             return kCtrlModeOff;
     }
 }
 
-bool ctrl_mode_valid(int v)
+bool CtrlModeValid(int v)
 {
-    return v == CTRL_MODE_OFF || v == CTRL_MODE_COOL || v == CTRL_MODE_HEAT;
+    return v == kCtrlModeOff || v == kCtrlModeCool || v == kCtrlModeHeat;
 }
 
-const char *ctrl_fault_str(ctrl_fault_t f)
+const char *CtrlFaultStr(CtrlFault f)
 {
     switch (f) {
-    case CTRL_FAULT_NONE:           return "OK";
-    case CTRL_FAULT_SENSOR_TIMEOUT: return "SENSOR FAIL";
-    case CTRL_FAULT_TEMP_RANGE:     return "TEMP RANGE";
+    case kCtrlFaultNone:           return "OK";
+    case kCtrlFaultSensorTimeout: return "SENSOR FAIL";
+    case kCtrlFaultTempRange:     return "TEMP RANGE";
     default:                        return "?";
     }
 }
 
-ctrl_boost_result_t ctrl_boost_start(ctrl_t *c, const ctrl_settings_t *s, ctrl_boost_kind_t kind,
-                                     ctrl_boost_dir_t dir, int16_t sp, uint16_t minutes, uint64_t now)
+CtrlBoostResult CtrlBoostStart(Ctrl *pC, const CtrlSettings *pS, CtrlBoostKind kind,
+                                     CtrlBoostDir dir, I16 sp, U16 minutes, U64 now)
 {
-    if (c->fault != CTRL_FAULT_NONE || !c->have_temp) return BOOST_ERR_FAULT;
-    if (dir != BOOST_DIR_AUTO && dir != BOOST_DIR_HEAT && dir != BOOST_DIR_COOL) return BOOST_ERR_ARG;
-    const int16_t t = c->last_temp, h = c->p.hysteresis;
-    ctrl_boost_t b = {.kind = kind, .base_mode = s->mode, .last_end = BOOST_END_NONE};
+    if (pC->fault != kCtrlFaultNone || !pC->haveTemp) return kBoostErrFault;
+    if (dir != kBoostDirAuto && dir != kBoostDirHeat && dir != kBoostDirCool) return kBoostErrArg;
+    const I16 t = pC->lastTemp, h = pC->p.hysteresis;
+    CtrlBoost b = {.kind = kind, .baseMode = pS->mode, .lastEnd = kBoostEndNone};
 
-    if (kind == BOOST_TO_TARGET) {
-        sp = clamp16(sp, c->p.min_sp, c->p.max_sp);
-        if (dir == BOOST_DIR_AUTO) {
-            if (t <= sp - h)      b.dir = CTRL_MODE_HEAT;
-            else if (t >= sp + h) b.dir = CTRL_MODE_COOL;
-            else return BOOST_ERR_AT_TARGET;
+    if (kind == kBoostToTarget) {
+        sp = Clamp16(sp, pC->p.minSp, pC->p.maxSp);
+        if (dir == kBoostDirAuto) {
+            if (t <= sp - h)      b.dir = kCtrlModeHeat;
+            else if (t >= sp + h) b.dir = kCtrlModeCool;
+            else return kBoostErrAtTarget;
         } else {
-            b.dir = dir == BOOST_DIR_HEAT ? CTRL_MODE_HEAT : CTRL_MODE_COOL;
-            if ((b.dir == CTRL_MODE_HEAT && t >= sp) || (b.dir == CTRL_MODE_COOL && t <= sp)) return BOOST_ERR_AT_TARGET;
+            b.dir = dir == kBoostDirHeat ? kCtrlModeHeat : kCtrlModeCool;
+            if ((b.dir == kCtrlModeHeat && t >= sp) || (b.dir == kCtrlModeCool && t <= sp)) return kBoostErrAtTarget;
         }
         b.sp = sp;
-        b.end_at = now + (uint64_t)BOOST_TARGET_MAX_MIN * 60000u;
-    } else if (kind == BOOST_TIMED) {
-        if (minutes < BOOST_TIMED_MIN_MIN || minutes > BOOST_TIMED_MAX_MIN) return BOOST_ERR_ARG;
-        if (dir == BOOST_DIR_AUTO) {
-            if (s->mode == CTRL_MODE_HEAT)      b.dir = CTRL_MODE_HEAT;
-            else if (s->mode == CTRL_MODE_COOL) b.dir = CTRL_MODE_COOL;
-            else if (t < s->heat_sp)            b.dir = CTRL_MODE_HEAT;
-            else if (t > s->cool_sp)            b.dir = CTRL_MODE_COOL;
-            else return BOOST_ERR_NO_DIRECTION;
+        b.endAt = now + (U64)BOOST_TARGET_MAX_MIN * 60000u;
+    } else if (kind == kBoostTimed) {
+        if (minutes < BOOST_TIMED_MIN_MIN || minutes > BOOST_TIMED_MAX_MIN) return kBoostErrArg;
+        if (dir == kBoostDirAuto) {
+            if (pS->mode == kCtrlModeHeat)      b.dir = kCtrlModeHeat;
+            else if (pS->mode == kCtrlModeCool) b.dir = kCtrlModeCool;
+            else if (t < pS->heatSp)            b.dir = kCtrlModeHeat;
+            else if (t > pS->coolSp)            b.dir = kCtrlModeCool;
+            else return kBoostErrNoDirection;
         } else {
-            b.dir = dir == BOOST_DIR_HEAT ? CTRL_MODE_HEAT : CTRL_MODE_COOL;
+            b.dir = dir == kBoostDirHeat ? kCtrlModeHeat : kCtrlModeCool;
         }
-        if ((b.dir == CTRL_MODE_HEAT && t >= c->p.max_sp) || (b.dir == CTRL_MODE_COOL && t <= c->p.min_sp))
-            return BOOST_ERR_AT_TARGET;
-        b.end_at = now + (uint64_t)minutes * 60000u;
+        if ((b.dir == kCtrlModeHeat && t >= pC->p.maxSp) || (b.dir == kCtrlModeCool && t <= pC->p.minSp))
+            return kBoostErrAtTarget;
+        b.endAt = now + (U64)minutes * 60000u;
     } else {
-        return BOOST_ERR_ARG;
+        return kBoostErrArg;
     }
     /* switching direction mid-boost: drop the old latched call */
-    if (c->boost.kind && c->boost.dir != b.dir) c->heat_call = c->cool_call = false;
-    c->boost = b;
-    c->soft_stop = true;   /* a stage the boost displaces still gets its min on-time */
-    return BOOST_OK;
+    if (pC->boost.kind && pC->boost.dir != b.dir) pC->heatCall = pC->coolCall = false;
+    pC->boost = b;
+    pC->softStop = true;   /* a stage the boost displaces still gets its min on-time */
+    return kBoostOk;
 }
 
-void ctrl_boost_cancel(ctrl_t *c)
+void CtrlBoostCancel(Ctrl *pC)
 {
-    if (!c->boost.kind) return;
-    if (c->boost.dir == CTRL_MODE_HEAT) c->heat_call = false; else c->cool_call = false;
-    c->boost.kind = BOOST_NONE;
-    c->boost.last_end = BOOST_END_CANCELLED;
-    c->soft_stop = true;
+    if (!pC->boost.kind) return;
+    if (pC->boost.dir == kCtrlModeHeat) pC->heatCall = false; else pC->coolCall = false;
+    pC->boost.kind = kBoostNone;
+    pC->boost.lastEnd = kBoostEndCancelled;
+    pC->softStop = true;
 }
 
-ctrl_boost_status_t ctrl_boost_status(const ctrl_t *c, uint64_t now)
+CtrlBoostStatus CtrlGetBoostStatus(const Ctrl *pC, U64 now)
 {
-    ctrl_boost_status_t st = {.kind = c->boost.kind, .dir = c->boost.dir, .sp = c->boost.sp,
-                              .last_end = c->boost.last_end};
-    if (st.kind) st.remaining_s = now >= c->boost.end_at ? 0 : (uint32_t)((c->boost.end_at - now + 999) / 1000);
+    CtrlBoostStatus st = {.kind = pC->boost.kind, .dir = pC->boost.dir, .sp = pC->boost.sp,
+                              .lastEnd = pC->boost.lastEnd};
+    if (st.kind) st.remainingS = now >= pC->boost.endAt ? 0 : (U32)((pC->boost.endAt - now + 999) / 1000);
     return st;
 }
 
-int16_t ctrl_clamp_swing(int32_t v)
+I16 CtrlClampSwing(I32 v)
 {
-    return clamp16(v, CTRL_SWING_MIN, CTRL_SWING_MAX);
+    return Clamp16(v, CTRL_SWING_MIN, CTRL_SWING_MAX);
 }
 
-void ctrl_set_swing(ctrl_t *c, int16_t swing)
+void CtrlSetSwing(Ctrl *pC, I16 swing)
 {
-    c->p.hysteresis = ctrl_clamp_swing(swing);
+    pC->p.hysteresis = CtrlClampSwing(swing);
 }

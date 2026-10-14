@@ -1,6 +1,7 @@
 /* buttons.h - pure debounce / long-press state machine (host-testable).
  * Feed raw samples every BTN_TICK_MS; it returns at most one event. */
 #pragma once
+#include "core.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -9,7 +10,7 @@
 #define BTN_REPEAT_DELAY   600
 #define BTN_REPEAT_EVERY   200
 /* Non-repeating (MODE) button hold stages. A release before BTN_HOLD_MS is a
- * short PRESS; after that the release is reported as BTN_EV_RELEASE so the
+ * short PRESS; after that the release is reported as kBtnEvRelease so the
  * caller can act on the stage it reached (see components/ui/menu.h). */
 #define BTN_HOLD_MS        1500    /* menu: "hold M to confirm" */
 #define BTN_LONG_MS        5000    /* home: pairing (acted on at release, before WARN) */
@@ -21,27 +22,27 @@
 #define BTN_STUCK_MS       30000
 
 typedef enum {
-    BTN_EV_NONE = 0,
-    BTN_EV_PRESS,     /* auto-repeat buttons: on press. others: on release if < BTN_HOLD_MS */
-    BTN_EV_REPEAT,    /* auto-repeat buttons while held */
-    BTN_EV_LONG,      /* held >= BTN_LONG_MS (fires once, while still held) */
-    BTN_EV_VLONG,     /* held >= BTN_VLONG_MS (fires once, while still held) */
-    BTN_EV_HOLD,      /* held >= BTN_HOLD_MS (fires once, while still held) */
-    BTN_EV_WARN,      /* held >= BTN_WARN_MS (fires once, while still held) */
-    BTN_EV_RELEASE,   /* released after BTN_EV_HOLD fired (non-repeating buttons) */
-} btn_event_t;
+    kBtnEvNone = 0,
+    kBtnEvPress,     /* auto-repeat buttons: on press. others: on release if < BTN_HOLD_MS */
+    kBtnEvRepeat,    /* auto-repeat buttons while held */
+    kBtnEvLong,      /* held >= BTN_LONG_MS (fires once, while still held) */
+    kBtnEvVlong,     /* held >= BTN_VLONG_MS (fires once, while still held) */
+    kBtnEvHold,      /* held >= BTN_HOLD_MS (fires once, while still held) */
+    kBtnEvWarn,      /* held >= BTN_WARN_MS (fires once, while still held) */
+    kBtnEvRelease,   /* released after kBtnEvHold fired (non-repeating buttons) */
+} BtnEvent;
 
 typedef struct {
     bool     autorepeat;
     bool     stable;        /* debounced level, true = pressed */
-    bool     raw_last;
-    uint32_t raw_same_ms;
-    uint32_t held_ms;
-    uint32_t next_repeat_ms;
-    bool     hold_fired, long_fired, warn_fired, vlong_fired;
+    bool     rawLast;
+    U32 rawSameMs;
+    U32 heldMs;
+    U32 nextRepeatMs;
+    bool     holdFired, longFired, warnFired, vlongFired;
     bool     armed;         /* seen released (debounced) since init */
     bool     stuck;         /* held >= BTN_STUCK_MS */
-} btn_t;
+} Btn;
 
-void        btn_init(btn_t *b, bool autorepeat);
-btn_event_t btn_tick(btn_t *b, bool raw_pressed);
+void        BtnInit(Btn *pB, bool autorepeat);
+BtnEvent BtnTick(Btn *pB, bool rawPressed);
