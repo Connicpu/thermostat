@@ -22,7 +22,7 @@ typedef struct {
 
 /* pure codec (settings_codec.c, host-tested) */
 void   settings_defaults(persist_t *p, bool fahrenheit);
-bool   settings_decode(const void *data, size_t n, persist_t *p);   /* false: unknown version/size */
+bool   settings_decode(const void *data, size_t n, persist_t *p);   /* false: older/unknown version or too short */
 void   settings_sanitize(persist_t *p, bool fahrenheit_default);
 size_t settings_encode(const persist_t *p, void *buf, size_t n);   /* 0 if buf too small */
 

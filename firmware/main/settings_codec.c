@@ -1,10 +1,21 @@
 /* settings_codec.c - pure (de)serialisation of the settings blob.
  * No ESP-IDF dependencies: host-tested in test/host/test_settings.c. NVS I/O is in settings.c.
  *
- * Blob = {uint8_t version; persist_t p}. Only SETTINGS_VERSION is understood today; an
- * unknown version or size loads the defaults. To change the layout later: bump
- * SETTINGS_VERSION, keep the old layout as a struct here and add a migration branch in
- * settings_decode() (the size + version check tells the layouts apart). */
+ * Blob = {uint8_t version; persist_t p}, at most SETTINGS_BLOB_MAX bytes.
+ *
+ * DESIGN RULE (Connie): every NVS layout change must be one-version backward AND
+ * forward compatible, so an OTA rollback keeps working:
+ *  - A newer layout may only APPEND fields at the end of persist_t. Never reorder,
+ *    resize, retype or repurpose an existing field, and keep the blob within
+ *    SETTINGS_BLOB_MAX (older firmware reads into a buffer of that size).
+ *  - Firmware one version older must be able to read the newer blob: its decoder
+ *    accepts any version >= its own and size >= what it expects, takes the known
+ *    prefix and ignores the rest. Data in the appended fields need not survive a
+ *    rollback (the older firmware rewrites the blob in its own, shorter layout).
+ *  - Newer firmware must still load the older blob: bump SETTINGS_VERSION, keep the
+ *    old size/version, and fill the appended fields with defaults in a migration
+ *    branch in settings_decode().
+ * This v1 decoder already follows the rule (see settings_decode()). */
 #include "settings.h"
 #include <string.h>
 
@@ -26,10 +37,12 @@ void settings_defaults(persist_t *p, bool fahrenheit)
 bool settings_decode(const void *data, size_t n, persist_t *p)
 {
     blob_t b;
-    if (n != sizeof b) return false;
+    /* Same or newer layout (version >= ours, at least our size): read the known prefix,
+     * ignore appended fields. Newer firmware adds migration branches for older, shorter
+     * blobs here (e.g. version 1 with sizeof(blob_v1_t) -> defaults for new fields). */
+    if (n < sizeof b) return false;
     memcpy(&b, data, sizeof b);
-    if (b.version != SETTINGS_VERSION) return false;
-    /* future: else if (n == sizeof(blob_v1_t) && version == 1) { migrate } */
+    if (b.version < SETTINGS_VERSION) return false;
     *p = b.p;
     return true;
 }

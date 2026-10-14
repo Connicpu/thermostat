@@ -112,7 +112,22 @@ All are manufacturer-specific (code 0x131B) on the existing 0xFC57 cluster, pers
 `cfg3` (namespace `tstat`; a new key so it never collides with the 0.2.x `cfg` blob). The current layout is **version 1** (no hardware has shipped, so there are no
 older layouts to migrate). A blob with an unknown version or size loads the defaults. A future layout change
 bumps `SETTINGS_VERSION` and adds a migration branch in `settings_decode()` (`main/settings_codec.c`, host-tested
-in `test/host/test_settings.c`). Out-of-range writes are clamped and the clamped value is stored, so a
+in `test/host/test_settings.c`).
+
+### Design note: settings layout compatibility (OTA rollback)
+
+Every future NVS layout change must be **one-version backward and forward compatible**, so an OTA rollback
+always boots with the user's settings:
+
+- A newer layout may only **append** fields to the end of `persist_t`. Existing fields are never reordered,
+  resized, retyped or repurposed, and the blob stays within `SETTINGS_BLOB_MAX` (256 bytes).
+- Firmware one version older must read the newer blob: its decoder accepts a version ≥ its own and a size ≥
+  what it expects, takes the fields it knows (the prefix) and ignores the rest. New data doesn't have to
+  survive a rollback.
+- Newer firmware must still load the older blob, by migrating it (defaults for the appended fields).
+
+The version-1 decoder already follows this (`settings_decode()` in `main/settings_codec.c`, tested by
+`newer_longer_blob_loads_known_prefix` in `test/host/test_settings.c`). Out-of-range writes are clamped and the clamped value is stored, so a
 read-back shows reality. Changes made on the device (setpoint edits) are written and reported to the coordinator.
 There is no standard ZCL attribute set that ZHA understands for this (the Thermostat weekly-schedule commands
 aren't supported by ZHA), so the ZHA quirk (`ha/zha_quirk`) exposes them as *config* number entities:

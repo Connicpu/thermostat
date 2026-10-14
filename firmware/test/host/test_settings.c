@@ -43,15 +43,38 @@ static void unknown_version_or_size_rejected(void)
     size_t n = settings_encode(&p, buf, sizeof buf);
     settings_defaults(&q, false);
     persist_t before = q;
-    buf[0] = 2;                                  /* future version */
-    CHECK(!settings_decode(buf, n, &q));
     buf[0] = 0;
     CHECK(!settings_decode(buf, n, &q));
     buf[0] = SETTINGS_VERSION;
     CHECK(!settings_decode(buf, n - 1, &q));     /* truncated */
-    CHECK(!settings_decode(buf, n + 1, &q));     /* longer (other layout) */
     CHECK(!settings_decode(buf, 0, &q));
     CHECK(memcmp(&before, &q, sizeof q) == 0);   /* untouched -> caller keeps defaults */
+}
+
+/* Forward compatibility (design rule in settings_codec.c): a blob from the next firmware
+ * version (higher version, extra fields appended) loads its known prefix. */
+static void newer_longer_blob_loads_known_prefix(void)
+{
+    persist_t p, q;
+    settings_defaults(&p, false);
+    p.s.mode = CTRL_MODE_COOL; p.sched.night_heat = 1650; p.swing = 30;
+    uint8_t buf[SETTINGS_BLOB_MAX];
+    memset(buf, 0xA5, sizeof buf);
+    size_t n = settings_encode(&p, buf, sizeof buf);
+    buf[0] = SETTINGS_VERSION + 1;               /* "v2" with 16 appended bytes of new fields */
+    size_t longer = n + 16;
+    CHECK(longer <= SETTINGS_BLOB_MAX);
+    settings_defaults(&q, false);
+    CHECK(settings_decode(buf, longer, &q));
+    CHECK(memcmp(&p, &q, sizeof p) == 0);
+    /* same version, longer blob also fine; full buffer size too */
+    buf[0] = SETTINGS_VERSION;
+    CHECK(settings_decode(buf, longer, &q));
+    CHECK(settings_decode(buf, SETTINGS_BLOB_MAX, &q));
+    /* re-encoding (what the older firmware saves after a rollback) is its own shorter layout */
+    uint8_t out[SETTINGS_BLOB_MAX];
+    CHECK_EQ(settings_encode(&q, out, sizeof out), n);
+    CHECK_EQ(out[0], SETTINGS_VERSION);
 }
 
 static void sanitize_bad_values(void)
@@ -76,6 +99,7 @@ int main(void)
     RUN(defaults_sane);
     RUN(roundtrip);
     RUN(unknown_version_or_size_rejected);
+    RUN(newer_longer_blob_loads_known_prefix);
     RUN(sanitize_bad_values);
     DONE();
 }
