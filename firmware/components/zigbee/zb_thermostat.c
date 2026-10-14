@@ -1,6 +1,7 @@
 /* zb_thermostat.c - see zb_thermostat.h. Written against esp-zigbee-lib 1.6.x. */
 #include "core.h"
 #include "zb_thermostat.h"
+#include <assert.h>
 #include <string.h>
 #include "esp_check.h"
 #include "esp_log.h"
@@ -467,8 +468,7 @@ static esp_err_t OnSetAttr(const esp_zb_zcl_set_attr_value_message_t *pM)
             break;
         }
         case ESP_ZB_ZCL_ATTR_THERMOSTAT_LOCAL_TEMPERATURE_CALIBRATION_ID:
-            if (s_cbs.onCalibration)
-                s_cbs.onCalibration(*(const I8 *)pV);
+            s_cbs.onCalibration(*(const I8 *)pV);
             break;
         }
         break;
@@ -500,8 +500,7 @@ static esp_err_t OnSetAttr(const esp_zb_zcl_set_attr_value_message_t *pM)
             dir = *(const U8 *)pV;
             break;
         case kZbBoostAttrCommand:
-            if (s_cbs.onBoostCommand)
-                s_cbs.onBoostCommand(*(const U8 *)pV);
+            s_cbs.onBoostCommand(*(const U8 *)pV);
             return ESP_OK;
         case kZbAttrSwing:
         {
@@ -520,8 +519,7 @@ static esp_err_t OnSetAttr(const esp_zb_zcl_set_attr_value_message_t *pM)
                     false);
             }
             s_swing = (U16)sw;
-            if (s_cbs.onSwing)
-                s_cbs.onSwing(sw);
+            s_cbs.onSwing(sw);
             return ESP_OK;
         }
         default:
@@ -547,8 +545,7 @@ static esp_err_t OnSetAttr(const esp_zb_zcl_set_attr_value_message_t *pM)
                 pM->attribute.id,
                 SchedField(&s_sched, pM->attribute.id),
                 false);
-            if (s_cbs.onSched)
-                s_cbs.onSched(&s_sched);
+            s_cbs.onSched(&s_sched);
             return ESP_OK;
         }
         }
@@ -561,12 +558,11 @@ static esp_err_t OnSetAttr(const esp_zb_zcl_set_attr_value_message_t *pM)
         s_boostSp = sp;
         s_boostMin = mins;
         s_boostDir = dir;
-        if (s_cbs.onBoostParams)
-            s_cbs.onBoostParams(sp, mins, dir);
+        s_cbs.onBoostParams(sp, mins, dir);
         return ESP_OK;
     }
     case ESP_ZB_ZCL_CLUSTER_ID_IDENTIFY:
-        if (pM->attribute.id == ESP_ZB_ZCL_ATTR_IDENTIFY_IDENTIFY_TIME_ID && s_cbs.onIdentify)
+        if (pM->attribute.id == ESP_ZB_ZCL_ATTR_IDENTIFY_IDENTIFY_TIME_ID)
             s_cbs.onIdentify(*(const U16 *)pV);
         break;
     }
@@ -576,8 +572,7 @@ static esp_err_t OnSetAttr(const esp_zb_zcl_set_attr_value_message_t *pM)
          * write before the app re-publishes (e.g. mode then fan in one burst) starts
          * from it instead of the stale copy and does not undo the first write. */
         s_settings = s;
-        if (s_cbs.onSettings)
-            s_cbs.onSettings(&s, what);
+        s_cbs.onSettings(&s, what);
     }
     return ESP_OK;
 }
@@ -672,7 +667,7 @@ static esp_err_t OnOta(const esp_zb_zcl_ota_upgrade_value_message_t *pM)
             if (ret != ESP_OK)
                 ESP_LOGE(kTag, "OTA write failed: %s", esp_err_to_name(ret));
         }
-        if (s_cbs.onOtaProgress && s_otaTotal)
+        if (s_otaTotal)
             s_cbs.onOtaProgress((int)((U64)s_otaOff * 100 / s_otaTotal));
         break;
     }
@@ -694,15 +689,13 @@ static esp_err_t OnOta(const esp_zb_zcl_ota_upgrade_value_message_t *pM)
             break;
         }
         ESP_LOGW(kTag, "OTA done (v0x%08lx), rebooting", (unsigned long)pM->ota_header.file_version);
-        if (s_cbs.beforeOtaReboot)
-            s_cbs.beforeOtaReboot();
+        s_cbs.beforeOtaReboot();
         esp_restart();
         break;
     case ESP_ZB_ZCL_OTA_UPGRADE_STATUS_ABORT:
         ESP_LOGW(kTag, "OTA aborted");
         OtaReset();
-        if (s_cbs.onOtaProgress)
-            s_cbs.onOtaProgress(-1);
+        s_cbs.onOtaProgress(-1);
         break;
     default:
         break;
@@ -710,8 +703,7 @@ static esp_err_t OnOta(const esp_zb_zcl_ota_upgrade_value_message_t *pM)
     if (ret != ESP_OK)
     {
         OtaReset();
-        if (s_cbs.onOtaProgress)
-            s_cbs.onOtaProgress(-1);
+        s_cbs.onOtaProgress(-1);
     }
     return ret;
 }
@@ -953,6 +945,9 @@ static void ZbTask(void *pArg)
 /** See zb_thermostat.h. */
 esp_err_t ZbThermostatStart(const ZbThermostatCbs *pCbs, const ZbThermostatInit *pInit)
 {
+    assert(
+        pCbs->onSettings && pCbs->onCalibration && pCbs->onIdentify && pCbs->onOtaProgress && pCbs->beforeOtaReboot &&
+        pCbs->onBoostParams && pCbs->onBoostCommand && pCbs->onSwing && pCbs->onSched);
     s_cbs = *pCbs;
     s_settings = s_init = pInit->s;
     s_initCalib = pInit->calib;

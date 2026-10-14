@@ -30,7 +30,8 @@ enum
 /**
  * Application callbacks for remote (Zigbee) writes and OTA events. All are called from the Zigbee
  * task, inside the stack's main loop: keep them short, don't block for long, and don't call
- * ZbThermostat* functions that take the stack lock (Pair, FactoryReset, Publish). Any may be NULL.
+ * ZbThermostat* functions that take the stack lock (Pair, FactoryReset, Publish). Every
+ * field must be set; ZbThermostatStart() asserts it.
  */
 typedef struct
 {
