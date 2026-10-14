@@ -10,7 +10,9 @@
  * schedule is effectively disabled and DAY applies all the time.
  *
  * Morning boost (heat mode only): for `boost_min` minutes starting at
- * day_heat_start the heating setpoint is raised by `boost_offset`.
+ * day_heat_start the heating setpoint is raised by `boost_offset`. The window is
+ * cut short at night_heat_start (it never extends into the night period) and
+ * never runs when day and night heating start are equal (program disabled).
  * boost_min = 0 or boost_offset = 0 disables it.
  *
  * Time unknown (no Zigbee Time sync yet since boot): the DAY setpoints are
@@ -76,6 +78,8 @@ void sched_sanitize(const ctrl_params_t *p, sched_cfg_t *c);
 /* Which period `minute` falls in for a day_start/night_start pair. */
 sched_period_t sched_period(uint16_t day_start, uint16_t night_start, uint16_t minute);
 
+/* Effective morning boost length in minutes (0 = off), after the clamps above. */
+uint16_t sched_boost_length(const sched_cfg_t *c);
 /* Morning boost window active at `minute` (ignores mode). */
 bool sched_boost_window(const sched_cfg_t *c, uint16_t minute);
 
@@ -89,7 +93,8 @@ void sched_program_sp(const sched_cfg_t *c, bool time_known, uint16_t minute, in
 
 /* Fill s->heat_sp / s->cool_sp with the setpoints the controller should use:
  * the program setpoints plus the morning boost (HEAT mode, time known, inside
- * the window; clamped to max_sp). Returns the state to report. */
+ * the window; clamped to max_sp). Returns the state to report: the period of the
+ * cooling program in COOL mode, of the heating program in HEAT and OFF. */
 sched_state_t sched_apply(const ctrl_params_t *p, const sched_cfg_t *c, bool time_known, uint16_t minute,
                           ctrl_settings_t *s);
 

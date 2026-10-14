@@ -1,8 +1,12 @@
 """ZHA quirk (quirks v2) for Connie's Super Awesome Thermostat V3.
 
-Adds the manufacturer-specific Boost cluster 0xFC57 (boost, swing and the
-day/night program schedule) and exposes it as clean Home Assistant entities. The standard Thermostat / Fan / Humidity clusters are
-left alone, so ZHA's normal climate entity keeps working.
+- Adds the manufacturer-specific cluster 0xFC57 (manual boost, temperature swing,
+  day/night program schedule + morning boost, schedule period) and exposes it as
+  Home Assistant number / select / button / sensor entities.
+- Replaces the standard Thermostat cluster with ConnieThermostatCluster so ZHA's
+  stock climate entity offers only off/heat/cool (no heat_cool/auto) and refuses
+  Auto writes. Fan (auto/on) and humidity come from ZHA's normal handling of the
+  standard clusters.
 
 Install: copy this file into the folder configured as `zha: custom_quirks_path:`
 in configuration.yaml, restart Home Assistant, then reconfigure (or re-pair)

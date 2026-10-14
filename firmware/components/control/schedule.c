@@ -28,12 +28,22 @@ sched_period_t sched_period(uint16_t day, uint16_t night, uint16_t minute)
     return (minute >= day || minute < night) ? SCHED_DAY : SCHED_NIGHT;
 }
 
+uint16_t sched_boost_length(const sched_cfg_t *c)
+{
+    if (!c->boost_min || !c->boost_offset) return 0;
+    uint16_t day = c->day_heat_start % SCHED_MIN_PER_DAY, night = c->night_heat_start % SCHED_MIN_PER_DAY;
+    if (day == night) return 0;           /* program disabled: no "morning" to boost */
+    uint16_t day_len = (uint16_t)((night + SCHED_MIN_PER_DAY - day) % SCHED_MIN_PER_DAY);
+    return c->boost_min < day_len ? c->boost_min : day_len;   /* never runs into the night period */
+}
+
 bool sched_boost_window(const sched_cfg_t *c, uint16_t minute)
 {
-    if (!c->boost_min || !c->boost_offset) return false;
+    uint16_t len = sched_boost_length(c);
+    if (!len) return false;
     minute %= SCHED_MIN_PER_DAY;
     uint16_t since = (uint16_t)((minute + SCHED_MIN_PER_DAY - c->day_heat_start % SCHED_MIN_PER_DAY) % SCHED_MIN_PER_DAY);
-    return since < c->boost_min;
+    return since < len;
 }
 
 sched_period_t sched_current(const sched_cfg_t *c, ctrl_mode_t mode, bool time_known, uint16_t minute)
@@ -54,7 +64,8 @@ sched_state_t sched_apply(const ctrl_params_t *p, const sched_cfg_t *c, bool kno
 {
     sched_program_sp(c, known, minute, &s->heat_sp, &s->cool_sp);
     if (!known) return SCHED_STATE_TIME_UNKNOWN;
-    sched_period_t per = sched_current(c, s->mode, true, minute);
+    /* the period shown/reported follows the active program; OFF shows the heating program */
+    sched_period_t per = sched_current(c, s->mode == CTRL_MODE_COOL ? CTRL_MODE_COOL : CTRL_MODE_HEAT, true, minute);
     if (s->mode == CTRL_MODE_HEAT && sched_boost_window(c, minute)) {
         s->heat_sp = clamp16((int32_t)s->heat_sp + c->boost_offset, p->min_sp, p->max_sp);
         return SCHED_STATE_DAY_BOOST;

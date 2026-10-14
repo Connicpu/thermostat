@@ -11,6 +11,7 @@
 #include "freertos/task.h"
 #include "sdkconfig.h"
 #include "fw_version.h"
+#include "zb_time.h"
 
 static const char *TAG = "zb";
 
@@ -39,8 +40,8 @@ static uint8_t s_sched_state;                 /* ZB_ATTR_SCHED_STATE backing sto
 static volatile bool s_force_settings;        /* republish mode/setpoints (e.g. rejected AUTO write) */
 
 /* Time sync: local seconds since midnight at s_time_at_ms (monotonic). */
-#define TIME_SYNC_PERIOD_MS (60u * 60u * 1000u)
-#define TIME_RETRY_MS       (60u * 1000u)
+static uint8_t s_time_fails;                  /* consecutive reads without a usable answer */
+static bool s_time_req_open;                  /* a read is out and not yet answered usefully */
 static volatile bool s_time_known;
 static uint32_t s_time_local_s;               /* ZCL UTCTime-style seconds (local) at sync */
 static uint64_t s_time_at_ms;
@@ -78,9 +79,11 @@ static bool sched_attr_signed(uint16_t id)
 static void time_request(uint8_t unused)
 {
     (void)unused;
+    if (s_time_req_open && s_time_fails < 255) s_time_fails++;   /* last read: no or unusable answer */
+    s_time_req_open = false;
     if (s_link == LINK_JOINED) {
         /* LocalTime (0x0007) is what we want; Time + TimeZone + DstShift is the fallback. */
-        static uint16_t ids[] = {ESP_ZB_ZCL_ATTR_TIME_TIME_ID, ESP_ZB_ZCL_ATTR_TIME_TIME_ZONE_ID,
+        static uint16_t ids[] = {ESP_ZB_ZCL_ATTR_TIME_TIME_ID, ESP_ZB_ZCL_ATTR_TIME_TIME_STATUS_ID, ESP_ZB_ZCL_ATTR_TIME_TIME_ZONE_ID,
                                  ESP_ZB_ZCL_ATTR_TIME_DST_SHIFT_ID, ESP_ZB_ZCL_ATTR_TIME_LOCAL_TIME_ID};
         esp_zb_zcl_read_attr_cmd_t r = {0};
         r.zcl_basic_cmd.dst_addr_u.addr_short = 0x0000;   /* coordinator */
@@ -91,15 +94,16 @@ static void time_request(uint8_t unused)
         r.direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_SRV;
         r.attr_number = sizeof ids / sizeof ids[0];
         r.attr_field = ids;
-        esp_zb_zcl_read_attr_cmd_req(&r);
+        if (esp_zb_zcl_read_attr_cmd_req(&r) == ESP_OK) s_time_req_open = true;
     }
-    /* poll again: soon if we still have no time, hourly otherwise (drift + DST changes) */
-    esp_zb_scheduler_alarm(time_request, 0, s_time_known ? TIME_SYNC_PERIOD_MS : TIME_RETRY_MS);
+    /* hourly once known (drift + DST changes); 1, 2, 5 min, then hourly while unknown */
+    esp_zb_scheduler_alarm(time_request, 0, zb_time_next_delay_ms(s_time_fails, s_time_known));
 }
 
 static void on_time_resp(const esp_zb_zcl_cmd_read_attr_resp_message_t *m)
 {
-    bool have_utc = false, have_local = false;
+    bool have_utc = false, have_local = false, have_status = false;
+    uint8_t status = 0;
     uint32_t utc = 0, local = 0;
     int32_t tz = 0, dst = 0;
     for (const esp_zb_zcl_read_attr_resp_variable_t *v = m->variables; v; v = v->next) {
@@ -107,6 +111,7 @@ static void on_time_resp(const esp_zb_zcl_cmd_read_attr_resp_message_t *m)
         const void *d = v->attribute.data.value;
         switch (v->attribute.id) {
         case ESP_ZB_ZCL_ATTR_TIME_TIME_ID:       memcpy(&utc, d, 4); have_utc = utc != 0 && utc != 0xFFFFFFFFu; break;
+        case ESP_ZB_ZCL_ATTR_TIME_TIME_STATUS_ID: status = *(const uint8_t *)d; have_status = true; break;
         case ESP_ZB_ZCL_ATTR_TIME_TIME_ZONE_ID:  memcpy(&tz, d, 4); break;
         case ESP_ZB_ZCL_ATTR_TIME_DST_SHIFT_ID:  memcpy(&dst, d, 4); break;
         case ESP_ZB_ZCL_ATTR_TIME_LOCAL_TIME_ID: memcpy(&local, d, 4); have_local = local != 0 && local != 0xFFFFFFFFu; break;
@@ -114,7 +119,13 @@ static void on_time_resp(const esp_zb_zcl_cmd_read_attr_resp_message_t *m)
         }
     }
     if (!have_local && have_utc) { local = (uint32_t)((int64_t)utc + tz + dst); have_local = true; }
-    if (!have_local) { ESP_LOGW(TAG, "time sync: coordinator returned no usable time"); return; }
+    if (!have_local || !zb_time_acceptable(have_status, status, local) ||
+        (have_utc && !zb_time_acceptable(have_status, status, utc))) {
+        ESP_LOGW(TAG, "time sync: coordinator returned no usable time (status 0x%02x)", status);
+        return;   /* counted as a failure at the next attempt */
+    }
+    s_time_req_open = false;
+    s_time_fails = 0;
     portENTER_CRITICAL(&s_time_mux);
     s_time_local_s = local;
     s_time_at_ms = mono_ms();

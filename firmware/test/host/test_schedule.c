@@ -156,6 +156,52 @@ static void edit_changes_current_period_only(void)
     CHECK_EQ(C.night_heat, 1800);
 }
 
+static void boost_clamped_to_night_start(void)
+{
+    reset();
+    /* day heat 06:00, night 07:00, boost 120 min -> boost only 06:00..06:59 */
+    C.night_heat_start = HM(7, 0);
+    CHECK_EQ(sched_boost_length(&C), 60);
+    CHECK(sched_boost_window(&C, HM(6, 59)));
+    CHECK(!sched_boost_window(&C, HM(7, 0)));
+    CHECK(!sched_boost_window(&C, HM(7, 59)));
+    ctrl_settings_t s = {.mode = CTRL_MODE_HEAT};
+    CHECK_EQ(sched_apply(&P, &C, true, HM(7, 30), &s), SCHED_STATE_NIGHT);
+    CHECK_EQ(s.heat_sp, C.night_heat);       /* night setpoint, not boosted */
+    /* crossing midnight: day 23:00, night 00:30, boost 120 -> 23:00..00:29 */
+    C.day_heat_start = HM(23, 0); C.night_heat_start = HM(0, 30);
+    CHECK_EQ(sched_boost_length(&C), 90);
+    CHECK(sched_boost_window(&C, HM(0, 29)));
+    CHECK(!sched_boost_window(&C, HM(0, 30)));
+    /* long day: full duration */
+    reset();
+    CHECK_EQ(sched_boost_length(&C), 120);
+}
+
+static void boost_off_when_starts_equal(void)
+{
+    reset();
+    C.night_heat_start = C.day_heat_start;
+    CHECK_EQ(sched_boost_length(&C), 0);
+    for (uint16_t m = 0; m < SCHED_MIN_PER_DAY; m++) CHECK(!sched_boost_window(&C, m));
+    ctrl_settings_t s = {.mode = CTRL_MODE_HEAT};
+    CHECK_EQ(sched_apply(&P, &C, true, C.day_heat_start, &s), SCHED_STATE_DAY);
+    CHECK_EQ(s.heat_sp, C.day_heat);
+}
+
+static void off_mode_reports_heating_program(void)
+{
+    reset();
+    ctrl_settings_t s = {.mode = CTRL_MODE_OFF};
+    /* 07:00: heating program = day, cooling program = night (starts 08:00) */
+    CHECK_EQ(sched_apply(&P, &C, true, HM(7, 0), &s), SCHED_STATE_DAY);
+    CHECK_EQ(s.heat_sp, C.day_heat);         /* and no morning boost in OFF */
+    s.mode = CTRL_MODE_COOL;
+    CHECK_EQ(sched_apply(&P, &C, true, HM(7, 0), &s), SCHED_STATE_NIGHT);
+    s.mode = CTRL_MODE_OFF;
+    CHECK_EQ(sched_apply(&P, &C, true, HM(23, 0), &s), SCHED_STATE_NIGHT);
+}
+
 static void sanitize_ranges(void)
 {
     reset();
@@ -212,6 +258,9 @@ int main(void)
     RUN(heat_and_cool_programs_independent);
     RUN(boost_window_and_mode);
     RUN(edit_changes_current_period_only);
+    RUN(boost_clamped_to_night_start);
+    RUN(boost_off_when_starts_equal);
+    RUN(off_mode_reports_heating_program);
     RUN(sanitize_ranges);
     RUN(controller_follows_schedule);
     DONE();

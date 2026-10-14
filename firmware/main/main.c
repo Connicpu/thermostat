@@ -110,6 +110,7 @@ static void banner(const char *b)
     s_banner_until = now_ms() + BANNER_MS;
 }
 
+
 /* ---------------- Zigbee callbacks (Zigbee task) ---------------- */
 
 static void zb_on_settings(const ctrl_settings_t *s, uint8_t what)

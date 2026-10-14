@@ -64,10 +64,12 @@ Heating and cooling each have their own two-period program. **DAY** runs from th
 to the night start time, **NIGHT** from the night start time up to the day start time; either period
 may cross midnight (e.g. day 20:00 → night 04:00). If day and night start are equal the program is
 effectively off and DAY applies all day. The heat program is used in HEAT mode, the cool program in COOL
-mode (in OFF nothing runs, but the display/HA still show the program values).
+mode (in OFF nothing runs; the display/HA show the program values and the *heating* program's period).
 
 **Morning heating boost** (HEAT mode only): starting at *day heating start*, for *boost duration*
 minutes, the heating setpoint is raised by *boost offset*. Duration 0 or offset 0 turns it off. The
+boost is cut short at *night heating start* (it never runs into the night period) and doesn't run at all
+when day and night heating start are equal. The
 boost is applied to what the controller regulates to; the setpoint shown on the device and in HA's
 climate card stays the program value (so editing it round-trips), and the screen says *Day, morning
 boost* / HA's *Schedule period* sensor says `Day_morning_boost`. It is unrelated to the manual
@@ -80,7 +82,10 @@ During the morning boost the edit changes the underlying day value (the offset i
 
 **Time of day** comes from the coordinator via the Zigbee **Time cluster** (client on our endpoint 1):
 5 s after joining/rejoining the device reads LocalTime (0x0007), with Time + TimeZone + DstShift as a
-fallback, from the coordinator, then re-reads hourly (every minute until the first success). Between syncs
+fallback, plus TimeStatus, from the coordinator, then re-reads hourly. An answer is only used if the time is
+in a plausible range (2024–2100) and, when TimeStatus is returned, its Master or Synchronized bit is set (a
+coordinator with an unset clock is ignored). Until the first usable answer, reads are retried after 1, 2 and
+5 min, then hourly. Between syncs
 the time is extrapolated with the monotonic clock. zigpy/ZHA answers these reads with the HA host's local time,
 so DST changes are picked up within an hour. **Until the first sync after boot the time is unknown: the
 DAY setpoints of both programs are held, no morning boost runs, setpoint edits go to the DAY period**, and
@@ -101,9 +106,13 @@ across later network loss (extrapolated) until the next reboot.
 | Morning heating boost offset | 0x0029 | int16 0.01 °C | 50 (+0.5 °C) | 0–300 |
 | Schedule period (read-only, reported) | 0x002A | enum8 | – | 0 no clock (holding day), 1 day, 2 night, 3 day + morning boost |
 
-All are manufacturer-specific (code 0x131B) on the existing 0xFC57 cluster, persisted in NVS (settings
-blob v5; v2–v4 blobs migrate with both periods seeded from the old single setpoints, so an upgrade changes
-nothing until you edit the program). Out-of-range writes are clamped and the clamped value is stored, so a
+All are manufacturer-specific (code 0x131B) on the existing 0xFC57 cluster, persisted in NVS.
+
+**Settings storage.** All settings live in one versioned blob, `{version, persist_t}`, under the NVS key
+`cfg` (namespace `tstat`). The current layout is **version 1** (no hardware has shipped, so there are no
+older layouts to migrate). A blob with an unknown version or size loads the defaults. A future layout change
+bumps `SETTINGS_VERSION` and adds a migration branch in `settings_decode()` (`main/settings_codec.c`, host-tested
+in `test/host/test_settings.c`). Out-of-range writes are clamped and the clamped value is stored, so a
 read-back shows reality. Changes made on the device (setpoint edits) are written and reported to the coordinator.
 There is no standard ZCL attribute set that ZHA understands for this (the Thermostat weekly-schedule commands
 aren't supported by ZHA), so the ZHA quirk (`ha/zha_quirk`) exposes them as *config* number entities:
