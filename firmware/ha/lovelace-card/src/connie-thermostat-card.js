@@ -58,7 +58,9 @@ export class ConnieThermostatCard extends LitElement {
       if (this._tip && !ev.composedPath().some((n) => n.classList?.contains('info-w') && n.dataset.tip === this._tip.id)) this._tip = null;
     };
     this._onDocKey = (ev) => {
-      if (ev.key === 'Escape' && this._tip) this._tip = null;
+      if (ev.key !== 'Escape' || !this._tip) return;
+      ev.stopPropagation(); // only when we consumed it, so HA dialogs still get Esc otherwise
+      this._tip = null;
     };
     this._pending = {};
     this._timers = {};
@@ -89,13 +91,13 @@ export class ConnieThermostatCard extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     document.addEventListener('click', this._onDocClick, true);
-    document.addEventListener('keydown', this._onDocKey);
+    document.addEventListener('keydown', this._onDocKey, true);
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     document.removeEventListener('click', this._onDocClick, true);
-    document.removeEventListener('keydown', this._onDocKey);
+    document.removeEventListener('keydown', this._onDocKey, true);
     for (const t of Object.values(this._timers)) clearTimeout(t);
     this._timers = {};
   }
@@ -240,6 +242,15 @@ export class ConnieThermostatCard extends LitElement {
     return isTemp ? `${n}${unit}` : `${n} ${unit}`;
   }
 
+  /** " +1.8°F" for the morning-boost offset in the HA unit (°C difference ×1.8 for °F), or "". */
+  _boostOffsetText() {
+    const s = this._st('morning_boost_offset');
+    const v = num(s);
+    if (v === null || v <= 0) return '';
+    const f = deltaFactor(s.attributes?.unit_of_measurement, this._haUnit);
+    return ` +${this._fmtNum(v * f, 1, f !== 1 ? this._haUnit : (s.attributes?.unit_of_measurement ?? ''))}`;
+  }
+
   /** Stepper for a number entity. `delta` shows a °C difference in the HA unit. */
   _numStepper(key, { delta = false, label = '' } = {}) {
     const s = this._st(key);
@@ -278,7 +289,7 @@ export class ConnieThermostatCard extends LitElement {
    * pins on click/tap; Esc or a click elsewhere closes it. The text stays in the DOM so
    * aria-describedby works even while hidden.
    */
-  _info(id, text, { align = 'center', label = 'More info' } = {}) {
+  _info(id, text, { align = 'row', label = 'More info' } = {}) {
     const open = this._tip?.id === id;
     const show = (pinned) => {
       if (!this._tip || this._tip.id !== id || pinned) this._tip = { id, pinned: pinned || (this._tip?.id === id && this._tip.pinned) };
@@ -399,10 +410,10 @@ export class ConnieThermostatCard extends LitElement {
     const v = this._val('climate', a.temperature);
     const info = this._programInfo(mode, period);
     const periodIcon = period === 'boost' ? I.mdiWeatherSunsetUp : info.day ? I.mdiWeatherSunny : I.mdiWeatherNight;
-    const periodName = period === 'boost' ? 'Morning boost' : period === 'noclock' ? 'Day (no clock)' : info.day ? 'Day' : 'Night';
+    const periodName = period === 'boost' ? `Morning boost${this._boostOffsetText()}` : period === 'noclock' ? 'Day (no clock)' : info.day ? 'Day' : 'Night';
     return html`<div class="setpoint">
       <span class="period-row"><span class="period">${icon(periodIcon, 'sm')}${periodName}${info.span ? html` · ${info.span}` : nothing}</span>
-        ${this._info('setpoint', `Changes the ${info.label} program setpoint${period === 'boost' ? ' (the morning boost is added on top)' : ''}.`, { label: 'About the setpoint' })}</span>
+        ${this._info('setpoint', `Changes the ${info.label} program setpoint${period === 'boost' ? ' (the morning boost is added on top)' : ''}.`, { align: 'band', label: 'About the setpoint' })}</span>
       <div class="sp-row">
         <button class="round" aria-label="Lower setpoint" ?disabled=${unavailable || v <= a.min_temp} @click=${() => this._stepSetpoint(-1)}>${icon(I.mdiMinus)}</button>
         <span class="sp-val ${'climate' in this._pending ? 'pending' : ''}" role="slider" tabindex=${unavailable ? -1 : 0}
@@ -468,7 +479,7 @@ export class ConnieThermostatCard extends LitElement {
         <span>Cool</span>${this._bar('cool', period, mode)}
         <span class="ticks"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></span>
       </div>
-      <div class="legend">Now ${fmtTime(now)}${this._info('timeline', `Solid = day, light = night${num(this._st('morning_boost_duration')) ? ', hatched = morning boost' : ''}. The line marks now.`, { align: 'start', label: 'About the timeline' })}</div>
+      <div class="legend">Now ${fmtTime(now)}${this._info('timeline', `Solid = day, light = night${num(this._st('morning_boost_duration')) ? ', hatched = morning boost' : ''}. The line marks now.`, { label: 'About the timeline' })}</div>
       <div class="wide">
         <div><div class="slot-h" style="margin:0 0 6px">${icon(I.mdiFire, 'sm')}Heating</div>
           <div class="sched">${this._slot('heat', 'day', mode, period)}${this._slot('heat', 'night', mode, period)}</div></div>
@@ -481,8 +492,8 @@ export class ConnieThermostatCard extends LitElement {
     const dur = num(this._st('morning_boost_duration'));
     const meta = period === 'boost' ? 'Running now' : dur ? `${dur} min` : 'Off';
     return this._section('morning', 'Morning heating boost', meta, () => html`<div class="rows">
-      <div class="row"><span class="l">Duration${this._info('mb-duration', 'Runs from the day heating start for this long; 0 = off.', { align: 'start', label: 'About morning boost duration' })}</span>${this._numStepper('morning_boost_duration', { label: 'morning boost duration' })}</div>
-      <div class="row"><span class="l">Offset${this._info('mb-offset', 'Added to the day heating target while the morning boost runs.', { align: 'start', label: 'About morning boost offset' })}</span>${this._numStepper('morning_boost_offset', { delta: true, label: 'morning boost offset' })}</div>
+      <div class="row"><span class="l">Duration${this._info('mb-duration', 'Runs from the day heating start for this long; 0 = off.', { label: 'About morning boost duration' })}</span>${this._numStepper('morning_boost_duration', { label: 'morning boost duration' })}</div>
+      <div class="row"><span class="l">Offset${this._info('mb-offset', 'Added to the day heating target while the morning boost runs.', { label: 'About morning boost offset' })}</span>${this._numStepper('morning_boost_offset', { delta: true, label: 'morning boost offset' })}</div>
     </div>`);
   }
 
@@ -514,7 +525,7 @@ export class ConnieThermostatCard extends LitElement {
     const sched = this._st('schedule_state')?.state;
     const sw = this._st('temperature_swing');
     return this._section('status', 'Tuning & status', '', () => html`<div class="rows">
-      <div class="row"><span class="l">Temperature swing${this._info('swing', 'How far (±) the room may drift from the setpoint before heating or cooling switches.', { align: 'start', label: 'About temperature swing' })}</span>${sw ? this._numStepper('temperature_swing', { delta: true, label: 'temperature swing' }) : html`<span class="missing">n/a</span>`}</div>
+      <div class="row"><span class="l">Temperature swing${this._info('swing', 'How far (±) the room may drift from the setpoint before heating or cooling switches.', { label: 'About temperature swing' })}</span>${sw ? this._numStepper('temperature_swing', { delta: true, label: 'temperature swing' }) : html`<span class="missing">n/a</span>`}</div>
       <div class="row"><span>Program period</span><span class="r">${sched ? humanize(sched) : '—'}</span></div>
       <div class="row"><span>Last boost result</span><span class="r ${boostResultIsBad(res) ? 'bad' : ''}">${res ? humanize(res) : '—'}</span></div>
     </div>`);

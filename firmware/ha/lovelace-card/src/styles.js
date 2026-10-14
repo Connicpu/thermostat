@@ -51,6 +51,7 @@ export const cardStyles = css`
 
   /* setpoint */
   .setpoint {
+    position: relative;
     border-radius: var(--ct-radius); padding: 14px 12px 12px;
     background: color-mix(in srgb, var(--ct-accent) 12%, transparent);
     display: flex; flex-direction: column; align-items: center; gap: 6px;
@@ -100,21 +101,24 @@ export const cardStyles = css`
 
   /* info tooltips */
   .period-row { display: inline-flex; align-items: center; gap: 4px; }
-  .info-w { position: relative; display: inline-flex; vertical-align: middle; }
+  /* The tooltip is positioned against its row (.row / .legend / .setpoint), not the (i): it sits
+     above that whole row and is at most as wide as it, so it never covers the row's own controls
+     and can't leave the card. */
+  .info-w { position: static; display: inline-flex; vertical-align: middle; }
+  .row, .legend { position: relative; }
   .info { border: none; background: none; padding: 4px; margin: -4px 0; border-radius: 50%; color: var(--secondary-text-color); cursor: pointer; display: grid; place-items: center; }
   .info:hover, .info[aria-expanded='true'] { color: var(--primary-color); }
   .info:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 0; }
   svg.xs { width: 16px; height: 16px; }
   .tip {
-    position: absolute; top: calc(100% + 6px); z-index: 2; width: max-content; max-width: min(240px, 70vw);
+    position: absolute; bottom: calc(100% + 4px); left: 0; z-index: 2; width: max-content; max-width: min(280px, 100%); box-sizing: border-box;
     padding: 8px 10px; border-radius: 8px; font-size: 13px; font-weight: 400; line-height: 1.35; text-align: left;
     color: var(--card-background-color, #fff); background: var(--primary-text-color, #212121);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); visibility: hidden; opacity: 0; transition: opacity 0.12s;
   }
   .tip.open { visibility: visible; opacity: 1; }
-  .info-w.center .tip { left: 50%; transform: translateX(-50%); }
-  .info-w.start .tip { left: -4px; }
-  .info-w.end .tip { right: -4px; }
+  /* band (setpoint): spans the setpoint box, centred, above it */
+  .info-w.band .tip { left: 8px; right: 8px; width: auto; max-width: none; text-align: center; }
   .legend { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--secondary-text-color); }
 
   /* timeline */
@@ -150,7 +154,7 @@ export const cardStyles = css`
   .rows { display: flex; flex-direction: column; gap: 10px; }
   .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; color: var(--primary-text-color); min-height: 36px; }
   .row .l { display: flex; align-items: center; gap: 4px; }
-   .row .r { color: var(--secondary-text-color); }
+  .row .r { color: var(--secondary-text-color); }
   .row .r.bad { color: var(--error-color, #db4437); font-weight: 500; }
   select { font: inherit; font-size: 14px; color: var(--primary-text-color); background: var(--card-background-color, var(--ha-card-background, #fff)); border: 1px solid var(--ct-divider); border-radius: 6px; padding: 4px 6px; }
   .btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }

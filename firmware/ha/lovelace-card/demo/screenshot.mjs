@@ -35,6 +35,7 @@ const shots = [
   ['light', 'morning-boost'],
   ['dark', 'morning-boost'],
   ['light', 'tooltip'],
+  ['dark', 'tooltip'],
 ];
 try {
   for (const [theme, scenario] of shots) {
@@ -48,6 +49,41 @@ try {
     await page.screenshot({ path: out, fullPage: true });
     console.log(out);
     await page.close();
+  }
+  // Geometry check: every tooltip, opened in turn, stays inside the card and covers none of
+  // the controls in its own row (or, for the setpoint, the setpoint box). Phone and narrow widths.
+  for (const width of [412, 320]) {
+    for (const scenario of ['heat-day', 'morning-boost', 'cool-night']) {
+      const page = await browser.newPage({ viewport: { width, height: 915 } });
+      await page.goto(`${base}?theme=light&scenario=${scenario}`);
+      await page.waitForSelector('body[data-ready]');
+      const problems = await page.evaluate(async () => {
+        const card = document.querySelector('connie-thermostat-card');
+        card._open = { boost: true, morning: true, schedule: true, status: true };
+        await card.updateComplete;
+        const root = card.shadowRoot;
+        const box = root.querySelector('ha-card').getBoundingClientRect();
+        const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+        const out = [];
+        const ids = [...root.querySelectorAll('.info-w')].map((w) => w.dataset.tip);
+        for (const id of ids) {
+          card._tip = { id, pinned: true };
+          await card.updateComplete;
+          const w = root.querySelector(`.info-w[data-tip="${id}"]`);
+          const t = root.getElementById(`tip-${id}`).getBoundingClientRect();
+          if (t.left < box.left || t.right > box.right || t.top < box.top) out.push(`${id}: outside the card`);
+          const own = w.closest('.row') ?? w.closest('.setpoint') ?? w.closest('.legend');
+          for (const c of own.querySelectorAll('button, input, select, [role="slider"]')) {
+            if (w.contains(c)) continue;
+            if (hit(t, c.getBoundingClientRect())) out.push(`${id}: covers ${c.getAttribute('aria-label') || c.className}`);
+          }
+        }
+        return out;
+      });
+      await page.close();
+      if (problems.length) throw new Error(`tooltip overlap at ${width}px (${scenario}): ${problems.join('; ')}`);
+      console.log(`tooltips OK at ${width}px (${scenario})`);
+    }
   }
 } finally {
   await browser.close();

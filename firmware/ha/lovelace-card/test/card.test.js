@@ -153,6 +153,32 @@ describe('card', () => {
     expect($(el, '#tip-mb-offset').classList.contains('open')).toBe(true);
   });
 
+  it('Esc stops propagation only when it closed a tooltip', async () => {
+    const el = await mount();
+    let seen = 0;
+    const later = () => seen++;
+    window.addEventListener('keydown', later);
+    const esc = () => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    esc();
+    expect(seen).toBe(1); // nothing open: HA still gets Esc
+    $(el, '.info-w[data-tip="setpoint"] button.info').click();
+    await el.updateComplete;
+    expect(el._tip).not.toBeNull();
+    esc();
+    expect(seen).toBe(1); // consumed by the tooltip
+    expect(el._tip).toBeNull();
+    esc();
+    expect(seen).toBe(2);
+    window.removeEventListener('keydown', later);
+  });
+
+  it('tooltips open upward above their row; the setpoint one spans the setpoint box', async () => {
+    const el = await mount();
+    expect($(el, '.info-w[data-tip="setpoint"]').classList.contains('band')).toBe(true);
+    expect($(el, '.info-w[data-tip="setpoint"]').closest('.setpoint')).not.toBeNull();
+    expect($$(el, '.info-w').every((w) => w.classList.contains('band') || w.classList.contains('row'))).toBe(true);
+  });
+
   it('keeps warnings visible, not in tooltips', async () => {
     const el = await mount({}, { patch: { [`sensor.${PREFIX}_schedule_period`]: { state: 'No_clock_holding_day' } } });
     const b = $(el, '.banner');
@@ -178,7 +204,10 @@ describe('card', () => {
 
   it('marks morning boost and missing clock', async () => {
     let el = await mount({}, { patch: { [`sensor.${PREFIX}_schedule_period`]: { state: 'Day_morning_boost' } } });
-    expect($(el, '.period').textContent).toContain('Morning boost');
+    expect($(el, '.period').textContent.replace(/\s+/g, ' ')).toContain('Morning boost +1.8°F');
+    el.hass = makeHass({ unit: '°C', patch: { [`sensor.${PREFIX}_schedule_period`]: { state: 'Day_morning_boost' } } });
+    await el.updateComplete;
+    expect($(el, '.period').textContent).toContain('Morning boost +1°C');
     el = await mount({}, { patch: { [`sensor.${PREFIX}_schedule_period`]: { state: 'No_clock_holding_day' } } });
     expect(text(el)).toContain('holding the day program');
   });

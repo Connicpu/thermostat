@@ -26,7 +26,7 @@ number tiles with a single card that covers everything the quirk exposes.
   the tile in use is outlined and tagged NOW.
 * **Tuning & status:** temperature swing, program period, last boost result.
 * **Help text** sits behind small (i) buttons, so the card stays quiet. Each opens on hover, focus or tap,
-  closes on Esc or a click elsewhere, and is linked with `aria-describedby`.
+  closes on Esc (consumed only when a tooltip was open) or a click elsewhere, opens above its row, and is linked with `aria-describedby`.
 * **Warnings** always stay visible: device unavailable, no clock yet (holding the day program), and failed boosts (rejected, failsafe, limit).
 
 ### Units
@@ -87,7 +87,8 @@ firmware release workflow should attach it the same way `card-release.yml` does.
 npm ci
 npm test              # vitest + happy-dom, mocked hass (test/mock-hass.js)
 npm run build         # esbuild -> dist/connie-thermostat-card.js (commit it; CI checks it's up to date)
-npm run screenshots   # headless system Chrome renders demo/ to screenshots/*.png (light + dark)
+npm run screenshots   # headless system Chrome renders demo/ to screenshots/*.png (light + dark), then opens every
+                      # tooltip at 412 and 320 px and fails if one leaves the card or covers its own row's controls
 ```
 
 `demo/index.html` loads the built card with the mock hass and HA's default light/dark theme variables.
