@@ -186,12 +186,16 @@ export const cardStyles = css`
   .tile-c { display: flex; align-items: center; gap: 8px; }
   .tile-pair .tile-c { justify-content: center; }
   .tile .mini { background: var(--card-background-color, var(--ha-card-background, #fff)); }
-  .run-chip { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 600; color: var(--ct-run, var(--primary-color)); }
+  .run-chip { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 600;
+    /* Full colour stays on the border; the text is pulled toward the text colour for contrast. */
+    color: color-mix(in srgb, var(--ct-run, var(--primary-color)) 55%, var(--primary-text-color)); }
   .go {
     margin-left: auto; height: 36px; padding: 0 14px 0 10px; border: none; border-radius: 18px; cursor: pointer; font: inherit; font-size: 14px; font-weight: 500;
-    display: inline-flex; align-items: center; gap: 4px; color: var(--text-primary-color, #fff); background: var(--primary-color);
+    display: inline-flex; align-items: center; gap: 4px; color: var(--text-primary-color, #fff);
+    /* Darkened primary so white text clears 4.5:1 (plain #03a9f4 is ~2.6:1); same hue in both themes. */
+    background: color-mix(in srgb, var(--primary-color) 70%, #000);
   }
-  .go.stop { background: var(--error-color, #db4437); }
+  .go.stop { background: color-mix(in srgb, var(--error-color, #db4437) 80%, #000); }
   .go:disabled { opacity: 0.4; cursor: default; }
   .go:focus-visible, .mini-seg button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
   .go.stop:focus-visible { outline-color: var(--error-color, #db4437); }

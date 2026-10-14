@@ -107,6 +107,52 @@ try {
       console.log(`tooltips OK at ${width}px (${scenario})`);
     }
   }
+
+  // Contrast check (WCAG 2.x): run chip and Start/Switch/Stop text against the background they sit on
+  // (translucent layers composited up through the shadow roots). Fails below 4.5:1.
+  for (const theme of ['light', 'dark']) {
+    for (const scenario of ['heat-day', 'heat-boost', 'cool-night']) {
+      const page = await browser.newPage({ viewport: { width: 412, height: 915 }, colorScheme: theme });
+      await page.goto(`${base}?theme=${theme}&scenario=${scenario}`);
+      await page.waitForSelector('body[data-ready]');
+      const res = await page.locator('connie-thermostat-card').evaluate((card) => {
+        const cv = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+        const rgba = (c) => {
+          cv.clearRect(0, 0, 1, 1);
+          cv.fillStyle = '#000';
+          cv.fillStyle = c;
+          cv.fillRect(0, 0, 1, 1);
+          const [r, g, b, a] = cv.getImageData(0, 0, 1, 1).data;
+          return [r, g, b, a / 255];
+        };
+        const over = (top, bot) => top.slice(0, 3).map((v, k) => v * top[3] + bot[k] * (1 - top[3])).concat(1);
+        const parent = (n) => n.parentElement || n.getRootNode().host || null;
+        const bgOf = (n) => {
+          const layers = [];
+          for (let x = n; x; x = parent(x)) {
+            const c = rgba(getComputedStyle(x).backgroundColor);
+            if (c[3] > 0) layers.push(c);
+            if (c[3] >= 1) break;
+          }
+          return layers.reduceRight((acc, l) => over(l, acc), [255, 255, 255, 1]);
+        };
+        const lum = ([r, g, b]) => [r, g, b].map((v) => ((v /= 255) <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+          .reduce((a, v, k) => a + v * [0.2126, 0.7152, 0.0722][k], 0);
+        const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+        const out = [];
+        for (const el of card.shadowRoot.querySelectorAll('.run-chip, .go:not(:disabled)')) {
+          const bg = bgOf(el);
+          const fg = over(rgba(getComputedStyle(el).color), bg);
+          out.push({ what: el.classList.contains('run-chip') ? 'chip' : `button "${el.textContent.trim()}"`, ratio: Math.round(ratio(fg, bg) * 100) / 100 });
+        }
+        return out;
+      });
+      await page.close();
+      for (const r of res) console.log(`contrast ${theme}/${scenario} ${r.what}: ${r.ratio}:1`);
+      const bad = res.filter((r) => r.ratio < 4.5);
+      if (bad.length) throw new Error(`contrast below 4.5:1 (${theme}/${scenario}): ${bad.map((r) => `${r.what} ${r.ratio}`).join(', ')}`);
+    }
+  }
 } finally {
   await browser.close();
   server.close();

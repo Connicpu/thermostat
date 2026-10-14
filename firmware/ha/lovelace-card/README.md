@@ -101,7 +101,8 @@ npm run build         # esbuild -> dist/connie-thermostat-card.js (commit it; CI
 CHROME_PATH=/usr/bin/google-chrome npm run screenshots
                       # headless Chrome renders demo/ to screenshots/*.png (light + dark, plus boost close-ups),
                       # then opens every tooltip at 412 and 320 px and fails if one leaves the card or
-                      # covers its own row's controls
+                      # covers its own row's controls, and checks the run chip and Start/Switch/Stop text
+                      # reach 4.5:1 contrast in both themes
 ```
 
 `npm run screenshots` (and its geometry check) needs a local Chrome or Chromium. It uses `CHROME_PATH`, or

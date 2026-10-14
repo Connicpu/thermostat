@@ -415,6 +415,18 @@ describe('card', () => {
     expect(t.classList.contains('cool')).toBe(true);
     expect(t.classList.contains('heat')).toBe(false);
     expect(t.querySelector('.run-chip').textContent.trim()).toBe('Cooling · Running');
+    // The quirk's BoostState names (connie_thermostat_v3.py): Heating_to_target, Cooling_to_target, Timed_heat, Timed_cool.
+    t = await run('Cooling_to_target');
+    expect(t.getAttribute('aria-labelledby')).toBe('tile-boost-target');
+    expect([...t.classList]).toEqual(expect.arrayContaining(['running', 'cool']));
+    expect(t.classList.contains('heat')).toBe(false);
+    expect(t.querySelector('.run-chip').textContent.trim()).toBe('Cooling · Running');
+    t = await run('Heating_to_target');
+    expect(t.getAttribute('aria-labelledby')).toBe('tile-boost-target');
+    expect(t.classList.contains('heat')).toBe(true);
+    t = await run('Timed_cool');
+    expect(t.getAttribute('aria-labelledby')).toBe('tile-boost-timed');
+    expect(t.classList.contains('cool')).toBe(true);
     t = await run('Timed'); // direction unknown: theme accent, no colour class, no direction word
     expect(t.className.trim().split(/\s+/).sort()).toEqual(['running', 'tile']);
     expect(t.querySelector('.run-chip').textContent.trim()).toBe('22 min left');
@@ -422,6 +434,8 @@ describe('card', () => {
     expect(css).toContain('.tile.running { --ct-run: var(--primary-color)');
     expect(css).toContain('.tile.running.heat { --ct-run: var(--ct-heat); }');
     expect(css).toContain('.tile.running.cool { --ct-run: var(--ct-cool); }');
+    expect(css).toMatch(/\.run-chip \{[^}]*color: color-mix\(in srgb, var\(--ct-run, var\(--primary-color\)\) 55%, var\(--primary-text-color\)\)/);
+    expect(css).toMatch(/\.go \{[^}]*background: color-mix\(in srgb, var\(--primary-color\) 70%, #000\)/);
   });
 
   it('morning boost tiles use the heat colour while it runs', async () => {
