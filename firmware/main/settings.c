@@ -30,8 +30,11 @@ void SettingsLoad(Persist *pP)
         esp_err_t e = nvs_get_blob(h, KEY, s_buf, &n);
         if (e == ESP_OK && !SettingsDecode(s_buf, n, pP))
         {
-            ESP_LOGW("settings", "unknown settings blob (%u bytes, version %d): defaults", (unsigned)n,
-                     n ? (int)s_buf[0] : -1);
+            ESP_LOGW(
+                "settings",
+                "unknown settings blob (%u bytes, version %d): defaults",
+                (unsigned)n,
+                n ? (int)s_buf[0] : -1);
             SettingsDefaults(pP, FDEF);
         }
         nvs_close(h);

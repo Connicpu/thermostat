@@ -155,11 +155,13 @@ CtrlOutput CtrlStep(Ctrl *pC, const CtrlSettings *pIn, U64 now)
             end = kBoostEndModeChanged;
         else if (now >= pB->endAt)
             end = kBoostEndExpired;
-        else if (pB->kind == kBoostToTarget &&
-                 ((pB->dir == kCtrlModeHeat && t >= pB->sp) || (pB->dir == kCtrlModeCool && t <= pB->sp)))
+        else if (
+            pB->kind == kBoostToTarget &&
+            ((pB->dir == kCtrlModeHeat && t >= pB->sp) || (pB->dir == kCtrlModeCool && t <= pB->sp)))
             end = kBoostEndReached;
-        else if (pB->kind == kBoostTimed &&
-                 ((pB->dir == kCtrlModeHeat && t >= pC->p.maxSp) || (pB->dir == kCtrlModeCool && t <= pC->p.minSp)))
+        else if (
+            pB->kind == kBoostTimed &&
+            ((pB->dir == kCtrlModeHeat && t >= pC->p.maxSp) || (pB->dir == kCtrlModeCool && t <= pC->p.minSp)))
             end = kBoostEndLimit; /* comfort cap on timed boosts */
         if (end != kBoostEndNone)
         {
@@ -276,12 +278,12 @@ CtrlMode CtrlNextMode(CtrlMode m)
 {
     switch (m)
     {
-        case kCtrlModeOff:
-            return kCtrlModeHeat;
-        case kCtrlModeHeat:
-            return kCtrlModeCool;
-        default:
-            return kCtrlModeOff;
+    case kCtrlModeOff:
+        return kCtrlModeHeat;
+    case kCtrlModeHeat:
+        return kCtrlModeCool;
+    default:
+        return kCtrlModeOff;
     }
 }
 
@@ -296,20 +298,26 @@ const char *CtrlFaultStr(CtrlFault f)
 {
     switch (f)
     {
-        case kCtrlFaultNone:
-            return "OK";
-        case kCtrlFaultSensorTimeout:
-            return "SENSOR FAIL";
-        case kCtrlFaultTempRange:
-            return "TEMP RANGE";
-        default:
-            return "?";
+    case kCtrlFaultNone:
+        return "OK";
+    case kCtrlFaultSensorTimeout:
+        return "SENSOR FAIL";
+    case kCtrlFaultTempRange:
+        return "TEMP RANGE";
+    default:
+        return "?";
     }
 }
 
 /** Resolve direction and deadline, then replace any running boost. See control.h. */
-CtrlBoostResult CtrlBoostStart(Ctrl *pC, const CtrlSettings *pS, CtrlBoostKind kind, CtrlBoostDir dir, I16 sp,
-                               U16 minutes, U64 now)
+CtrlBoostResult CtrlBoostStart(
+    Ctrl *pC,
+    const CtrlSettings *pS,
+    CtrlBoostKind kind,
+    CtrlBoostDir dir,
+    I16 sp,
+    U16 minutes,
+    U64 now)
 {
     if (pC->fault != kCtrlFaultNone || !pC->haveTemp)
         return kBoostErrFault;
@@ -393,8 +401,8 @@ void CtrlBoostCancel(Ctrl *pC)
 /** See control.h. */
 CtrlBoostStatus CtrlGetBoostStatus(const Ctrl *pC, U64 now)
 {
-    CtrlBoostStatus st = {
-        .kind = pC->boost.kind, .dir = pC->boost.dir, .sp = pC->boost.sp, .lastEnd = pC->boost.lastEnd};
+    CtrlBoostStatus st =
+        {.kind = pC->boost.kind, .dir = pC->boost.dir, .sp = pC->boost.sp, .lastEnd = pC->boost.lastEnd};
     if (st.kind)
         st.remainingS = now >= pC->boost.endAt ? 0 : (U32)((pC->boost.endAt - now + 999) / 1000);
     return st;

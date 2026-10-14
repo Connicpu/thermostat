@@ -290,8 +290,14 @@ extern "C"
  * Returns kBoostOk, kBoostErrFault (failsafe or no reading yet), kBoostErrArg,
  * kBoostErrAtTarget or kBoostErrNoDirection.
  */
-    CtrlBoostResult CtrlBoostStart(Ctrl *pC, const CtrlSettings *pS, CtrlBoostKind kind, CtrlBoostDir dir, I16 sp,
-                                   U16 minutes, U64 nowMs);
+    CtrlBoostResult CtrlBoostStart(
+        Ctrl *pC,
+        const CtrlSettings *pS,
+        CtrlBoostKind kind,
+        CtrlBoostDir dir,
+        I16 sp,
+        U16 minutes,
+        U64 nowMs);
 
     /**
  * Cancel a running boost (no-op if none): drops its latched call and records kBoostEndCancelled.

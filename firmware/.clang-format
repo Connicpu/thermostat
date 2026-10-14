@@ -15,13 +15,19 @@ AllowShortCaseLabelsOnASingleLine: false
 AllowShortBlocksOnASingleLine: Never
 AllowShortEnumsOnASingleLine: false
 ColumnLimit: 120
+# Long calls/decls: break after '(', one argument per line (never bin-pack).
+AlignAfterOpenBracket: AlwaysBreak
+BinPackArguments: false
+BinPackParameters: false
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
 PointerAlignment: Right
 DerivePointerAlignment: false
 # Include order matters (sdkconfig.h, FreeRTOS.h before task.h, ...): never reorder.
 SortIncludes: Never
 # Never rewrap comments: keeps the prose doc blocks and aligned field notes as written.
 ReflowComments: false
-IndentCaseLabels: true
+IndentCaseLabels: false
 IndentPPDirectives: None
 AlignConsecutiveMacros: Consecutive
 AlignTrailingComments:

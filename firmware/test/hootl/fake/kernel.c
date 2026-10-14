@@ -198,8 +198,13 @@ static void *Trampoline(void *pP)
  * Fake xTaskCreate(): takes a free slot, honours the kv fault.task.<name> injection, starts the
  * thread (1 MiB stack; the requested size is ignored) and preempts if the new task outranks the caller.
  */
-BaseType_t xTaskCreate(TaskFunction_t fn, const char *pName, U32 stack, void *pArg, UBaseType_t prio,
-                       TaskHandle_t *pOut)
+BaseType_t xTaskCreate(
+    TaskFunction_t fn,
+    const char *pName,
+    U32 stack,
+    void *pArg,
+    UBaseType_t prio,
+    TaskHandle_t *pOut)
 {
     (void)stack;
     struct SimTask *pT = NULL;

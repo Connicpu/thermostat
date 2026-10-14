@@ -606,10 +606,11 @@ Kconfig `bool` options are `#define`d to 1 when on and left undefined when off. 
 
 `firmware/.clang-format` is the source of truth. It is based on clang-format's built-in **Microsoft** style (Allman braces, 4-space indent, 120 columns, no short `if`/loop/function/case on one line) with a few overrides:
 - `case` blocks and unions get their braces on their own line too.
-- `case` labels are indented inside `switch`.
+- `case` labels share the `switch` column (not indented).
 - Include order is never sorted, because order matters (`sdkconfig.h`, `FreeRTOS.h` before `task.h`).
 - Comments are never reflowed, so prose doc blocks and aligned field notes stay as written.
 - Escaped newlines in macros align to the left.
+- Long function calls and declarations break after `(` with one argument per line (no bin-packing).
 
 A single-statement `if`/`for`/`while` puts its statement on the next line. Braces are optional there:
 
@@ -618,7 +619,7 @@ if (!pS->valid)
     return false;
 ```
 
-The version is pinned to **19.1.7** (`pip install clang-format==19.1.7`); other versions format differently. `tools/format.sh` formats all of our C (main/, components/, test/), and `tools/format.sh --check` is the CI dry run (`--dry-run -Werror`). `components/display/font_data.c` is generated and excluded. Code that clang-format can't lay out sensibly, such as macro-generated definitions without a trailing `;`, sits between `/* clang-format off */` and `/* clang-format on */`.
+The version is pinned to **19.1.7** (`pip install clang-format==19.1.7`); other versions format differently. `tools/format.sh` formats all of our C (main/, components/, test/), and `tools/format.sh --check` is the CI dry run (`--dry-run -Werror`). `components/display/font_data.c` is generated and excluded. Code that clang-format can't lay out sensibly sits between `/* clang-format off */` and `/* clang-format on */`: macro-generated definitions without a trailing `;`, and calls inside macros that stringify the argument with `#x` (e.g. `TRY()` in `zb_thermostat.c`), where wrapping right after `(` would put a space into the log string.
 
 ### Doc comments
 

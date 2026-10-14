@@ -116,17 +116,17 @@ SchedKind SchedItemKind(SchedItem it)
 {
     switch (it)
     {
-        case kSchedItDayHeatStart:
-        case kSchedItNightHeatStart:
-        case kSchedItDayCoolStart:
-        case kSchedItNightCoolStart:
-            return kSchedKindTime;
-        case kSchedItBoostMin:
-            return kSchedKindMinutes;
-        case kSchedItBoostOfs:
-            return kSchedKindDelta;
-        default:
-            return kSchedKindTemp;
+    case kSchedItDayHeatStart:
+    case kSchedItNightHeatStart:
+    case kSchedItDayCoolStart:
+    case kSchedItNightCoolStart:
+        return kSchedKindTime;
+    case kSchedItBoostMin:
+        return kSchedKindMinutes;
+    case kSchedItBoostOfs:
+        return kSchedKindDelta;
+    default:
+        return kSchedKindTemp;
     }
 }
 
@@ -139,28 +139,28 @@ static void *ItemPtr(const SchedCfg *pC, SchedItem it)
     SchedCfg *pM = (SchedCfg *)pC;
     switch (it)
     {
-        case kSchedItDayHeatStart:
-            return &pM->dayHeatStart;
-        case kSchedItDayHeat:
-            return &pM->dayHeat;
-        case kSchedItNightHeatStart:
-            return &pM->nightHeatStart;
-        case kSchedItNightHeat:
-            return &pM->nightHeat;
-        case kSchedItBoostMin:
-            return &pM->boostMin;
-        case kSchedItBoostOfs:
-            return &pM->boostOffset;
-        case kSchedItDayCoolStart:
-            return &pM->dayCoolStart;
-        case kSchedItDayCool:
-            return &pM->dayCool;
-        case kSchedItNightCoolStart:
-            return &pM->nightCoolStart;
-        case kSchedItNightCool:
-            return &pM->nightCool;
-        default:
-            return NULL;
+    case kSchedItDayHeatStart:
+        return &pM->dayHeatStart;
+    case kSchedItDayHeat:
+        return &pM->dayHeat;
+    case kSchedItNightHeatStart:
+        return &pM->nightHeatStart;
+    case kSchedItNightHeat:
+        return &pM->nightHeat;
+    case kSchedItBoostMin:
+        return &pM->boostMin;
+    case kSchedItBoostOfs:
+        return &pM->boostOffset;
+    case kSchedItDayCoolStart:
+        return &pM->dayCoolStart;
+    case kSchedItDayCool:
+        return &pM->dayCool;
+    case kSchedItNightCoolStart:
+        return &pM->nightCoolStart;
+    case kSchedItNightCool:
+        return &pM->nightCool;
+    default:
+        return NULL;
     }
 }
 

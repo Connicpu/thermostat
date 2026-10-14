@@ -30,42 +30,42 @@ const char *esp_err_to_name(esp_err_t c)
 {
     switch (c)
     {
-        case ESP_OK:
-            return "ESP_OK";
-        case ESP_FAIL:
-            return "ESP_FAIL";
-        case ESP_ERR_NO_MEM:
-            return "ESP_ERR_NO_MEM";
-        case ESP_ERR_INVALID_ARG:
-            return "ESP_ERR_INVALID_ARG";
-        case ESP_ERR_INVALID_STATE:
-            return "ESP_ERR_INVALID_STATE";
-        case ESP_ERR_INVALID_SIZE:
-            return "ESP_ERR_INVALID_SIZE";
-        case ESP_ERR_NOT_FOUND:
-            return "ESP_ERR_NOT_FOUND";
-        case ESP_ERR_TIMEOUT:
-            return "ESP_ERR_TIMEOUT";
-        case ESP_ERR_INVALID_CRC:
-            return "ESP_ERR_INVALID_CRC";
-        case ESP_ERR_NVS_NOT_FOUND:
-            return "ESP_ERR_NVS_NOT_FOUND";
-        case ESP_ERR_NVS_NOT_ENOUGH_SPACE:
-            return "ESP_ERR_NVS_NOT_ENOUGH_SPACE";
-        case ESP_ERR_NVS_NO_FREE_PAGES:
-            return "ESP_ERR_NVS_NO_FREE_PAGES";
-        case ESP_ERR_NVS_NEW_VERSION_FOUND:
-            return "ESP_ERR_NVS_NEW_VERSION_FOUND";
-        case ESP_ERR_NVS_NOT_INITIALIZED:
-            return "ESP_ERR_NVS_NOT_INITIALIZED";
-        case ESP_ERR_NVS_INVALID_LENGTH:
-            return "ESP_ERR_NVS_INVALID_LENGTH";
-        case ESP_ERR_OTA_VALIDATE_FAILED:
-            return "ESP_ERR_OTA_VALIDATE_FAILED";
-        case ESP_ERR_OTA_ROLLBACK_FAILED:
-            return "ESP_ERR_OTA_ROLLBACK_FAILED";
-        default:
-            return "ESP_ERR_?";
+    case ESP_OK:
+        return "ESP_OK";
+    case ESP_FAIL:
+        return "ESP_FAIL";
+    case ESP_ERR_NO_MEM:
+        return "ESP_ERR_NO_MEM";
+    case ESP_ERR_INVALID_ARG:
+        return "ESP_ERR_INVALID_ARG";
+    case ESP_ERR_INVALID_STATE:
+        return "ESP_ERR_INVALID_STATE";
+    case ESP_ERR_INVALID_SIZE:
+        return "ESP_ERR_INVALID_SIZE";
+    case ESP_ERR_NOT_FOUND:
+        return "ESP_ERR_NOT_FOUND";
+    case ESP_ERR_TIMEOUT:
+        return "ESP_ERR_TIMEOUT";
+    case ESP_ERR_INVALID_CRC:
+        return "ESP_ERR_INVALID_CRC";
+    case ESP_ERR_NVS_NOT_FOUND:
+        return "ESP_ERR_NVS_NOT_FOUND";
+    case ESP_ERR_NVS_NOT_ENOUGH_SPACE:
+        return "ESP_ERR_NVS_NOT_ENOUGH_SPACE";
+    case ESP_ERR_NVS_NO_FREE_PAGES:
+        return "ESP_ERR_NVS_NO_FREE_PAGES";
+    case ESP_ERR_NVS_NEW_VERSION_FOUND:
+        return "ESP_ERR_NVS_NEW_VERSION_FOUND";
+    case ESP_ERR_NVS_NOT_INITIALIZED:
+        return "ESP_ERR_NVS_NOT_INITIALIZED";
+    case ESP_ERR_NVS_INVALID_LENGTH:
+        return "ESP_ERR_NVS_INVALID_LENGTH";
+    case ESP_ERR_OTA_VALIDATE_FAILED:
+        return "ESP_ERR_OTA_VALIDATE_FAILED";
+    case ESP_ERR_OTA_ROLLBACK_FAILED:
+        return "ESP_ERR_OTA_ROLLBACK_FAILED";
+    default:
+        return "ESP_ERR_?";
     }
 }
 
@@ -404,8 +404,10 @@ esp_err_t i2c_new_master_bus(const i2c_master_bus_config_t *pC, i2c_master_bus_h
 }
 
 /** Fake device add: records the device address. */
-esp_err_t i2c_master_bus_add_device(i2c_master_bus_handle_t b, const i2c_device_config_t *pC,
-                                    i2c_master_dev_handle_t *pOut)
+esp_err_t i2c_master_bus_add_device(
+    i2c_master_bus_handle_t b,
+    const i2c_device_config_t *pC,
+    i2c_master_dev_handle_t *pOut)
 {
     (void)b;
     s_sht.addr = pC->device_address;
@@ -577,8 +579,14 @@ static void EpdDump(const char *pWhy)
         crc = (crc ^ s_glass[i]) * 16777619u;
         ink += __builtin_popcount((unsigned)(~s_glass[i] & 0xFF));
     }
-    SimEmit("EPD refresh n=%d mode=0x%02x ink=%d crc=%08x file=%s why=%s", s_refreshes, s_updMode, ink, crc, path,
-            pWhy);
+    SimEmit(
+        "EPD refresh n=%d mode=0x%02x ink=%d crc=%08x file=%s why=%s",
+        s_refreshes,
+        s_updMode,
+        ink,
+        crc,
+        path,
+        pWhy);
 }
 
 /**
@@ -717,17 +725,17 @@ esp_err_t nvs_flash_init(void)
 {
     switch (K("nvs.init"))
     {
-        case 1:
-            return ESP_ERR_NVS_NO_FREE_PAGES;
-        case 2:
-            return ESP_ERR_NVS_NEW_VERSION_FOUND;
-        case 3:
-            return ESP_ERR_NOT_FOUND;
-        case 4:
-            return ESP_FAIL;
-        default:
-            s_nvsInited = true;
-            return ESP_OK;
+    case 1:
+        return ESP_ERR_NVS_NO_FREE_PAGES;
+    case 2:
+        return ESP_ERR_NVS_NEW_VERSION_FOUND;
+    case 3:
+        return ESP_ERR_NOT_FOUND;
+    case 4:
+        return ESP_FAIL;
+    default:
+        s_nvsInited = true;
+        return ESP_OK;
     }
 }
 

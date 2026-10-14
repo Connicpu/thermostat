@@ -39,8 +39,10 @@ typedef struct
     uint32_t scl_speed_hz;
 } i2c_device_config_t;
 esp_err_t i2c_new_master_bus(const i2c_master_bus_config_t *c, i2c_master_bus_handle_t *out);
-esp_err_t i2c_master_bus_add_device(i2c_master_bus_handle_t b, const i2c_device_config_t *c,
-                                    i2c_master_dev_handle_t *out);
+esp_err_t i2c_master_bus_add_device(
+    i2c_master_bus_handle_t b,
+    const i2c_device_config_t *c,
+    i2c_master_dev_handle_t *out);
 esp_err_t i2c_master_transmit(i2c_master_dev_handle_t d, const uint8_t *buf, size_t n, int timeout_ms);
 esp_err_t i2c_master_receive(i2c_master_dev_handle_t d, uint8_t *buf, size_t n, int timeout_ms);
 esp_err_t i2c_master_bus_reset(i2c_master_bus_handle_t b);

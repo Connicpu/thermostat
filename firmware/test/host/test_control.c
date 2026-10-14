@@ -465,8 +465,9 @@ static void BoostTargetCoolAutoDirection(void)
 static void BoostTargetRejectsBadRequests(void)
 {
     Setup(kCtrlModeHeat, 2000, 2400);
-    CHECK_EQ(CtrlBoostStart(&s_c, &s_st, kBoostToTarget, kBoostDirAuto, 2200, 0, s_now),
-             kBoostErrFault); /* no reading yet */
+    CHECK_EQ(
+        CtrlBoostStart(&s_c, &s_st, kBoostToTarget, kBoostDirAuto, 2200, 0, s_now),
+        kBoostErrFault); /* no reading yet */
     Run(S(5), 2200, true);
     CHECK_EQ(CtrlBoostStart(&s_c, &s_st, kBoostToTarget, kBoostDirAuto, 2210, 0, s_now), kBoostErrAtTarget);
     CHECK_EQ(CtrlBoostStart(&s_c, &s_st, kBoostToTarget, kBoostDirHeat, 2100, 0, s_now), kBoostErrAtTarget);
@@ -651,8 +652,14 @@ static void FuzzWithBoosts(void)
         if (r % 400 == 0)
         {
             CtrlBoostKind k = (Rnd() & 1) ? kBoostToTarget : kBoostTimed;
-            if (CtrlBoostStart(&s_c, &s_st, k, (CtrlBoostDir)(Rnd() % 3), 1500 + Rnd() % 1500, 1 + Rnd() % 120,
-                               s_now) == kBoostOk)
+            if (CtrlBoostStart(
+                    &s_c,
+                    &s_st,
+                    k,
+                    (CtrlBoostDir)(Rnd() % 3),
+                    1500 + Rnd() % 1500,
+                    1 + Rnd() % 120,
+                    s_now) == kBoostOk)
                 boosts++;
         }
         if (r % 1500 == 1)

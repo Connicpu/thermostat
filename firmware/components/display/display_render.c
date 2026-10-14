@@ -40,12 +40,12 @@ static const char *ModeStr(CtrlMode m)
 {
     switch (m)
     {
-        case kCtrlModeHeat:
-            return "HEAT";
-        case kCtrlModeCool:
-            return "COOL";
-        default:
-            return "OFF";
+    case kCtrlModeHeat:
+        return "HEAT";
+    case kCtrlModeCool:
+        return "COOL";
+    default:
+        return "OFF";
     }
 }
 
@@ -54,16 +54,16 @@ static const char *LinkStr(LinkState l)
 {
     switch (l)
     {
-        case kLinkJoined:
-            return "Zigbee: connected";
-        case kLinkPairing:
-            return "Zigbee: pairing...";
-        case kLinkLost:
-            return "Zigbee: lost parent";
-        case kLinkFault:
-            return "Zigbee: radio fault";
-        default:
-            return "Zigbee: not paired";
+    case kLinkJoined:
+        return "Zigbee: connected";
+    case kLinkPairing:
+        return "Zigbee: pairing...";
+    case kLinkLost:
+        return "Zigbee: lost parent";
+    case kLinkFault:
+        return "Zigbee: radio fault";
+    default:
+        return "Zigbee: not paired";
     }
 }
 
@@ -124,46 +124,46 @@ static void RenderView(GfxFb *pFb, const MenuView *pV)
     GfxClear(pFb);
     switch (pV->kind)
     {
-        case kViewList:
-            snprintf(pos, sizeof pos, "%u/%u", (unsigned)(pV->sel + 1), (unsigned)pV->nRows);
-            TitleBar(pFb, pV->title, pos);
-            RenderRows(pFb, pV, true);
-            break;
-        case kViewText:
-            TitleBar(pFb, pV->title, NULL);
-            RenderRows(pFb, pV, false);
-            break;
-        case kViewValue:
+    case kViewList:
+        snprintf(pos, sizeof pos, "%u/%u", (unsigned)(pV->sel + 1), (unsigned)pV->nRows);
+        TitleBar(pFb, pV->title, pos);
+        RenderRows(pFb, pV, true);
+        break;
+    case kViewText:
+        TitleBar(pFb, pV->title, NULL);
+        RenderRows(pFb, pV, false);
+        break;
+    case kViewValue:
+    {
+        TitleBar(pFb, pV->title, NULL);
+        const Font *pF = pV->bigIsText ? &kFontMed : &kFontBig;
+        int w = GfxTextWidth(pF, pV->big), uw = pV->bigUnit[0] ? GfxTextWidth(&kFontMed, pV->bigUnit) + 4 : 0;
+        int x = (GFX_W - w - uw) / 2, y = pV->bigIsText ? 48 : 34;
+        GfxText(pFb, pF, x, y, pV->big, true);
+        if (uw)
+            GfxText(pFb, &kFontMed, x + w + 4, y + 6, pV->bigUnit, true);
+        /* up/down arrows either side */
+        for (int i = 0; i < 7; i++)
         {
-            TitleBar(pFb, pV->title, NULL);
-            const Font *pF = pV->bigIsText ? &kFontMed : &kFontBig;
-            int w = GfxTextWidth(pF, pV->big), uw = pV->bigUnit[0] ? GfxTextWidth(&kFontMed, pV->bigUnit) + 4 : 0;
-            int x = (GFX_W - w - uw) / 2, y = pV->bigIsText ? 48 : 34;
-            GfxText(pFb, pF, x, y, pV->big, true);
-            if (uw)
-                GfxText(pFb, &kFontMed, x + w + 4, y + 6, pV->bigUnit, true);
-            /* up/down arrows either side */
-            for (int i = 0; i < 7; i++)
-            {
-                GfxHline(pFb, 20 - i, 50 + i, 1 + 2 * i);
-                GfxHline(pFb, GFX_W - 20 - i, 70 - i, 1 + 2 * i);
-            }
-            break;
+            GfxHline(pFb, 20 - i, 50 + i, 1 + 2 * i);
+            GfxHline(pFb, GFX_W - 20 - i, 70 - i, 1 + 2 * i);
         }
-        case kViewWarning:
+        break;
+    }
+    case kViewWarning:
+    {
+        GfxFillRect(pFb, 0, 0, GFX_W, GFX_H, true);
+        int w = GfxTextWidth(&kFontMed, pV->title);
+        GfxText(pFb, &kFontMed, (GFX_W - w) / 2, 6, pV->title, false);
+        for (int i = 0; i < pV->nRows; i++)
         {
-            GfxFillRect(pFb, 0, 0, GFX_W, GFX_H, true);
-            int w = GfxTextWidth(&kFontMed, pV->title);
-            GfxText(pFb, &kFontMed, (GFX_W - w) / 2, 6, pV->title, false);
-            for (int i = 0; i < pV->nRows; i++)
-            {
-                w = GfxTextWidth(&kFontSmall, pV->label[i]);
-                GfxText(pFb, &kFontSmall, (GFX_W - w) / 2, 46 + i * 24, pV->label[i], false);
-            }
-            return;
+            w = GfxTextWidth(&kFontSmall, pV->label[i]);
+            GfxText(pFb, &kFontSmall, (GFX_W - w) / 2, 46 + i * 24, pV->label[i], false);
         }
-        default:
-            break;
+        return;
+    }
+    default:
+        break;
     }
     if (pV->hint[0])
         HintLine(pFb, pV->hint);
@@ -211,20 +211,20 @@ void DisplayRender(GfxFb *pFb, const DisplayModel *pM)
         const char *pPs = NULL;
         switch (pM->schedState)
         {
-            case 0:
-                pPs = "Day (no clock)";
-                break;
-            case 1:
-                pPs = "Day";
-                break;
-            case 2:
-                pPs = "Night";
-                break;
-            case 3:
-                pPs = "Day, morning boost";
-                break;
-            default:
-                break;
+        case 0:
+            pPs = "Day (no clock)";
+            break;
+        case 1:
+            pPs = "Day";
+            break;
+        case 2:
+            pPs = "Night";
+            break;
+        case 3:
+            pPs = "Day, morning boost";
+            break;
+        default:
+            break;
         }
         if (pPs)
             GfxText(pFb, &kFontSmall, 8, 84, pPs, true);
@@ -242,16 +242,16 @@ void DisplayRender(GfxFb *pFb, const DisplayModel *pM)
     FormatTemp(c, sizeof c, pM->s.coolSp, f, !f);
     switch (pM->s.mode)
     {
-        /* "Set 21.5°" does not fit the column in medium font: drop "Set" in °C */
-        case kCtrlModeHeat:
-            snprintf(b, sizeof b, "%s%s" FONT_DEGREE, f ? "Set " : "", h);
-            break;
-        case kCtrlModeCool:
-            snprintf(b, sizeof b, "%s%s" FONT_DEGREE, f ? "Set " : "", c);
-            break;
-        default:
-            b[0] = 0;
-            break;
+    /* "Set 21.5°" does not fit the column in medium font: drop "Set" in °C */
+    case kCtrlModeHeat:
+        snprintf(b, sizeof b, "%s%s" FONT_DEGREE, f ? "Set " : "", h);
+        break;
+    case kCtrlModeCool:
+        snprintf(b, sizeof b, "%s%s" FONT_DEGREE, f ? "Set " : "", c);
+        break;
+    default:
+        b[0] = 0;
+        break;
     }
     GfxText(pFb, &kFontMed, rx, 32, b, true);
 

@@ -109,9 +109,17 @@ esp_err_t HvacOutputsInit(void)
 static void Latch(U8 bad, HvacState pad, HvacState cmd, const char *pWhy, I64 now)
 {
     if ((bad & ~s_driveFault) != 0)
-        ESP_LOGE(kTag,
-                 "EVT output fault: %s; pads W=%d Y=%d G=%d, commanded W=%d Y=%d G=%d (mask 0x%x) - all off, latched",
-                 pWhy, pad.w, pad.y, pad.g, cmd.w, cmd.y, cmd.g, bad);
+        ESP_LOGE(
+            kTag,
+            "EVT output fault: %s; pads W=%d Y=%d G=%d, commanded W=%d Y=%d G=%d (mask 0x%x) - all off, latched",
+            pWhy,
+            pad.w,
+            pad.y,
+            pad.g,
+            cmd.w,
+            cmd.y,
+            cmd.g,
+            bad);
     if (!s_driveFault)
         s_latchedAtUs = now;
     s_driveFault |= bad;

@@ -254,8 +254,12 @@ esp_reset_reason_t esp_reset_reason(void)
         const char *pN;
         esp_reset_reason_t r;
     } kM[] = {
-        {"POWERON", ESP_RST_POWERON}, {"STWD100", ESP_RST_POWERON}, {"SW", ESP_RST_SW},
-        {"OTA_ROLLBACK", ESP_RST_SW}, {"PANIC", ESP_RST_PANIC},     {"TASK_WDT", ESP_RST_TASK_WDT},
+        {"POWERON", ESP_RST_POWERON},
+        {"STWD100", ESP_RST_POWERON},
+        {"SW", ESP_RST_SW},
+        {"OTA_ROLLBACK", ESP_RST_SW},
+        {"PANIC", ESP_RST_PANIC},
+        {"TASK_WDT", ESP_RST_TASK_WDT},
     };
     for (unsigned i = 0; i < sizeof kM / sizeof kM[0]; i++)
         if (!strcmp(kM[i].pN, s_resetReason))

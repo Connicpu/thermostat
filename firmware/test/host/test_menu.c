@@ -200,13 +200,19 @@ static void ScheduleListShowsAllKnobs(void)
     CHECK_EQ(v.nRows, kSchedItCount + 1);
     CHECK(strcmp(v.value[kSchedItDayHeatStart], "06:00") == 0);
     CHECK(strcmp(v.value[kSchedItNightHeatStart], "22:00") == 0);
-    CHECK(strcmp(v.value[kSchedItDayHeat], "20.0"
-                                           "\x7f"
-                                           "C") == 0);
+    CHECK(
+        strcmp(
+            v.value[kSchedItDayHeat],
+            "20.0"
+            "\x7f"
+            "C") == 0);
     CHECK(strcmp(v.value[kSchedItBoostMin], "120 min") == 0);
-    CHECK(strcmp(v.value[kSchedItBoostOfs], "+0.5"
-                                            "\x7f"
-                                            "C") == 0);
+    CHECK(
+        strcmp(
+            v.value[kSchedItBoostOfs],
+            "+0.5"
+            "\x7f"
+            "C") == 0);
     CHECK(strcmp(v.label[kSchedItCount], "Back") == 0);
     Up(); /* wraps to Back */
     CHECK_EQ(s_m.scursor, kSchedItCount);
@@ -466,8 +472,10 @@ static void InfoScreen(void)
     MenuGetView(&s_m, &s_c, &v);
     CHECK_EQ(v.kind, kViewText);
     CHECK(!strcmp(v.value[0], "0.2.0"));
-    CHECK(!strcmp(v.value[1], "22.63\x7f"
-                              "C"));
+    CHECK(!strcmp(
+        v.value[1],
+        "22.63\x7f"
+        "C"));
     CHECK(!strcmp(v.value[2], "45.12%"));
     CHECK(!strcmp(v.value[3], "2d 03:07"));
     Sel();

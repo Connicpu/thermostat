@@ -440,8 +440,14 @@ static U8 TypeSize(U8 t)
 }
 
 /** Record a manufacturer attribute's width from its type; the value pointer is ignored. */
-esp_err_t esp_zb_cluster_add_manufacturer_attr(esp_zb_attribute_list_t *pL, U16 cl, U16 id, U16 mc, U8 type, U8 acc,
-                                               void *pV)
+esp_err_t esp_zb_cluster_add_manufacturer_attr(
+    esp_zb_attribute_list_t *pL,
+    U16 cl,
+    U16 id,
+    U16 mc,
+    U8 type,
+    U8 acc,
+    void *pV)
 {
     (void)pL;
     (void)mc;
@@ -499,8 +505,14 @@ esp_zb_zcl_status_t esp_zb_zcl_set_attribute_val(U8 ep, U16 cl, U8 role, U16 id,
 }
 
 /** Fake esp_zb_zcl_set_manufacturer_attribute_val(): see Store(). */
-esp_zb_zcl_status_t esp_zb_zcl_set_manufacturer_attribute_val(U8 ep, U16 cl, U8 role, U16 mc, U16 id, void *pV,
-                                                              bool chk)
+esp_zb_zcl_status_t esp_zb_zcl_set_manufacturer_attribute_val(
+    U8 ep,
+    U16 cl,
+    U8 role,
+    U16 mc,
+    U16 id,
+    void *pV,
+    bool chk)
 {
     (void)ep;
     (void)role;
@@ -546,11 +558,12 @@ static void JTimeResp(I64 a, I64 b)
     {
         U16 id;
         void *pP;
-    } f[5] = {{ESP_ZB_ZCL_ATTR_TIME_TIME_ID, &s_utc},
-              {ESP_ZB_ZCL_ATTR_TIME_TIME_STATUS_ID, &s_status},
-              {ESP_ZB_ZCL_ATTR_TIME_TIME_ZONE_ID, &s_tz},
-              {ESP_ZB_ZCL_ATTR_TIME_DST_SHIFT_ID, &s_dst},
-              {ESP_ZB_ZCL_ATTR_TIME_LOCAL_TIME_ID, &s_local}};
+    } f[5] = {
+        {ESP_ZB_ZCL_ATTR_TIME_TIME_ID, &s_utc},
+        {ESP_ZB_ZCL_ATTR_TIME_TIME_STATUS_ID, &s_status},
+        {ESP_ZB_ZCL_ATTR_TIME_TIME_ZONE_ID, &s_tz},
+        {ESP_ZB_ZCL_ATTR_TIME_DST_SHIFT_ID, &s_dst},
+        {ESP_ZB_ZCL_ATTR_TIME_LOCAL_TIME_ID, &s_local}};
     int n = hasLocal ? 5 : 4;
     for (int i = 0; i < n; i++)
     {

@@ -228,20 +228,20 @@ static U8 EndToResult(CtrlBoostEnd e)
 {
     switch (e)
     {
-        case kBoostEndReached:
-            return kZbBoostResultReached;
-        case kBoostEndExpired:
-            return kZbBoostResultExpired;
-        case kBoostEndCancelled:
-            return kZbBoostResultCancelled;
-        case kBoostEndModeChanged:
-            return kZbBoostResultModeChanged;
-        case kBoostEndFault:
-            return kZbBoostResultFault;
-        case kBoostEndLimit:
-            return kZbBoostResultLimit;
-        default:
-            return kZbBoostResultNone;
+    case kBoostEndReached:
+        return kZbBoostResultReached;
+    case kBoostEndExpired:
+        return kZbBoostResultExpired;
+    case kBoostEndCancelled:
+        return kZbBoostResultCancelled;
+    case kBoostEndModeChanged:
+        return kZbBoostResultModeChanged;
+    case kBoostEndFault:
+        return kZbBoostResultFault;
+    case kBoostEndLimit:
+        return kZbBoostResultLimit;
+    default:
+        return kZbBoostResultNone;
     }
 }
 
@@ -250,16 +250,16 @@ static U8 StartToResult(CtrlBoostResult r)
 {
     switch (r)
     {
-        case kBoostOk:
-            return kZbBoostResultStarted;
-        case kBoostErrFault:
-            return kZbBoostResultRejectedFault;
-        case kBoostErrAtTarget:
-            return kZbBoostResultRejectedAtTarget;
-        case kBoostErrNoDirection:
-            return kZbBoostResultRejectedNoDirection;
-        default:
-            return kZbBoostResultRejectedArg;
+    case kBoostOk:
+        return kZbBoostResultStarted;
+    case kBoostErrFault:
+        return kZbBoostResultRejectedFault;
+    case kBoostErrAtTarget:
+        return kZbBoostResultRejectedAtTarget;
+    case kBoostErrNoDirection:
+        return kZbBoostResultRejectedNoDirection;
+    default:
+        return kZbBoostResultRejectedArg;
     }
 }
 
@@ -273,30 +273,31 @@ static void HandleBoostCmd(Ctrl *pCtl, U8 cmd, U64 now)
     CtrlBoostResult r;
     switch (cmd)
     {
-        case kZbBoostCmdCancel:
-            if (CtrlGetBoostStatus(pCtl, now).kind != kBoostNone)
-            {
-                CtrlBoostCancel(pCtl);
-                s_boostResult = kZbBoostResultCancelled;
-            }
-            return;
-        case kZbBoostCmdStartTarget:
-            r = CtrlBoostStart(pCtl, &p.s, kBoostToTarget, (CtrlBoostDir)p.boostDir, p.boostSp, 0, now);
-            break;
-        case kZbBoostCmdStartTimed:
-            r = CtrlBoostStart(pCtl, &p.s, kBoostTimed, (CtrlBoostDir)p.boostDir, 0, p.boostMinutes, now);
-            break;
-        default:
-            r = kBoostErrArg;
-            break;
+    case kZbBoostCmdCancel:
+        if (CtrlGetBoostStatus(pCtl, now).kind != kBoostNone)
+        {
+            CtrlBoostCancel(pCtl);
+            s_boostResult = kZbBoostResultCancelled;
+        }
+        return;
+    case kZbBoostCmdStartTarget:
+        r = CtrlBoostStart(pCtl, &p.s, kBoostToTarget, (CtrlBoostDir)p.boostDir, p.boostSp, 0, now);
+        break;
+    case kZbBoostCmdStartTimed:
+        r = CtrlBoostStart(pCtl, &p.s, kBoostTimed, (CtrlBoostDir)p.boostDir, 0, p.boostMinutes, now);
+        break;
+    default:
+        r = kBoostErrArg;
+        break;
     }
     s_boostResult = StartToResult(r);
     ESP_LOGI(kTag, "boost cmd %u -> result %u", cmd, s_boostResult);
     if (r != kBoostOk)
-        Banner(r == kBoostErrAtTarget      ? "Boost: already there"
-               : r == kBoostErrFault       ? "Boost: sensor fault"
-               : r == kBoostErrNoDirection ? "Boost: set mode HEAT/COOL"
-                                           : "Boost: invalid");
+        Banner(
+            r == kBoostErrAtTarget      ? "Boost: already there"
+            : r == kBoostErrFault       ? "Boost: sensor fault"
+            : r == kBoostErrNoDirection ? "Boost: set mode HEAT/COOL"
+                                        : "Boost: invalid");
 }
 
 /** Zigbee onIdentify callback: blink the LED for `secs` seconds. */
@@ -349,44 +350,44 @@ static bool HandleHomeKey(const BtnMsg *pM)
 
     switch (pM->which)
     {
-        case kUiBtnCombo:
-        {
-            /* UP+DOWN together: toggle a timed boost. Undo the setpoint nudge the
+    case kUiBtnCombo:
+    {
+        /* UP+DOWN together: toggle a timed boost. Undo the setpoint nudge the
          * first of the two presses caused. */
-            if (NowMs() - s_nudgeAt < 1500)
-                SettingsUpdate(&s_beforeNudge, true);
-            U8 cmd = s_boostActive ? kZbBoostCmdCancel : kZbBoostCmdStartTimed;
-            xQueueSend(s_boostQ, &cmd, 0);
-            return true;
-        }
-        case kUiBtnUp:
-        case kUiBtnDown:
-            if (pM->ev != kBtnEvPress && pM->ev != kBtnEvRepeat)
-                return false;
-            if (UiComboActive())
-                return false;
-            if (pM->ev == kBtnEvPress)
-            {
-                s_beforeNudge = s;
-                s_nudgeAt = NowMs();
-            }
-            switch (s.mode)
-            {
-                case kCtrlModeHeat:
-                    s.heatSp = MenuStepTemp(s.heatSp, dir, f);
-                    SettingsUpdate(&s, true);
-                    break;
-                case kCtrlModeCool:
-                    s.coolSp = MenuStepTemp(s.coolSp, dir, f);
-                    SettingsUpdate(&s, false);
-                    break;
-                default:
-                    Banner("Mode is OFF - M: menu > Mode");
-                    break;
-            }
-            return true;
-        default:
+        if (NowMs() - s_nudgeAt < 1500)
+            SettingsUpdate(&s_beforeNudge, true);
+        U8 cmd = s_boostActive ? kZbBoostCmdCancel : kZbBoostCmdStartTimed;
+        xQueueSend(s_boostQ, &cmd, 0);
+        return true;
+    }
+    case kUiBtnUp:
+    case kUiBtnDown:
+        if (pM->ev != kBtnEvPress && pM->ev != kBtnEvRepeat)
             return false;
+        if (UiComboActive())
+            return false;
+        if (pM->ev == kBtnEvPress)
+        {
+            s_beforeNudge = s;
+            s_nudgeAt = NowMs();
+        }
+        switch (s.mode)
+        {
+        case kCtrlModeHeat:
+            s.heatSp = MenuStepTemp(s.heatSp, dir, f);
+            SettingsUpdate(&s, true);
+            break;
+        case kCtrlModeCool:
+            s.coolSp = MenuStepTemp(s.coolSp, dir, f);
+            SettingsUpdate(&s, false);
+            break;
+        default:
+            Banner("Mode is OFF - M: menu > Mode");
+            break;
+        }
+        return true;
+    default:
+        return false;
     }
     return false;
 }
@@ -485,54 +486,54 @@ static bool ApplyMenuAction(const MenuAction *pA)
     Persist p = SettingsGet();
     switch (pA->kind)
     {
-        case kMaSetMode:
-            p.s.mode = (CtrlMode)pA->value;
-            SettingsUpdate(&p.s, true);
-            break;
-        case kMaSetFan:
-            p.s.fan = (CtrlFan)pA->value;
-            SettingsUpdate(&p.s, true);
-            break;
-        case kMaBoostTarget:
-            PersistEdit(SetBoostSp, pA->value);
-            cmd = kZbBoostCmdStartTarget;
-            xQueueSend(s_boostQ, &cmd, 0);
-            break;
-        case kMaBoostTimed:
-            PersistEdit(SetBoostMin, pA->value);
-            cmd = kZbBoostCmdStartTimed;
-            xQueueSend(s_boostQ, &cmd, 0);
-            break;
-        case kMaBoostCancel:
-            cmd = kZbBoostCmdCancel;
-            xQueueSend(s_boostQ, &cmd, 0);
-            break;
-        case kMaSetSwing:
-            PersistEdit(SetSwing, pA->value);
-            break;
-        case kMaSetSched:
-        { /* persisted like any setting; ZbThermostatPublish() reports the change to HA */
-            CtrlParams prm = CTRL_PARAMS_DEFAULT();
-            xSemaphoreTake(s_mtx, portMAX_DELAY);
-            SchedSet(&s_persist.sched, (SchedItem)pA->item, pA->value);
-            SchedSanitize(&prm, &s_persist.sched);
-            s_dirty = true;
-            s_dirtyAt = NowMs();
-            xSemaphoreGive(s_mtx);
-            break;
-        }
-        case kMaSetUnits:
-            PersistEdit(SetUnits, pA->value);
-            break;
-        case kMaPair:
-            Banner(ZbThermostatLink() == kLinkJoined ? "Already paired (reset to re-pair)" : "Pairing...");
-            ZbThermostatPair();
-            break;
-        case kMaFactoryReset:
-            FactoryReset();
-            break;
-        default:
-            break;
+    case kMaSetMode:
+        p.s.mode = (CtrlMode)pA->value;
+        SettingsUpdate(&p.s, true);
+        break;
+    case kMaSetFan:
+        p.s.fan = (CtrlFan)pA->value;
+        SettingsUpdate(&p.s, true);
+        break;
+    case kMaBoostTarget:
+        PersistEdit(SetBoostSp, pA->value);
+        cmd = kZbBoostCmdStartTarget;
+        xQueueSend(s_boostQ, &cmd, 0);
+        break;
+    case kMaBoostTimed:
+        PersistEdit(SetBoostMin, pA->value);
+        cmd = kZbBoostCmdStartTimed;
+        xQueueSend(s_boostQ, &cmd, 0);
+        break;
+    case kMaBoostCancel:
+        cmd = kZbBoostCmdCancel;
+        xQueueSend(s_boostQ, &cmd, 0);
+        break;
+    case kMaSetSwing:
+        PersistEdit(SetSwing, pA->value);
+        break;
+    case kMaSetSched:
+    { /* persisted like any setting; ZbThermostatPublish() reports the change to HA */
+        CtrlParams prm = CTRL_PARAMS_DEFAULT();
+        xSemaphoreTake(s_mtx, portMAX_DELAY);
+        SchedSet(&s_persist.sched, (SchedItem)pA->item, pA->value);
+        SchedSanitize(&prm, &s_persist.sched);
+        s_dirty = true;
+        s_dirtyAt = NowMs();
+        xSemaphoreGive(s_mtx);
+        break;
+    }
+    case kMaSetUnits:
+        PersistEdit(SetUnits, pA->value);
+        break;
+    case kMaPair:
+        Banner(ZbThermostatLink() == kLinkJoined ? "Already paired (reset to re-pair)" : "Pairing...");
+        ZbThermostatPair();
+        break;
+    case kMaFactoryReset:
+        FactoryReset();
+        break;
+    default:
+        break;
     }
     if (pA->fullRefresh)
         s_fullEpoch++;
@@ -722,7 +723,11 @@ static void AppTask(void *pArg)
         }
         if (!evtSInit || memcmp(&evtS, &eff, sizeof eff) != 0)
         {
-            EVT("EVT setpoint mode=%d heat=%d cool=%d fan=%d sched=%d", eff.mode, eff.heatSp, eff.coolSp, eff.fan,
+            EVT("EVT setpoint mode=%d heat=%d cool=%d fan=%d sched=%d",
+                eff.mode,
+                eff.heatSp,
+                eff.coolSp,
+                eff.fan,
                 (int)sst);
             evtS = eff;
             evtSInit = true;
@@ -913,8 +918,9 @@ static void AppTask(void *pArg)
             {
                 otaMarked = true; /* factory/already-confirmed image: nothing to do */
             }
-            else if (healthy && o.fault == kCtrlFaultNone && now - boot >= OTA_VALID_AFTER_MS &&
-                     ZbThermostatLink() == kLinkJoined)
+            else if (
+                healthy && o.fault == kCtrlFaultNone && now - boot >= OTA_VALID_AFTER_MS &&
+                ZbThermostatLink() == kLinkJoined)
             {
                 ESP_LOGI(kTag, "new image healthy and joined: confirming");
                 esp_ota_mark_app_valid_cancel_rollback();
@@ -990,9 +996,18 @@ void app_main(void)
     /* no clock yet at boot: mirror the day program */
     SchedProgramSp(&s_persist.sched, false, 0, &s_persist.s.heatSp, &s_persist.s.coolSp);
     MenuInit(&s_menu);
-    ESP_LOGI(kTag, "settings: mode %d heat %d cool %d fan %d calib %d", s_persist.s.mode, s_persist.s.heatSp,
-             s_persist.s.coolSp, s_persist.s.fan, s_persist.calibTenths);
-    EVT("EVT cfg loaded mode=%d heat=%d cool=%d fan=%d", s_persist.s.mode, s_persist.s.heatSp, s_persist.s.coolSp,
+    ESP_LOGI(
+        kTag,
+        "settings: mode %d heat %d cool %d fan %d calib %d",
+        s_persist.s.mode,
+        s_persist.s.heatSp,
+        s_persist.s.coolSp,
+        s_persist.s.fan,
+        s_persist.calibTenths);
+    EVT("EVT cfg loaded mode=%d heat=%d cool=%d fan=%d",
+        s_persist.s.mode,
+        s_persist.s.heatSp,
+        s_persist.s.coolSp,
         s_persist.s.fan);
 
     if (SensorInit() != ESP_OK)
