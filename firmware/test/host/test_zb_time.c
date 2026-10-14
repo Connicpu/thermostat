@@ -22,9 +22,9 @@ static void plausibility_and_status(void)
 static void retry_backoff(void)
 {
     CHECK_EQ(zb_time_next_delay_ms(0, false), 60000u);
-    CHECK_EQ(zb_time_next_delay_ms(1, false), 60000u);
-    CHECK_EQ(zb_time_next_delay_ms(2, false), 120000u);
-    CHECK_EQ(zb_time_next_delay_ms(3, false), 300000u);
+    CHECK_EQ(zb_time_next_delay_ms(1, false), 120000u);
+    CHECK_EQ(zb_time_next_delay_ms(2, false), 300000u);
+    CHECK_EQ(zb_time_next_delay_ms(3, false), 3600000u);
     CHECK_EQ(zb_time_next_delay_ms(4, false), 3600000u);
     CHECK_EQ(zb_time_next_delay_ms(255, false), 3600000u);
     CHECK_EQ(zb_time_next_delay_ms(0, true), 3600000u);

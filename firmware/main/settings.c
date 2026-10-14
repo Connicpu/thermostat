@@ -1,5 +1,5 @@
 /* settings.c - NVS persistence: namespace "tstat", one versioned blob under the
- * stable key "cfg". Format and versioning: settings_codec.c. */
+ * stable key "cfg3" (0.2.x prototypes used "cfg" with another layout). Format and versioning: settings_codec.c. */
 #include "settings.h"
 #include "nvs.h"
 #include "esp_log.h"
@@ -7,7 +7,7 @@
 #include "sdkconfig.h"
 
 #define NS "tstat"
-#define KEY "cfg"
+#define KEY "cfg3"   /* new key: never collides with 0.2.x's tstat/cfg layout */
 #define FDEF (CONFIG_THERMO_DISPLAY_FAHRENHEIT ? true : false)
 
 static uint8_t s_buf[SETTINGS_BLOB_MAX];
@@ -20,7 +20,8 @@ void settings_load(persist_t *p)
         size_t n = sizeof s_buf;
         esp_err_t e = nvs_get_blob(h, KEY, s_buf, &n);
         if (e == ESP_OK && !settings_decode(s_buf, n, p)) {
-            ESP_LOGW("settings", "unknown settings blob (%u bytes, version %u): defaults", (unsigned)n, s_buf[0]);
+            ESP_LOGW("settings", "unknown settings blob (%u bytes, version %d): defaults", (unsigned)n,
+                     n ? (int)s_buf[0] : -1);
             settings_defaults(p, FDEF);
         }
         nvs_close(h);

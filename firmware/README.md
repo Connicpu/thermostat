@@ -109,7 +109,7 @@ across later network loss (extrapolated) until the next reboot.
 All are manufacturer-specific (code 0x131B) on the existing 0xFC57 cluster, persisted in NVS.
 
 **Settings storage.** All settings live in one versioned blob, `{version, persist_t}`, under the NVS key
-`cfg` (namespace `tstat`). The current layout is **version 1** (no hardware has shipped, so there are no
+`cfg3` (namespace `tstat`; a new key so it never collides with the 0.2.x `cfg` blob). The current layout is **version 1** (no hardware has shipped, so there are no
 older layouts to migrate). A blob with an unknown version or size loads the defaults. A future layout change
 bumps `SETTINGS_VERSION` and adds a migration branch in `settings_decode()` (`main/settings_codec.c`, host-tested
 in `test/host/test_settings.c`). Out-of-range writes are clamped and the clamped value is stored, so a

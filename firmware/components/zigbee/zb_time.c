@@ -13,7 +13,6 @@ uint32_t zb_time_next_delay_ms(uint8_t fails, bool known)
     static const uint32_t backoff[] = {60u * 1000u, 2u * 60u * 1000u, 5u * 60u * 1000u};
     const uint32_t hourly = 60u * 60u * 1000u;
     if (known) return hourly;
-    if (fails == 0) return backoff[0];
-    if (fails <= sizeof backoff / sizeof backoff[0]) return backoff[fails - 1];
+    if (fails < sizeof backoff / sizeof backoff[0]) return backoff[fails];
     return hourly;
 }
