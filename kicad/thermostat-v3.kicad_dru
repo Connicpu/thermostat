@@ -6,7 +6,15 @@
 (rule "island_thin_traces"
   (condition "A.intersectsArea('ISLAND') && A.Type == 'Track'")
   (constraint track_width (max 0.25mm)))
-# 24VAC side: GND pour keeps >=1.0 mm from AC / triac / opto-output copper (IPC-2221B B2 31-100V = 0.6 mm, plus margin)
+# 24VAC / triac / opto-output copper vs every other (LV) net: >= 0.6 mm (IPC-2221B B2, 31-100 V), 0.8 preferred
+(rule "hv_to_lv_clearance"
+  (condition "(A.NetName == 'HVAC_*' || A.NetName == 'R_FUSED' || A.NetName == 'OPTO_MT2_*' || A.NetName == 'GATE_*' || A.NetName == 'SNUB_*' || A.NetName == 'VIN_RECT') && !(B.NetName == 'HVAC_*' || B.NetName == 'R_FUSED' || B.NetName == 'OPTO_MT2_*' || B.NetName == 'GATE_*' || B.NetName == 'SNUB_*' || B.NetName == 'VIN_RECT' || B.NetName == 'unconnected-*')")
+  (constraint clearance (min 0.6mm)))
+# Opto isolation gaps (U6-U8, between output pins 4-6 and LED pins 1-3): no LV copper may enter, on any layer
+(rule "opto_gap_no_lv"
+  (condition "A.intersectsArea('OPTO_GAP_*') && (A.Type == 'Track' || A.Type == 'Via') && !(A.NetName == 'HVAC_*' || A.NetName == 'OPTO_MT2_*' || A.NetName == 'GATE_*' || A.NetName == 'SNUB_*')")
+  (constraint disallow track via))
+# (kept LAST so it overrides hv_to_lv_clearance for the pour) 24VAC side: GND pour keeps >=1.0 mm from AC / triac / opto-output copper (IPC-2221B B2 31-100V = 0.6 mm, plus margin)
 (rule "hv_pour_clearance"
-  (condition "A.Type == 'Zone' && (B.NetName == 'HVAC_*' || B.NetName == 'R_FUSED' || B.NetName == 'OPTO_MT2_*' || B.NetName == 'GATE_*' || B.NetName == 'SNUB_*')")
+  (condition "A.Type == 'Zone' && (B.NetName == 'HVAC_*' || B.NetName == 'R_FUSED' || B.NetName == 'OPTO_MT2_*' || B.NetName == 'GATE_*' || B.NetName == 'SNUB_*' || B.NetName == 'VIN_RECT')")
   (constraint clearance (min 1.0mm)))

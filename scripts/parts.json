@@ -34,7 +34,7 @@
 },
 {
 "ref": "D1",
-"sym": "Diode_Bridge:MB2S",
+"sym": "tstat:BRIDGE_MB10S",
 "value": "MB10S",
 "fp": "tstat:MBS_MB10S",
 "lcsc": "C2488",
@@ -68,7 +68,7 @@
 "ref": "D2",
 "sym": "Device:D_TVS",
 "value": "SMBJ40CA",
-"fp": "tstat:SMB_SMBJ40A",
+"fp": "tstat:D_SMB_TVS",
 "lcsc": "C19077590",
 "pins": {
 "1": "VIN_HV",
@@ -98,7 +98,7 @@
 "ref": "C43",
 "sym": "Device:C_Polarized",
 "value": "47uF 63V",
-"fp": "Capacitor_THT:CP_Radial_D8.0mm_P3.50mm",
+"fp": "tstat:CP_Radial_D8.0mm_P3.50mm",
 "lcsc": "C19270693",
 "pins": {
 "1": "VIN_HV",
@@ -312,7 +312,7 @@
 "ref": "J2",
 "sym": "tstat:USB_C",
 "value": "USB-C",
-"fp": "Connector_USB:USB_C_Receptacle_HRO_TYPE-C-31-M-12",
+"fp": "tstat:USB_C_Receptacle_HRO_TYPE-C-31-M-12",
 "lcsc": "C165948",
 "pins": {
 "A1": "GND",
@@ -895,7 +895,7 @@
 "ref": "Q2",
 "sym": "tstat:TRIAC",
 "value": "T405-600B",
-"fp": "tstat:TO-252_BT136S",
+"fp": "tstat:TO-252-2_TRIAC_DPAK",
 "lcsc": "C283473",
 "pins": {
 "1": "HVAC_W",
@@ -1020,7 +1020,7 @@
 "ref": "Q3",
 "sym": "tstat:TRIAC",
 "value": "T405-600B",
-"fp": "tstat:TO-252_BT136S",
+"fp": "tstat:TO-252-2_TRIAC_DPAK",
 "lcsc": "C283473",
 "pins": {
 "1": "HVAC_Y",
@@ -1145,7 +1145,7 @@
 "ref": "Q4",
 "sym": "tstat:TRIAC",
 "value": "T405-600B",
-"fp": "tstat:TO-252_BT136S",
+"fp": "tstat:TO-252-2_TRIAC_DPAK",
 "lcsc": "C283473",
 "pins": {
 "1": "HVAC_G",
@@ -1533,7 +1533,7 @@
 "ref": "TP1",
 "sym": "Connector:TestPoint",
 "value": "VIN_HV",
-"fp": "TestPoint:TestPoint_Pad_D1.5mm",
+"fp": "tstat:TestPoint_Pad_D1.5mm",
 "lcsc": "",
 "pins": {
 "1": "VIN_HV"
@@ -1547,7 +1547,7 @@
 "ref": "TP2",
 "sym": "Connector:TestPoint",
 "value": "GND",
-"fp": "TestPoint:TestPoint_Pad_D1.5mm",
+"fp": "tstat:TestPoint_Pad_D1.5mm",
 "lcsc": "",
 "pins": {
 "1": "GND"
@@ -1561,7 +1561,7 @@
 "ref": "TP3",
 "sym": "Connector:TestPoint",
 "value": "+3V3",
-"fp": "TestPoint:TestPoint_Pad_D1.5mm",
+"fp": "tstat:TestPoint_Pad_D1.5mm",
 "lcsc": "",
 "pins": {
 "1": "+3V3"
@@ -1575,7 +1575,7 @@
 "ref": "TP4",
 "sym": "Connector:TestPoint",
 "value": "VBUS",
-"fp": "TestPoint:TestPoint_Pad_D1.5mm",
+"fp": "tstat:TestPoint_Pad_D1.5mm",
 "lcsc": "",
 "pins": {
 "1": "VBUS"

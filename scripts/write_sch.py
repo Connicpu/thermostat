@@ -17,6 +17,7 @@ CUST={
 'STEMMA':([('1','GND'),('2','3V3'),('3','SDA'),('4','SCL'),('MP','MP')],[]),
 'MOC3063':([('1','A'),('2','K'),('3','NC')],[('6','MT2'),('5','NC'),('4','MT1')]),
 'TRIAC':([('3','G')],[('2','MT2'),('1','MT1')]),
+'BRIDGE_MB10S':([('3','~'),('4','~')],[('1','+'),('2','-')]),  # C2488 EasyEDA pad numbering: 1=+ 2=- 3,4=AC
 'EPD_FPC24':([(str(i),n) for i,n in zip(range(1,13),['NC','GDR','RESE','NC','VSH2','TSCL','TSDA','BS1','BUSY','RES#','D/C#','CS#'])]+[('MP','MP')],
              [(str(i),n) for i,n in zip(range(13,25),['SCL','SDA','VDDIO','VCI','VSS','VDD','VPP','VSH1','VGH','VSL','VGL','VCOM'])]),
 }

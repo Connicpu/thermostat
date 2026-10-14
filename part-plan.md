@@ -1,26 +1,114 @@
-# Thermostat V3 – Part Plan (rev 2, 2026-10-12 night)
-Stock, prices and basic/extended status come from the JLCPCB parts API, checked 2026-10-12 ~23:00–23:40 PT. Re-check before ordering.
-Previous revision: part-plan-v1.md
+# Thermostat V3 – Part Plan (current: rev 13, 2026-10-13)
+This top section describes the board as it is now. The sections under "Change history" further down are kept for traceability; parts named there (BT136S, T435, SMBJ40A, 100 µF bulk, 68 µH / 3 Ω EPD boost, Si1308) are **superseded**.
+The authoritative BOM is fab/thermostat-v3-BOM-JLC.csv, with prices and stock in fab/bom_prices.json (JLC API).
 
-## Architecture (as implemented in kicad/thermostat-v3.kicad_sch)
-- **24VAC input:** 24VAC R/C goes through a 0.5 A 60 V PTC (F1), an MB10S bridge (D1) and a 3.3 Ω pulse resistor (R51) to VIN_HV, which has the SMBJ40A TVS (D2), 4× 4.7 µF 100 V ceramics and the 47 µF/63 V rear electrolytic (C43).
-- **3.3 V supply:** an **LMR16006X buck (60 V max, 0.6 A, 700 kHz)** with a 22 µH inductor and SS210 catch diode makes +3V3.
-  - The X (700 kHz) version was chosen over the Y (2.1 MHz) version because the minimum on-time at ~40 V in → 3.3 V out is too short at 2.1 MHz.
-- **USB:** USB-C VBUS goes through a B5819W into VIN_HV (diode-OR; the bridge itself is the other "diode"). USB D+/D- go straight to the C6's native USB, with USBLC6 ESD protection.
-- **MCU:** ESP32-C6-WROOM-1-N8 (Zigbee). **Firmware default: Zigbee end device** (rx-off-when-idle / light-sleep between polls) to limit self-heating. A router role is optional later.
-- **HVAC outputs, ×3 (W, Y, G):**
-  - GPIO → 220R → MOC3063 zero-cross opto (10k pull-down on each drive line, so outputs are off when the GPIO is high-Z)
-  - opto → 100R from R, 1k gate-MT1 → BT136S-600D triac switching R onto W/Y/G
-  - **DNP RC snubber footprint per channel** (100R 0805 + 100 nF 50 V 0805, across MT2–MT1)
-- **Watchdog:** STWD100NY (1.6 s), open-drain WDO wired to ESP EN.
-  - Its ~EN pin has a 10k pull-up, so the watchdog is **disarmed at boot and while flashing**.
-  - Firmware arms it by driving IO11 low and kicks it on IO10.
-  - If firmware hangs → watchdog resets the ESP → GPIOs go high-Z → triacs off.
-- **Display:** 2.9" 296×128 SSD1680 panel (GDEY029T94 / Waveshare 2.9" V2) on a 24-pin 0.5 mm FPC.
-  - Onboard boost per the Waveshare reference schematic: **68 µH**, Si1308EDL, **3 Ω sense resistor (B/W 2.9")**, 10k gate pull-down, 3 Schottky pump diodes (B5819W, which is basic, instead of MBR0530), and 1 µF caps on VSH1/VSH2/VSL/VGH/VGL/VCOM/VDD/VPP.
-  - BS1 is tied to GND (4-wire SPI).
-- **Sensor:** SHT40 on a slotted thermal island (4 slots, power/I2C enter through one bridge, no GND pour on the island), plus a Stemma QT port.
-- **UI:** UP / DOWN / MODE buttons, RESET and BOOT buttons, and one red status LED (IO8; pull-up keeps the strap pin high).
+## Architecture (current)
+- **24VAC input:** R goes through F1 (mSMD050-60V, a 0.5 A 60 V PTC) to the MB10S bridge D1. D1 + goes through R51 (3.3 Ω 0.75 W pulse-proof) to VIN_HV.
+  - VIN_HV has D2 (SMBJ40CA TVS), C1/C2/C41/C42 (4.7 µF 100 V X7R 1210) and C43 (47 µF 63 V, 8x9 THT, back side, hand-soldered).
+  - D1 − is board GND, so board GND is **not** HVAC C.
+- **3.3 V supply:** an LMR16006XDDCR buck (60 V, 0.6 A, 700 kHz) with L1 (22 µH SWPA6045S220MT, Isat 2.2 A), D4 (SS210) and an FB divider of 33k/10k (3.29 V). R50 (100k) pulls EN up to VIN.
+- **USB (flash only):** USB-C J2, with VBUS going through D3 (SS210) into VIN_HV, so it can't backfeed from 24 V. D+/D- go to C6 IO13/IO12 with USBLC6 ESD, and CC1/CC2 have 5.1k each.
+  - **Never connect USB while 24VAC is wired.** There is a silk warning beside J2 and near the buttons.
+- **MCU:** ESP32-C6-WROOM-1-N8, Zigbee sleepy end device.
+- **HVAC outputs W/Y/G:** GPIO → 220R → MOC3063S (zero-cross; 10k pull-downs on the drive lines). The opto output gets 100R from R, there's 1k from gate to MT1, and the triac is a **T405-600B** (ST logic-level, IGT 5 mA, IH 10 mA, 4 A 600 V, DPAK; tab = MT2 = R).
+  - The RC snubbers (R24/R34/R44 100R + C20/C21/C22 100 nF) are **DNP**.
+- **Watchdog:** STWD100NYWY3F, with WDO going to EN. ~EN has a 10k pull-up, so it stays disarmed until firmware drives IO11 low; firmware kicks it on IO10.
+- **Display:** GDEY029T94 2.9" (SSD1680) on J4, an AFC07 24-pin 0.5 mm FPC, wired for 4-wire SPI (BS1 to GND).
+  - Boost: L2 47 µH (ANR3015T470M), Q1 AO3400A, R16 2.2 Ω RESE, R15 1M gate pull-down, D6-D8 B5819W, C40 4.7 µF 25 V, plus 1 µF 50 V on VSH1/VSH2/VSL/VGH/VGL/VCOM and 1 µF on VDD.
+- **Sensor:** SHT40-AD1B (0x44) on a slotted thermal island; only +3V3/GND/SDA/SCL may enter (DRC rule). There's also a Stemma QT port (J3, DNP).
+- **UI:** UP/DOWN/MODE buttons (IO4/IO5/IO3), RESET, BOOT (IO9) and a red LED on IO8.
+- **Hand-soldered / not assembled by JLC:** J1 (15EDGRC-3.5-05P right-angle header, back side, with the 15EDGK-3.5-05P plug) and C43. J3 is optional.
+
+## Current BOM (JLC assembled; 37 lines)
+| Refs | Value | Footprint | LCSC | JLC type | Notes |
+|---|---|---|---|---|---|
+| R21,R31,R41 | 220R | R_0402_1005Metric | C25091 | basic |  |
+| C40 | 4.7uF 25V | C_0805_2012Metric | C1779 | basic |  |
+| L2 | 47uH | L_APV_ANR3015 | C7427088 | extended |  |
+| C30,C31,C32,C33,C34,C35 | 1uF 50V | C_0603_1608Metric | C15849 | basic |  |
+| Q1 | AO3400A | SOT-23_AO3400A | C20917 | basic |  |
+| Q2,Q3,Q4 | T405-600B | TO-252_BT136S | C283473 | extended | T405-600B-TR (ST T4 logic-level, IGT 5mA IH 10mA; was T435-600B IH 35m |
+| R2,R5,R6,R7,R8,R9,R11,R12,R20,R30,R40 | 10k | R_0402_1005Metric | C25744 | basic |  |
+| C4,C5,C7,C39 | 10uF | C_0603_1608Metric | C19702 | basic |  |
+| C3,C8,C10,C11 | 100nF | C_0402_1005Metric | C1525 | basic |  |
+| D3,D4 | SS210 | SMA_SS210 | C14996 | basic | SS210 100V 2A Schottky (was B5819W 40V) |
+| C6,C9,C36,C38 | 1uF | C_0402_1005Metric | C52923 | basic |  |
+| SW1,SW2,SW3,SW4,SW5 | TS-1187A-B-A-B | SW_TS1187A | C318884 | basic |  |
+| R1 | 33k | R_0402_1005Metric | C25779 | basic |  |
+| U1 | LMR16006XDDCR | SOT-23-6_LMR16006 | C87080 | extended |  |
+| R23,R33,R43 | 1k | R_0805_2012Metric | C17513 | basic |  |
+| J2 | USB-C | USB_C_Receptacle_HRO_TYPE-C-31-M-12 | C165948 | extended |  |
+| R22,R32,R42 | 100R | R_0805_2012Metric | C17408 | basic |  |
+| U3 | ESP32-C6-WROOM-1-N8 | ESP32-C6-WROOM-1 | C5366877 | extended |  |
+| R3,R4 | 5.1k | R_0402_1005Metric | C25905 | basic |  |
+| D5 | RED | LED_0603_KT | C2286 | basic |  |
+| R13,R14 | 4.7k | R_0402_1005Metric | C25900 | basic |  |
+| R50 | 100k | R_0402_1005Metric | C25741 | basic | 0402WGF1003TCE |
+| U4 | STWD100NYWY3F | SOT-23-5_STWD100 | C46043 | extended |  |
+| U5 | SHT40-AD1B | Sensirion_DFN-4_1.5x1.5mm_P0.8mm_SHT4x_NoCentralPad | C2909890 | extended |  |
+| C1,C2,C41,C42 | 4.7uF 100V X7R | C_1210_3225Metric | C381466 | extended | FS32X475K101EGG |
+| J4 | 2.9in EPD FPC | FPC24_AFC07 | C262567 | extended |  |
+| U6,U7,U8 | MOC3063S | MOC3063S | C77950 | extended |  |
+| R16 | 2.2R | R_0603_1608Metric | C22939 | basic |  |
+| R15 | 1M | R_0402_1005Metric | C26083 | basic |  |
+| D6,D7,D8 | B5819W | SOD-123_B5819W | C8598 | basic |  |
+| D1 | MB10S | MBS_MB10S | C2488 | basic |  |
+| D2 | SMBJ40CA | SMB_SMBJ40A | C19077590 | preferred-ext | SMBJ40CA (bidirectional, JLC preferred-extended; was SMBJ40A C114003) |
+| F1 | 0.5A 60V PTC | F1812_PTC | C70113 | extended | mSMD050-60V |
+| R10 | 1k | R_0402_1005Metric | C11702 | basic |  |
+| R51 | 3.3R 0.75W pulse | R_1206_3216Metric | C844038 | extended | CRCW12063R30FKEAHP (Vishay pulse-proof, 750 mW) |
+| L1 | 22uH | L_Sunlord_SWPA6045S | C83454 | extended | SWPA6045S220MT 22uH Isat 2.2A 89mOhm (was SWPA4030 1.0A) |
+| U2 | USBLC6-2SC6 | SOT-23-6_USBLC6 | C7519 | extended |  |
+
+## Layout rules (kicad/thermostat-v3.kicad_dru)
+- `hv_to_lv_clearance`: at least **0.6 mm** between HVAC_*, R_FUSED, VIN_RECT, OPTO_MT2_*, GATE_* and SNUB_* and any other net (IPC-2221B B2, 31-100 V).
+- `hv_pour_clearance`: the GND pour stays at least **1.0 mm** from those nets.
+- `opto_gap_no_lv`: no LV track or via may enter the isolation gap (rule areas OPTO_GAP_U6/U7/U8) between an opto's output pins (4-6) and LED pins (1-3).
+- Thermal island: only sensor nets, with traces of 0.25 mm max. Antenna keepout under the C6 antenna.
+
+## Pin map (ESP32-C6-WROOM-1) – matches firmware/main/board.h
+| Pin | GPIO | Net |
+|---|---|---|
+| 8 / 9 / 27 | IO0 / IO1 / IO2 | DRV_W / DRV_Y / DRV_G |
+| 4 / 5 / 26 | IO4 / IO5 / IO3 | BTN_UP / BTN_DOWN / BTN_MODE (10k pull-ups) |
+| 6 / 7 | IO6 / IO7 | I2C SDA / SCL (4.7k) – SHT40 + Stemma QT |
+| 10 | IO8 | LED_STAT (active-low, 10k pull-up, strap) |
+| 15 | IO9 | BOOT button (strap) |
+| 11 / 12 | IO10 / IO11 | WD_WDI / WD_EN (active-low arm) |
+| 13 / 14 | IO12 / IO13 | USB D- / D+ |
+| 16–21 | IO18–23 | EPD MOSI, SCK, CS, DC, RST, BUSY |
+| 23, 24, 25 | IO15, RXD0, TXD0 | not connected |
+
+## Installation notes
+1. Turn off power to the furnace/air handler (24 VAC transformer) before touching the wires.
+2. Mount the backplate on the drywall with the anchors, pulling the R, C, W, Y and G wires through the centred hole.
+3. **Seal the wire hole**, behind and around the wires, with putty, foam or a cable grommet. Wall-cavity drafts otherwise blow over the SHT40 and skew the reading. Typical thermostat installs call for this too.
+4. Wire the 15EDGK plug: R, C, W, Y, G left to right, as printed on the back silk under J1. Then plug the board in and close the case.
+5. Never connect USB while the 24 VAC plug is in, because board GND is the bridge's negative node. Flash on the bench.
+
+---
+# Change history (superseded entries; kept for traceability)
+## (rev 2 original header and architecture – superseded)
+> ## Architecture (as implemented in kicad/thermostat-v3.kicad_sch)
+> - **24VAC input:** 24VAC R/C goes through a 0.5 A 60 V PTC (F1), an MB10S bridge (D1) and a 3.3 Ω pulse resistor (R51) to VIN_HV, which has the SMBJ40A TVS (D2), 4× 4.7 µF 100 V ceramics and the 47 µF/63 V rear electrolytic (C43).
+> - **3.3 V supply:** an **LMR16006X buck (60 V max, 0.6 A, 700 kHz)** with a 22 µH inductor and SS210 catch diode makes +3V3.
+>   - The X (700 kHz) version was chosen over the Y (2.1 MHz) version because the minimum on-time at ~40 V in → 3.3 V out is too short at 2.1 MHz.
+> - **USB:** USB-C VBUS goes through a B5819W into VIN_HV (diode-OR; the bridge itself is the other "diode"). USB D+/D- go straight to the C6's native USB, with USBLC6 ESD protection.
+> - **MCU:** ESP32-C6-WROOM-1-N8 (Zigbee). **Firmware default: Zigbee end device** (rx-off-when-idle / light-sleep between polls) to limit self-heating. A router role is optional later.
+> - **HVAC outputs, ×3 (W, Y, G):**
+>   - GPIO → 220R → MOC3063 zero-cross opto (10k pull-down on each drive line, so outputs are off when the GPIO is high-Z)
+>   - opto → 100R from R, 1k gate-MT1 → BT136S-600D triac switching R onto W/Y/G
+>   - **DNP RC snubber footprint per channel** (100R 0805 + 100 nF 50 V 0805, across MT2–MT1)
+> - **Watchdog:** STWD100NY (1.6 s), open-drain WDO wired to ESP EN.
+>   - Its ~EN pin has a 10k pull-up, so the watchdog is **disarmed at boot and while flashing**.
+>   - Firmware arms it by driving IO11 low and kicks it on IO10.
+>   - If firmware hangs → watchdog resets the ESP → GPIOs go high-Z → triacs off.
+> - **Display:** 2.9" 296×128 SSD1680 panel (GDEY029T94 / Waveshare 2.9" V2) on a 24-pin 0.5 mm FPC.
+>   - Onboard boost per the Waveshare reference schematic: **68 µH**, Si1308EDL, **3 Ω sense resistor (B/W 2.9")**, 10k gate pull-down, 3 Schottky pump diodes (B5819W, which is basic, instead of MBR0530), and 1 µF caps on VSH1/VSH2/VSL/VGH/VGL/VCOM/VDD/VPP.
+>   - BS1 is tied to GND (4-wire SPI).
+> - **Sensor:** SHT40 on a slotted thermal island (4 slots, power/I2C enter through one bridge, no GND pour on the island), plus a Stemma QT port.
+> - **UI:** UP / DOWN / MODE buttons, RESET and BOOT buttons, and one red status LED (IO8; pull-up keeps the strap pin high).
+>
 
 ## Verified changes since rev 1
 | Item | Decision | LCSC | Type | Stock | Unit $ |
@@ -183,3 +271,15 @@ I checked every extended line against JLC's live library: basic, preferred-exten
   - Q2-Q4 T405, U3 C6 module, U6-U8 MOC3063: locked.
   - U1 LMR16006, U2 USBLC6, U4 STWD100, U5 SHT40: no basic or preferred equivalents.
 - **Duplicate values:** none worth merging. The only duplicate is 1k in 0402 and 0805, and both are basic.
+
+## Rev 13 (2026-10-13): second-review fixes (Ferdinand)
+- The GND trace through U8's opto isolation gap is removed. GND now connects through the pour and a re-placed stitching via. The new `opto_gap_no_lv` rule and the OPTO_GAP_U6/U7/U8 rule areas keep any LV copper out of those gaps on F.Cu.
+- The new `hv_to_lv_clearance` rule (0.6 mm) forced these fixes:
+  - Removed redundant GND traces (pour plus stitching vias carry GND instead).
+  - Rerouted VIN_RECT left of D1's GND pad.
+  - Moved the HVAC_C via, the HVAC_Y via and VIN_HV on B.Cu.
+  - Narrowed a 2 mm HVAC_R stub beside C2 to 0.6 mm.
+- `hv_pour_clearance` (1.0 mm) is moved to the end of the rules file so it still governs the GND pour.
+- Footprints renamed, with identical geometry: TO-252_BT136S -> TO-252-2_TRIAC_DPAK and SMB_SMBJ40A -> D_SMB_TVS. All board footprints are now in sync with tstat.pretty (0 library-mismatch warnings).
+- D1 has a custom symbol BRIDGE_MB10S with pin labels matching C2488 (1 = +, 2 = −, 3/4 = ~). The pads are unchanged.
+- Added an "! NO USB WITH 24VAC" silk note right beside J2 and the installation notes above (including sealing the wire hole).
