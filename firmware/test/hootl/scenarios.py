@@ -185,6 +185,31 @@ def timed_boost(s):
     return check
 
 
+
+@scenario("boost_switch_timed_heat_to_target_cool", until=40 * MIN)
+def boost_switch(s):
+    """A timed heat boost is replaced by a cool-to-target boost (the card's "Switch"): W stops,
+    Y starts only after the changeover / compressor min-off, never together (safety monitor)."""
+    heating(s, 2000)
+    boost = "0xfc57"
+    s.zb(1 * MIN, f"write {boost} 0x0002 u8 1")          # direction heat
+    s.zb(1 * MIN + 100, f"write {boost} 0x0001 u16 30")  # 30 min
+    s.zb(1 * MIN + 200, f"write {boost} 0x0003 u8 2")    # start timed
+    s.zb(8 * MIN, f"write {boost} 0x0002 u8 2")          # direction cool
+    s.zb(8 * MIN + 100, f"write {boost} 0x0000 s16 1800")
+    s.zb(8 * MIN + 200, f"write {boost} 0x0003 u8 1")    # start to target: replaces the timed boost
+    def check(r):
+        r.expect(r"boost cmd 2 -> result 1", after=1 * MIN, before=2 * MIN, msg="timed heat boost started")
+        r.check(w_on_between(r, 1 * MIN, 8 * MIN), "timed heat boost runs W")
+        r.expect(r"boost cmd 1 -> result 1", after=8 * MIN, before=9 * MIN, msg="cool-to-target boost replaced it")
+        t_w_off = next((t for t in range(8 * MIN, 40 * MIN, 250) if not r.pin(W, t)), None)
+        r.check(t_w_off is not None, "W drops after the switch")
+        r.check(r.high_ms(Y, 8 * MIN, 40 * MIN) > 0, "the cool boost runs Y")
+        t_y_on = next((t for t in range(8 * MIN, 40 * MIN, 250) if r.pin(Y, t)), None)
+        r.check(t_y_on is not None and t_w_off is not None and t_y_on > t_w_off, "Y only after W is off")
+        r.check(r.high_ms(W, (t_y_on or 40 * MIN), 40 * MIN) == 0, "no W while the cool boost runs")
+    return check
+
 # =============================================================================
 # 1. watchdogs, resets, boot loops
 # =============================================================================
