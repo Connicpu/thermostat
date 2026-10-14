@@ -51,10 +51,11 @@
   document.documentElement.className = theme;
   const c = `climate.${PREFIX}`;
   const scenarios = {
-    'heat-day': { now: 10 * 60, open: ['schedule', 'morning'], patch: {} },
+    'heat-day': { now: 10 * 60, open: ['boost', 'morning', 'schedule'], patch: {} },
+    'tooltip': { now: 10 * 60, open: ['boost', 'morning', 'schedule'], patch: {}, tip: 'setpoint' },
     'cool-night': {
       now: 22 * 60 + 40,
-      open: ['schedule', 'boost'],
+      open: ['boost', 'schedule'],
       patch: {
         [c]: { state: 'cool', attributes: { hvac_action: 'cooling', fan_mode: 'on', current_temperature: 75.4, temperature: 72 } },
         [`sensor.${PREFIX}_schedule_period`]: { state: 'Night' },
@@ -64,7 +65,7 @@
         [`sensor.${PREFIX}_humidity`]: { state: '55' },
       },
     },
-    'morning-boost': { now: 6 * 60 + 50, open: ['schedule', 'morning', 'status'], patch: { [`sensor.${PREFIX}_schedule_period`]: { state: 'Day_morning_boost' }, [c]: { attributes: { temperature: 70, current_temperature: 67.1 } } } },
+    'morning-boost': { now: 6 * 60 + 50, open: ['morning', 'schedule', 'status'], patch: { [`sensor.${PREFIX}_schedule_period`]: { state: 'Day_morning_boost' }, [c]: { attributes: { temperature: 70, current_temperature: 67.1 } } } },
   };
   const sc = scenarios[q.get('scenario')] ?? scenarios['heat-day'];
   const el = document.createElement('connie-thermostat-card');
@@ -74,6 +75,7 @@
   hass.themes.darkMode = theme === 'dark';
   el.hass = hass;
   el._open = Object.fromEntries(['schedule', 'morning', 'boost', 'status'].map((k) => [k, sc.open.includes(k)]));
+  if (sc.tip) el._tip = { id: sc.tip, pinned: true };
   document.getElementById('slot').appendChild(el);
   el.updateComplete.then(() => document.body.setAttribute('data-ready', ''));
 </script>

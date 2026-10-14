@@ -34,6 +34,7 @@ const shots = [
   ['dark', 'cool-night'],
   ['light', 'morning-boost'],
   ['dark', 'morning-boost'],
+  ['light', 'tooltip'],
 ];
 try {
   for (const [theme, scenario] of shots) {
