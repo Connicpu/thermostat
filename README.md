@@ -4,6 +4,24 @@ Shared as-is — not seeking contributions or pull requests.
 
 ESP32-C6 Zigbee thermostat for single-stage HVAC (R/C/W/Y/G), with e-paper display, SHT40 temperature/humidity sensor, and triac outputs. Designed for JLCPCB assembly.
 
+## Gallery
+
+![Assembled V3 case with the e-paper screen showing 70.6 °F, heating to 70°](renders/v3-assembled.png)
+
+On-device screens (296×128 e-paper, shown at 2×):
+
+| Home | Menu | Schedule | Boost |
+|---|---|---|---|
+| ![home screen](firmware/docs/display_preview.png) | ![main menu](firmware/docs/display_menu_main.png) | ![schedule menu](firmware/docs/display_menu_schedule.png) | ![boost to target](firmware/docs/display_menu_boost_target.png) |
+
+Home Assistant Lovelace card ([install](firmware/ha/lovelace-card/README.md)):
+
+| Heat, day (light) | Cool, night (dark) | Timed heat boost (dark) |
+|---|---|---|
+| <img src="firmware/ha/lovelace-card/screenshots/heat-day-light.png" width="260" alt="card, heating by day, light theme"> | <img src="firmware/ha/lovelace-card/screenshots/cool-night-dark.png" width="260" alt="card, cooling at night, dark theme"> | <img src="firmware/ha/lovelace-card/screenshots/heat-boost-dark.png" width="260" alt="card, timed heat boost running, dark theme"> |
+
+More: case renders in [case/](case/), every menu screen in [firmware/README.md](firmware/README.md).
+
 - kicad/: KiCad 9 project
 - fab/: Gerbers plus JLC BOM/CPL
 - part-plan.md: part choices, sources, cost estimate
