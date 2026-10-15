@@ -117,7 +117,7 @@ Source: `src/model.js` (discovery, units and schedule maths; no DOM), `src/conni
 
 ## License
 
-MIT (repo root). Bundled Lit (BSD-3) and @mdi/js (Apache-2.0 / Pictogrammers) notices ship in `dist/connie-thermostat-card.js` and the repo [NOTICE](../../../NOTICE).
+MIT (repo root). Bundled Lit (BSD-3) and @mdi/js (Apache-2.0 / Pictogrammers) notices ship in `dist/connie-thermostat-card.js`; the full Lit BSD-3 text is in `dist/THIRD_PARTY_LICENSES.txt` (also attached to each card release); see also the repo [NOTICE](../../../NOTICE).
 
 ## Changelog
 

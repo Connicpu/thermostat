@@ -31,8 +31,8 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/connie-thermostat-card.js --clobber --repo "$GITHUB_REPOSITORY"
+            gh release upload "$TAG" dist/connie-thermostat-card.js dist/THIRD_PARTY_LICENSES.txt --clobber --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$TAG" dist/connie-thermostat-card.js --repo "$GITHUB_REPOSITORY" \
+            gh release create "$TAG" dist/connie-thermostat-card.js dist/THIRD_PARTY_LICENSES.txt --repo "$GITHUB_REPOSITORY" \
               --verify-tag --title "Lovelace card ${TAG#card-}" --notes "Connie Thermostat V3 Lovelace card. Install: see firmware/ha/lovelace-card/README.md."
           fi

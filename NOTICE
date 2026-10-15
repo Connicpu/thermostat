@@ -11,6 +11,7 @@ Lit (lit, lit-html, lit-element, @lit/reactive-element)
 Copyright 2017–2022 Google LLC
 SPDX-License-Identifier: BSD-3-Clause
 https://github.com/lit/lit/blob/main/LICENSE
+Full text: firmware/ha/lovelace-card/dist/THIRD_PARTY_LICENSES.txt (also a card release asset).
 
 Bundled into firmware/ha/lovelace-card/dist/connie-thermostat-card.js. The BSD-3
 notices are preserved at the end of that file.

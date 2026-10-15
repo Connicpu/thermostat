@@ -68,14 +68,20 @@ gh api repos/Connicpu/thermostat/rulesets --method POST --input - <<'JSON'
   "conditions": { "ref_name": { "include": ["refs/heads/main"], "exclude": [] } },
   "rules": [
     { "type": "deletion" },
+    { "type": "update" },
     { "type": "non_fast_forward" }
   ],
-  "bypass_actors": []
+  "bypass_actors": [
+    { "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always" }
+  ]
 }
 JSON
 ```
 
-(Admin bypass may still be needed so Connie can push; configure bypass actors to her account.)
+The bypass actor is required: without it the `update` rule blocks Connie's own pushes to
+`main`. `actor_id: 5` is the built-in **Admin** repository role (Connie, as owner, holds it),
+so she can push while nobody else can. Check afterwards with
+`gh api repos/Connicpu/thermostat/rulesets` that `bypass_actors` lists the Admin role.
 
 ## 3. Flip visibility
 
