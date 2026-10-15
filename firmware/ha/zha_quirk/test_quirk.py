@@ -16,7 +16,7 @@ def make_device():
     app = MagicMock()
     app.get_sequence = MagicMock(return_value=1)
     dev = zigpy.device.Device(app, t.EUI64.convert("aa:bb:cc:dd:ee:ff:00:11"), 0x1234)
-    dev.node_desc = MagicMock(manufacturer_code=0x131B, is_end_device=True)
+    dev.node_desc = MagicMock(manufacturer_code=0x434E, is_end_device=True)
     ep = dev.add_endpoint(1)
     ep.profile_id = 0x0104
     ep.device_type = 0x0301
@@ -74,9 +74,9 @@ def test_writes_are_manufacturer_specific():
     cl.request = AsyncMock(return_value=[[]])
     asyncio.run(cl.write_attributes({"boost_command": q.BoostCommand.Start_timed}))
     kwargs = cl.request.call_args.kwargs
-    assert kwargs.get("manufacturer") == 0x131B
+    assert kwargs.get("manufacturer") == 0x434E
     asyncio.run(cl.write_attributes({"boost_setpoint": 2222}))
-    assert cl.request.call_args.kwargs.get("manufacturer") == 0x131B
+    assert cl.request.call_args.kwargs.get("manufacturer") == 0x434E
 
 
 def test_enum_values_match_firmware_header():

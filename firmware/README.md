@@ -109,7 +109,7 @@ across later network loss (extrapolated) until the next reboot.
 | Morning heating boost offset | 0x0029 | int16 0.01 °C | 50 (+0.5 °C) | 0–300 |
 | Schedule period (read-only, reported) | 0x002A | enum8 | – | 0 no clock (holding day), 1 day, 2 night, 3 day + morning boost |
 
-All are manufacturer-specific (code 0x131B) on the existing 0xFC57 cluster, persisted in NVS.
+All are manufacturer-specific (code 0x434E) on the existing 0xFC57 cluster, persisted in NVS.
 
 **Settings storage.** All settings live in one versioned blob, `{version, Persist}`, under the NVS key
 `cfg3` (namespace `tstat`; a new key so it never collides with the 0.2.x `cfg` blob). The current layout is **version 1** (no hardware has shipped, so there are no
@@ -136,7 +136,7 @@ There is no standard ZCL attribute set that ZHA understands for this (the Thermo
 aren't supported by ZHA), so the ZHA quirk (`ha/zha_quirk`) exposes them as *config* number entities:
 start times as hours in 0.25 h steps (6.5 = 06:30; quirks v2 has no time-of-day entity), temperatures in °C
 (HA converts), boost duration in minutes, offset as a °C difference, plus a *Schedule period* sensor.
-Without the quirk they're still reachable via *Manage zigbee device* (cluster 0xFC57, manufacturer 0x131B).
+Without the quirk they're still reachable via *Manage zigbee device* (cluster 0xFC57, manufacturer 0x434E).
 
 ## Boost
 
@@ -169,7 +169,7 @@ including OFF, and returns to that mode afterwards.
 ![boost to target](docs/display_preview_boost_target.png)
 ![timed boost](docs/display_preview_boost_timed.png)
 
-### Boost wire protocol (cluster 0xFC57, manufacturer code 0x131B)
+### Boost wire protocol (cluster 0xFC57, manufacturer code 0x434E)
 | Attr | Type | Access | Meaning |
 |---|---|---|---|
 | 0x0000 | int16 | RW | boost target, 0.01 °C |
@@ -210,7 +210,7 @@ drop `esp_zb_sleep_enable` / `set_rx_on_when_idle(false)`, and re-measure the te
 | Time 0x000A | client | Reads the coordinator's LocalTime for the program schedule |
 | Temperature Measurement 0x0402 | server | MeasuredValue (same calibrated value) |
 | Relative Humidity 0x0405 | server | MeasuredValue |
-| OTA Upgrade 0x0019 | client | manufacturer 0x131B, image type 0x0301, file version `FW_OTA_FILE_VERSION` (0xMMmmpppp, derived from `FW_VERSION`) |
+| OTA Upgrade 0x0019 | client | manufacturer 0x434E, image type 0x0301, file version `FW_OTA_FILE_VERSION` (0xMMmmpppp, derived from `FW_VERSION`) |
 
 Changes made on the device (buttons) are written into the local attributes, so configured reports pick them up.
 
@@ -539,7 +539,7 @@ The converter is written against the standard `fz.thermostat` / `tz.thermostat_*
 
 1. Bump `FW_VERSION_*` in `components/board/include/fw_version.h` (the OTA file version is derived from it) and build.
 2. Wrap `build/thermostat_v3.bin` in a Zigbee OTA file with Espressif's
-   `esp-zigbee-sdk/tools/image_builder_tool/image_builder_tool.py`, using manufacturer 0x131B, image type 0x0301 and the new version (e.g. 0.2.1 → 0x00020001).
+   `esp-zigbee-sdk/tools/image_builder_tool/image_builder_tool.py`, using manufacturer 0x434E, image type 0x0301 and the new version (e.g. 0.2.1 → 0x00020001).
 3. **ZHA:** put the `.ota` file in the directory set by `zha: zigpy_config: ota: otau_directory`. **Z2M:**
    add it to a local OTA index (`ota: zigbee_ota_override_index_location`).
 4. The device queries for updates once a day (the ZCL default), and HA can also trigger an update.
@@ -638,7 +638,7 @@ Write the docs as natural prose sentences. Cover purpose, parameters, return val
 
 OTA images are not signature-checked; join uses open install-code policy (`install_code_policy`
 false); USB Serial/JTAG console is on. Details and the Zigbee manufacturer-code situation
-(`0x131B` = Espressif sample default): see the repo-root [README](../README.md#security) and
+(`0x434E` = this project's DIY code, not CSA-assigned): see the repo-root [README](../README.md#security) and
 [MANUFACTURER_ID.md](../MANUFACTURER_ID.md).
 
 ## Known gaps / TODO

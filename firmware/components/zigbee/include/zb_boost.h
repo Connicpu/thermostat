@@ -2,11 +2,11 @@
  * with ha/zha_quirk/connie_thermostat_v3.py and z2m/thermostat-v3.js).
  *
  * Cluster 0xFC57, server, endpoint 1. Every attribute is manufacturer-specific
- * with manufacturer code 0x131B (frames must carry it). */
+ * with manufacturer code 0x434E (frames must carry it). */
 #pragma once
 
 #define ZB_BOOST_CLUSTER_ID 0xFC57
-#define ZB_BOOST_MANUF_CODE 0x131B
+#define ZB_BOOST_MANUF_CODE 0x434E
 
 enum
 {

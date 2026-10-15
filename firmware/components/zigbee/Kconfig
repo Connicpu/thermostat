@@ -8,7 +8,7 @@ menu "Thermostat Zigbee"
             change from Home Assistant to land. Lower = more radio on-time.
     config THERMO_OTA_MANUFACTURER
         hex "OTA manufacturer code"
-        default 0x131B
+        default 0x434E
     config THERMO_OTA_IMAGE_TYPE
         hex "OTA image type"
         default 0x0301

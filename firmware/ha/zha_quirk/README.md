@@ -1,7 +1,7 @@
 # ZHA quirk: Connie Thermostat V3 boost controls
 
 `connie_thermostat_v3.py` is a **quirks v2** quirk. It adds the manufacturer-specific Boost
-cluster (0xFC57, manufacturer code 0x131B) to the device and creates these entities:
+cluster (0xFC57, manufacturer code 0x434E) to the device and creates these entities:
 
 | Entity | Platform | Attribute |
 |---|---|---|
@@ -58,5 +58,5 @@ python -m venv .venv && .venv/bin/pip install zha zha-quirks pytest
 ```
 
 The test checks that the quirk matches the device, adds the cluster without touching the
-standard ones, declares all eleven entities, sends writes with manufacturer code 0x131B, and that
+standard ones, declares all eleven entities, sends writes with manufacturer code 0x434E, and that
 every attribute ID and enum value matches the firmware header `zb_boost.h`.

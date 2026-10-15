@@ -15,7 +15,7 @@ const boostOpts = {cluster: boostCluster};
 const boostExtend = [
     m.deviceAddCustomCluster(boostCluster, {
         ID: 0xfc57,
-        manufacturerCode: 0x131b,
+        manufacturerCode: 0x434E,
         attributes: {
             boostSetpoint: {ID: 0x0000, type: Zcl.DataType.INT16},
             boostDuration: {ID: 0x0001, type: Zcl.DataType.UINT16},

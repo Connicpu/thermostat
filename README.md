@@ -33,8 +33,8 @@ the security boundary:
   board gives a console.
 - Factory reset from the on-device menu is intentional.
 
-See also [MANUFACTURER_ID.md](MANUFACTURER_ID.md) for the Zigbee manufacturer code (`0x131B`
-today = Espressif's sample default, not a CSA code assigned to this project).
+See also [MANUFACTURER_ID.md](MANUFACTURER_ID.md) for the Zigbee manufacturer code (`0x434E`:
+this project's DIY code from the quiet `0x3000`–`0x5FFF` band; not CSA-assigned, not certified).
 
 ## Third-party / display provenance
 

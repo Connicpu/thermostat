@@ -47,7 +47,7 @@ except ImportError:  # older Home Assistant / zha-quirks 0.0.1xx
 MANUFACTURER = "Connie"
 MODEL = "thermostat-v3"
 BOOST_CLUSTER_ID = 0xFC57
-MANUF_CODE = 0x131B
+MANUF_CODE = 0x434E
 
 
 class BoostMode(t.enum8):
