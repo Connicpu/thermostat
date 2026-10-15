@@ -45,33 +45,60 @@ Espressif examples; it is not appropriate if you ever claim Zigbee certification
   manufacturer name `"Connie"` + model `"thermostat-v3"`, which reduces practical conflict.
 - **Not** CSA-clean if you later certify.
 
-### C. Pick a random unused 16-bit code for uncertified DIY
+### C. Pick an unassigned 16-bit code for uncertified DIY (recommended)
 
-- There is **no official private / hobby / test reserved range** published for end products.
-  Cluster IDs `0xFC00–0xFFFF` are the manufacturer-*specific cluster* range; that is separate
-  from the 16-bit *manufacturer code* carried in ZCL frames.
-- Some stacks treat `0xFFFF` as a wildcard in OTA matching — do **not** use `0xFFFF` as “yours.”
-- Picking a random value (e.g. derived from a hash of `"Connicpu"`) and documenting it can work
-  for a private HA network **if** you accept:
-  - No CSA standing; you must not imply certification.
-  - Non-zero collision risk with a real member's assigned code (low for a single home, not zero
-    if the code is published and others copy it).
-  - If CSA ever contacts you or you sell at scale, you still need option A.
-- Community practice for uncertified DIY is mixed (silicon-vendor sample codes, or ad-hoc codes).
-  **Recommended only with eyes open**, and only after grepping public lists / common SDK defaults
-  so you don't pick Espressif (`0x131B`), Nordic (`0x127F`), etc.
+See "Community practice and reserved ranges" below for the research behind this.
 
 ### D. Ask Espressif whether sample-default use is OK to document
 
-- Optional courtesy if staying on `0x131B`. Does not make the code “yours.”
+- Optional courtesy if staying on `0x131B`. Does not make the code "yours."
+
+## Community practice and reserved ranges (researched 2026-10-15)
+
+**There is no hobbyist / DIY manufacturer-code range.** Nothing in the CSA policy, the ZCL spec,
+Silicon Labs / Nordic / Espressif docs, ESPHome, Tasmota, Zigbee2MQTT or zigpy defines one.
+
+What actually exists in the 16-bit space (CSA keeps one database shared by Zigbee manufacturer
+codes and Matter vendor IDs):
+
+| Range / value | Meaning |
+|---|---|
+| `0x1000`-`0x1994`-ish | Sequentially assigned CSA member codes (dense: ~680 entries in zigbee-herdsman's copy of the database). |
+| `0xC5A0`-`0xC5AF` | CSA's own codes. |
+| `0xFFF1`-`0xFFF4` | **Test vendor IDs**: shared by every developer, for development only; CSA/Google say not for field or OTA use. |
+| `0xFFF5`-`0xFFFF` | Reserved (`0xFFFF` is also the OTA "match any" wildcard). |
+| `0x3000`-`0x5FFF` | **No assignments at all**, both in zigbee-herdsman's list and in the live Matter DCL vendor registry (871 vendors, highest `0x6006`, checked 2026-10-15). |
+
+Sample defaults people ship with: Espressif `0x131B`, Nordic `0x127F`, DSR/ZBOSS `0x1234`,
+Silicon Labs/Ember `0x1002`/`0x1049`, NXP `0x1037`. Hobby projects mostly just keep whatever the
+SDK sample used. A few DIY vendors picked vanity codes (zigbee-herdsman lists them as
+"Non-CSA-assigned": Sprut `0x6666`, Lytko `0x7777`, Livolo `0x1AD2`, Perenio `0x007B`). zigpy
+quirks don't pick codes; they match on the manufacturer *name* string and pass through whatever
+code the device sends.
+
+Why not the obvious choices:
+- `0x131B`: it's Espressif's real assigned code and every esp-zigbee sample uses it, so another
+  ESP32 DIY device on the same network can share it.
+- `0xFFF1`-`0xFFF4`: everyone's test firmware uses them, and they're explicitly not for devices in
+  service.
+- Vanity repeats (`0x6666`, `0xBEEF`, `0x1234`...): already taken or common.
+
+**Suggested code: `0x434E`** ("CN" in ASCII). It's in the empty `0x3000`-`0x5FFF` band, far
+above CSA's sequential frontier (~`0x19xx`), absent from both registries above, and not a common
+vanity value. That isn't a guarantee: CSA could assign it some day. For a single uncertified
+home device the collision risk is negligible, and if you ever certify you'd switch to an
+assigned code anyway.
 
 ## Recommendation (for Connie)
 
+No devices exist yet, so changing the code now costs nothing. Later it means reflashing,
+rebuilding OTA images and re-interviewing paired devices.
+
 | Goal | Choice |
 |---|---|
-| Publish DIY, stay on HA, no certification | **B** (keep `0x131B`) or **C** (new DIY code) — her call. |
-| Sell / certify as Zigbee | **A** (CSA Adopter + assigned code). |
-| Change later | Feasible; see migration plan below. Do it in one coordinated release. |
+| Uncertified HA DIY, published (her case) | **C with `0x434E`**: switch now, before any board exists. |
+| Least effort | B (keep `0x131B`); works, but it's Espressif's code. |
+| Sell / certify | A (CSA Adopter, assigned code). |
 
 ## What changing the code breaks (migration plan — do not apply yet)
 
