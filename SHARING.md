@@ -1,6 +1,7 @@
-# Making the repo public (checklist — do not run until Connie says so)
+# Making the repo public (checklist)
 
-This file is a runbook. **Nothing here has been applied** to GitHub yet.
+This file is a runbook. It was applied on 2026-10-15: `main` at `85b30cf`, Issues/Discussions/
+Wiki/Projects/PRs off, ruleset `main-admin-only` active, repo public.
 
 ## 1. Push this branch and merge to main when ready
 
@@ -86,8 +87,11 @@ so she can push while nobody else can. Check afterwards with
 ## 3. Flip visibility
 
 ```bash
-# Only when she explicitly asks — destructive consequences for stars/forks later
-gh repo edit Connicpu/thermostat --visibility public --accept-visibility-change-consequences
+# Only when she explicitly asks — destructive consequences for stars/forks later.
+# The gh on the prep box has no --accept-visibility-change-consequences flag, so use REST:
+gh api -X PATCH repos/Connicpu/thermostat -f visibility=public --jq '{visibility,private}'
+# Check as a logged-out visitor (expect 200):
+curl -s -o /dev/null -w '%{http_code}\n' https://github.com/Connicpu/thermostat
 ```
 
 ## 4. After public
