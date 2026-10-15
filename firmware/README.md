@@ -168,8 +168,8 @@ including OFF, and returns to that mode afterwards.
   state, Boost active and Time-remaining sensors (plus a diagnostic "last result" that explains a
   rejected start). See `ha/dashboard-card.yaml`.
 
-![boost to target](docs/display_preview_boost_target.png)
-![timed boost](docs/display_preview_boost_timed.png)
+![boost to target, 21:05](docs/display_preview_boost_target.png)
+![timed boost, 21:05](docs/display_preview_boost_timed.png)
 
 ### Boost wire protocol (cluster 0xFC57, manufacturer code 0x434E)
 | Attr | Type | Access | Meaning |

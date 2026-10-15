@@ -242,7 +242,28 @@ static void RenderPreviewCoolCelsiusFault(void)
 }
 
 /**
- * Render boost-to-target (°F) and timed cool boost screens; the boost bar is inverted. Writes PBM previews.
+ * Mismatched pixels between the status-bar time slot and `pHhmm` drawn right-aligned at y = 108.
+ * Zero means the clock is exactly the right-aligned string. `inverted` is light-on-dark (boost bar).
+ */
+static int TimeSlotDiff(const GfxFb *pFb, const char *pHhmm, bool inverted)
+{
+    int timeW = GfxTextWidth(&kFontSmall, pHhmm);
+    int timeX = GFX_W - 4 - timeW;
+    static GfxFb s_ref;
+    GfxClear(&s_ref);
+    if (inverted)
+        GfxFillRect(&s_ref, timeX, 108, GFX_W - timeX, kFontSmall.height, true);
+    GfxText(&s_ref, &kFontSmall, timeX, 108, pHhmm, !inverted);
+    int diff = 0;
+    for (int y = 108; y < 108 + kFontSmall.height; y++)
+        for (int x = timeX; x < GFX_W; x++)
+            diff += GfxGet(pFb, x, y) != GfxGet(&s_ref, x, y);
+    return diff;
+}
+
+/**
+ * Render boost-to-target (°F) and timed cool boost screens; the boost bar is inverted and keeps
+ * 24h HH:MM when the clock is synced. Writes PBM previews.
  */
 static void RenderPreviewBoosts(void)
 {
@@ -257,12 +278,16 @@ static void RenderPreviewBoosts(void)
     m.w = true;
     m.link = kLinkJoined;
     m.fahrenheit = true;
+    m.schedState = 1; /* Day, clock synced (not "Day (no clock)") */
+    m.clockKnown = true;
+    m.localMinute = 21 * 60 + 5; /* 21:05, same 24-hour home preview */
     m.boost = kBoostToTarget;
     m.boostDir = kCtrlModeHeat;
     m.boostSp = 2222; /* 72 F */
     DisplayRender(&s_fb, &m);
     WritePbm(&s_fb, "display_preview_boost_target.pbm");
     CHECK(GfxGet(&s_fb, GFX_W - 2, 120)); /* inverted status bar */
+    CHECK_EQ(TimeSlotDiff(&s_fb, "21:05", true), 0);
     m.boost = kBoostTimed;
     m.boostDir = kCtrlModeCool;
     m.boostMinLeft = 15;
@@ -271,6 +296,7 @@ static void RenderPreviewBoosts(void)
     m.g = true;
     m.s.mode = kCtrlModeCool;
     DisplayRender(&s_fb, &m);
+    CHECK_EQ(TimeSlotDiff(&s_fb, "21:05", true), 0);
     WritePbm(&s_fb, "display_preview_boost_timed.pbm");
 }
 
@@ -331,24 +357,6 @@ static int TimeSlotInk(const GfxFb *pFb)
     return InkRect(pFb, timeX, 108, GFX_W, 108 + kFontSmall.height);
 }
 
-/**
- * Mismatched pixels between the status-bar time slot and `pHhmm` drawn right-aligned at y = 108.
- * Zero means the clock is exactly the right-aligned string.
- */
-static int TimeSlotDiff(const GfxFb *pFb, const char *pHhmm)
-{
-    int timeW = GfxTextWidth(&kFontSmall, pHhmm);
-    int timeX = GFX_W - 4 - timeW;
-    static GfxFb s_ref;
-    GfxClear(&s_ref);
-    GfxText(&s_ref, &kFontSmall, timeX, 108, pHhmm, true);
-    int diff = 0;
-    for (int y = 108; y < 108 + kFontSmall.height; y++)
-        for (int x = timeX; x < GFX_W; x++)
-            diff += GfxGet(pFb, x, y) != GfxGet(&s_ref, x, y);
-    return diff;
-}
-
 /** Mismatched pixels of `pS` drawn in the small font at (x, y) against the frame. */
 static int TextDiff(const GfxFb *pFb, int x, int y, const char *pS)
 {
@@ -402,7 +410,7 @@ static void ClockOnStatusBar(void)
 
     DisplayModel day = ClockHome(true, 21 * 60 + 5);
     DisplayRender(&s_fb, &day);
-    CHECK_EQ(TimeSlotDiff(&s_fb, "21:05"), 0);
+    CHECK_EQ(TimeSlotDiff(&s_fb, "21:05", false), 0);
     CHECK(TimeSlotInk(&s_fb) > 0);
     CHECK_EQ(TextDiff(&s_fb, 8, 84, "Day"), 0);
     /* "Day" must not be the prefix of "Day (no clock)" still sitting on the glass */
@@ -415,11 +423,11 @@ static void ClockOnStatusBar(void)
 
     DisplayModel m2359 = ClockHome(true, 1439);
     DisplayRender(&s_midnight, &m2359);
-    CHECK_EQ(TimeSlotDiff(&s_midnight, "23:59"), 0);
+    CHECK_EQ(TimeSlotDiff(&s_midnight, "23:59", false), 0);
     WritePbm(&s_midnight, "display_preview_midnight.pbm");
     DisplayModel m0000 = ClockHome(true, 0);
     DisplayRender(&s_fb, &m0000);
-    CHECK_EQ(TimeSlotDiff(&s_fb, "00:00"), 0);
+    CHECK_EQ(TimeSlotDiff(&s_fb, "00:00", false), 0);
     CHECK(memcmp(s_fb.buf, s_midnight.buf, sizeof s_fb.buf) != 0);
     WritePbm(&s_fb, "display_preview_midnight_0000.pbm");
 }
@@ -435,7 +443,7 @@ static void ClockBannerClash(void)
 
     m.pBanner = "Updating firmware 100%"; /* longest banner that still leaves a gap */
     DisplayRender(&s_fb, &m);
-    CHECK_EQ(TimeSlotDiff(&s_fb, "23:59"), 0);
+    CHECK_EQ(TimeSlotDiff(&s_fb, "23:59", false), 0);
     WritePbm(&s_fb, "display_preview_clock_banner.pbm");
 
     m.pBanner = "SAFE MODE: repeated resets";
@@ -459,7 +467,7 @@ static void ClockBannerClash(void)
     m.pBanner = "Zigbee: connected";
     /* pBanner replaces the link line; this string is the short one and must keep the time */
     DisplayRender(&s_fb, &m);
-    CHECK_EQ(TimeSlotDiff(&s_fb, "23:59"), 0);
+    CHECK_EQ(TimeSlotDiff(&s_fb, "23:59", false), 0);
 
     m.pBanner = NULL;
     m.view.kind = kViewHomeBanner;

@@ -6,13 +6,13 @@ ESP32-C6 Zigbee thermostat for single-stage HVAC (R/C/W/Y/G), with e-paper displ
 
 ## Gallery
 
-![Assembled V3 case — home screen at 70.6 °F, heating to 70°, Zigbee connected, clock synced (Day)](renders/v3-assembled.png)
+![Assembled V3 case — home screen at 70.6 °F, heating to 70°, Zigbee connected, 21:05 (Day)](renders/v3-assembled.png)
 
 On-device screens (296×128 e-paper, shown at 2×; °F):
 
 | Home | Menu |
 |---|---|
-| ![home screen](firmware/docs/display_preview.png) | ![main menu](firmware/docs/display_menu_main.png) |
+| ![home screen, 21:05](firmware/docs/display_preview.png) | ![main menu](firmware/docs/display_menu_main.png) |
 | **Schedule** | **Boost to** |
 | ![schedule menu](firmware/docs/display_menu_schedule.png) | ![boost to target](firmware/docs/display_menu_boost_target.png) |
 
