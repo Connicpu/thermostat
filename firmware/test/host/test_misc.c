@@ -288,7 +288,8 @@ static void RenderPreview(void)
     m.w = true;
     m.link = kLinkJoined;
     m.fahrenheit = true;
-    m.swing = 50; /* +/-0.9 F */
+    m.swing = 50;     /* +/-0.9 F */
+    m.schedState = 1; /* Day, clock synced (not "Day (no clock)") */
     DisplayRender(&s_fb, &m);
     int black = 0;
     for (int y = 0; y < GFX_H; y++)

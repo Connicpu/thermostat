@@ -615,6 +615,7 @@ static void Shot(const char *pName)
     m.rh = 4500;
     m.s = (CtrlSettings){.mode = kCtrlModeHeat, .fan = kCtrlFanAuto, .heatSp = 2100, .coolSp = 2450};
     m.link = kLinkJoined;
+    m.schedState = 1; /* clock synced: Day */
     m.fahrenheit = s_c.fahrenheit;
     m.swing = s_c.swing;
     MenuGetView(&s_m, &s_c, &m.view);
@@ -623,74 +624,80 @@ static void Shot(const char *pName)
     WritePbm(&s_fb, pName);
 }
 
+/** Reset() for the docs previews: same context in °F, so every screenshot uses one unit. */
+static void PreviewReset(void)
+{
+    Reset();
+    s_c.fahrenheit = true;
+}
+
 /**
  * Render PBM previews of every menu screen (written to the working directory) and check the main list row count.
  */
 static void RenderMenuPreviews(void)
 {
-    Reset();
+    PreviewReset();
     Sel();
     Shot("menu_main.pbm");
     for (int i = 0; i < 5; i++)
         Down();
     Shot("menu_main_scrolled.pbm");
-    Reset();
+    PreviewReset();
     GotoItem(kMiMode);
     Sel();
     Shot("menu_mode.pbm");
-    Reset();
+    PreviewReset();
     s_c.boostActive = true;
     GotoItem(kMiBoost);
     Sel();
     Shot("menu_boost.pbm");
     Sel();
     Shot("menu_boost_target.pbm");
-    Reset();
+    PreviewReset();
     GotoItem(kMiBoost);
     Sel();
     Down();
     Sel();
     Shot("menu_boost_minutes.pbm");
-    Reset();
-    s_c.fahrenheit = true;
+    PreviewReset();
     GotoItem(kMiSwing);
     Sel();
     Shot("menu_swing_f.pbm");
-    Reset();
+    PreviewReset();
     GotoItem(kMiUnits);
     Sel();
     Shot("menu_units.pbm");
-    Reset();
+    PreviewReset();
     GotoItem(kMiSched);
     Sel();
     Shot("menu_schedule.pbm");
     for (int i = 0; i < 5; i++)
         Down();
     Shot("menu_schedule_scrolled.pbm");
-    Reset();
+    PreviewReset();
     OpenSchedItem(kSchedItDayHeatStart);
     Shot("menu_schedule_time.pbm");
-    Reset();
+    PreviewReset();
     OpenSchedItem(kSchedItNightHeat);
     Shot("menu_schedule_temp.pbm");
-    Reset();
+    PreviewReset();
     OpenSchedItem(kSchedItBoostMin);
     Shot("menu_schedule_boost.pbm");
-    Reset();
+    PreviewReset();
     OpenSchedItem(kSchedItBoostOfs);
     Shot("menu_schedule_offset.pbm");
-    Reset();
+    PreviewReset();
     GotoItem(kMiZigbee);
     Sel();
     Shot("menu_zigbee.pbm");
-    Reset();
+    PreviewReset();
     GotoItem(kMiInfo);
     Sel();
     Shot("menu_info.pbm");
-    Reset();
+    PreviewReset();
     s_m.st = kMsHoldPair;
     Shot("menu_hold_pair.pbm");
-    Reset();
+    PreviewReset();
     s_m.st = kMsHoldReset;
     Shot("menu_reset_warning.pbm");
     /* every label/value must fit: check the text in the list view is not clipped into the value column */
