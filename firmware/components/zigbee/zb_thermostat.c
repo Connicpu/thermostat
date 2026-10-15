@@ -183,13 +183,8 @@ static void OnTimeResp(const esp_zb_zcl_cmd_read_attr_resp_message_t *pM)
             break;
         }
     }
-    if (!haveLocal && haveUtc)
-    {
-        local = (U32)((I64)utc + tz + dst);
-        haveLocal = true;
-    }
-    if (!haveLocal || !ZbTimeAcceptable(haveStatus, status, local) ||
-        (haveUtc && !ZbTimeAcceptable(haveStatus, status, utc)))
+    if (!ZbTimeComposeLocal(haveLocal, local, haveUtc, utc, tz, dst, &local) ||
+        !ZbTimeAcceptable(haveStatus, status, local) || (haveUtc && !ZbTimeAcceptable(haveStatus, status, utc)))
     {
         ESP_LOGW(kTag, "time sync: coordinator returned no usable time (status 0x%02x)", status);
         return; /* counted as a failure at the next attempt */
@@ -219,15 +214,28 @@ static void TimeSyncStart(void)
 }
 
 /** Extrapolate from the last sync under the spinlock. See zb_thermostat.h. */
-bool ZbThermostatLocalMinute(U16 *pMinute)
+bool ZbThermostatLocalClock(U16 *pMinute, U64 *pMinuteStartMs)
 {
     portENTER_CRITICAL(&s_timeMux);
     bool known = s_timeKnown;
-    U64 secs = (U64)s_timeLocalS + (NowMs() - s_timeAtMs) / 1000u;
+    U32 syncS = s_timeLocalS;
+    U64 at = s_timeAtMs;
     portEXIT_CRITICAL(&s_timeMux);
-    if (known)
-        *pMinute = (U16)(secs % 86400u / 60u);
-    return known;
+    if (!known)
+        return false;
+    U16 minute = 0;
+    U64 start = ZbTimeMinuteStart(syncS, at, NowMs(), &minute);
+    if (pMinute)
+        *pMinute = minute;
+    if (pMinuteStartMs)
+        *pMinuteStartMs = start;
+    return true;
+}
+
+/** See zb_thermostat.h. */
+bool ZbThermostatLocalMinute(U16 *pMinute)
+{
+    return ZbThermostatLocalClock(pMinute, NULL);
 }
 
 /* ------------------------------------------------------------------ */

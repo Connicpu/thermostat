@@ -72,6 +72,9 @@ typedef struct
     I16 swing;           /* c°C each side of the setpoint; 0 = not shown */
     U8 schedState;       /* SchedState: 0 no clock (day), 1 day, 2 night, 3 day + morning boost */
     const char *pBanner; /* optional one-off message (e.g. "FACTORY RESET"), NULL = none */
+    bool clockKnown;     /* Zigbee local time synced: status bar shows 24h HH:MM */
+    U16 localMinute;     /* minutes after local midnight, 0..1439; ignored when !clockKnown */
+    U64 minuteStartMs;   /* monotonic ms this local minute began; 0 if unknown or before boot */
     MenuView view;
     U8 fullEpoch; /* bump to force a full (de-ghosting) refresh */
 } DisplayModel;
@@ -83,9 +86,17 @@ typedef struct
 void FormatTemp(char *pOut, int n, I16 c100, bool fahrenheit, bool withTenths);
 
 /**
+ * Format minutes after local midnight as 24-hour "HH:MM" into pOut (at most n bytes,
+ * NUL-terminated). Minute 0 is "00:00", minute 1439 is "23:59"; values wrap at 1440.
+ */
+void FormatHhmm(char *pOut, int n, U16 minuteOfDay);
+
+/**
  * Render a model into a frame buffer: a menu view (list/value/text/warning) when one is open,
  * else the home screen (room temperature and humidity, swing, program period, mode, setpoint,
  * running state, and a bottom bar with the menu hint, banner, boost or Zigbee link state).
- * Pure: draws into *pFb only.
+ * When clockKnown, the status bar also shows 24-hour HH:MM, right-aligned, unless that time
+ * would meet the left-hand text (a long banner or fault line); the left-hand text is kept and
+ * the time is dropped. Unknown clock draws no time. Pure: draws into *pFb only.
  */
 void DisplayRender(GfxFb *pFb, const DisplayModel *pM);

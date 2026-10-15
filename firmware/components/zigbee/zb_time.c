@@ -23,3 +23,40 @@ U32 ZbTimeNextDelayMs(U8 fails, bool known)
         return kBackoff[fails];
     return hourly;
 }
+
+/** See zb_time.h. */
+bool ZbTimeComposeLocal(bool haveLocal, U32 localS, bool haveUtc, U32 utcS, I32 tzS, I32 dstS, U32 *pLocalS)
+{
+    if (haveLocal)
+    {
+        *pLocalS = localS;
+        return true;
+    }
+    if (!haveUtc)
+        return false;
+    *pLocalS = (U32)((I64)utcS + (I64)tzS + (I64)dstS);
+    return true;
+}
+
+/** See zb_time.h. */
+U32 ZbTimeExtrapolate(U32 syncLocalS, U64 syncAtMs, U64 nowMs, U16 *pMsIntoSec)
+{
+    U64 elapsed = nowMs >= syncAtMs ? nowMs - syncAtMs : 0;
+    U64 totalMs = (U64)syncLocalS * 1000ULL + elapsed;
+    if (pMsIntoSec)
+        *pMsIntoSec = (U16)(totalMs % 1000ULL);
+    return (U32)((totalMs / 1000ULL) % 86400ULL);
+}
+
+/** See zb_time.h. */
+U64 ZbTimeMinuteStart(U32 syncLocalS, U64 syncAtMs, U64 nowMs, U16 *pMinute)
+{
+    U16 msIntoSec = 0;
+    U32 sec = ZbTimeExtrapolate(syncLocalS, syncAtMs, nowMs, &msIntoSec);
+    U32 msInto = (sec % 60u) * 1000u + msIntoSec;
+    if (pMinute)
+        *pMinute = (U16)(sec / 60u);
+    if (nowMs < msInto)
+        return 0;
+    return nowMs - msInto;
+}

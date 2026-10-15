@@ -678,7 +678,8 @@ static void AppTask(void *pArg)
         /* 3. control + outputs (the interlock lives in HvacOutputsSet) */
         /*    program schedule -> effective setpoints (incl. morning heat boost) */
         U16 minute = 0;
-        bool timeKnown = ZbThermostatLocalMinute(&minute);
+        U64 minuteStart = 0;
+        bool timeKnown = ZbThermostatLocalClock(&minute, &minuteStart);
         CtrlSettings eff = p.s;
         SchedState sst = SchedApply(&prm, &p.sched, timeKnown, minute, &eff);
         CtrlOutput o = CtrlStep(&ctl, &eff, now);
@@ -791,6 +792,9 @@ static void AppTask(void *pArg)
         dm.fullEpoch = s_fullEpoch;
         dm.swing = p.swing;
         dm.schedState = (U8)sst;
+        dm.clockKnown = timeKnown;
+        dm.localMinute = timeKnown ? minute : 0;
+        dm.minuteStartMs = timeKnown ? minuteStart : 0;
         dm.boost = bs.kind;
         dm.boostDir = bs.dir;
         dm.boostSp = bs.sp;

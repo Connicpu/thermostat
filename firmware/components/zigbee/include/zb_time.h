@@ -32,3 +32,39 @@ bool ZbTimeAcceptable(bool haveStatus, U8 status, U32 secs);
  * Returns delay in ms.
  */
 U32 ZbTimeNextDelayMs(U8 fails, bool known);
+
+/**
+ * Local Zigbee time from a Time-cluster read. Pure.
+ *
+ * When `haveLocal` is set, `localS` is the coordinator's LocalTime and is used as-is (TimeZone and
+ * DstShift are not applied again). Otherwise, if `haveUtc` is set, the result is utcS + tzS + dstS
+ * (the Time + TimeZone + DstShift fallback), wrapped to 32 bits. All three time values are seconds;
+ * tzS and dstS are signed seconds.
+ *
+ * Writes the composed local seconds to `pLocalS`.
+ *
+ * Returns false when neither LocalTime nor Time was present.
+ */
+bool ZbTimeComposeLocal(bool haveLocal, U32 localS, bool haveUtc, U32 utcS, I32 tzS, I32 dstS, U32 *pLocalS);
+
+/**
+ * Extrapolate a synced local time to `nowMs`. Pure.
+ *
+ * `syncLocalS` is local seconds (Zigbee UTCTime style, not wrapped to a day) at `syncAtMs`
+ * (monotonic ms). `pMsIntoSec` receives the milliseconds into the current second, 0..999, and may
+ * be NULL. If `nowMs` is earlier than `syncAtMs`, elapsed time is treated as zero.
+ *
+ * Returns seconds since local midnight, 0..86399.
+ */
+U32 ZbTimeExtrapolate(U32 syncLocalS, U64 syncAtMs, U64 nowMs, U16 *pMsIntoSec);
+
+/**
+ * Monotonic start of the local minute that contains `nowMs`, from the same sync as
+ * ZbTimeExtrapolate(). Pure.
+ *
+ * `pMinute` receives minutes after local midnight, 0..1439, and may be NULL.
+ *
+ * Returns that monotonic ms, or 0 when the minute began before monotonic 0 (the clock was already
+ * part-way through a minute at boot).
+ */
+U64 ZbTimeMinuteStart(U32 syncLocalS, U64 syncAtMs, U64 nowMs, U16 *pMinute);

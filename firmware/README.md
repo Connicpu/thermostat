@@ -7,7 +7,7 @@ HA thermostat for a single-stage gas furnace plus AC, with 24 VAC W/Y/G triac ou
 > real hardware yet**, because no V3 board exists. Check every item under *Bring-up checklist*
 > before you wire it to the HVAC system.
 
-![screen preview](docs/display_preview.png)
+![screen preview, 21:05](docs/display_preview.png)
 ![screen preview, cool/°C/fault](docs/display_preview_cool_c.png)
 
 *(Rendered on the host by the unit tests with the same rendering code the firmware uses.)*
@@ -32,7 +32,7 @@ HA thermostat for a single-stage gas furnace plus AC, with 24 VAC W/Y/G triac ou
 
 ### Tasks
 - **app** (prio 6, 250 ms loop): reads the sensor every 2 s, runs the control step, writes outputs through the interlock, handles button events, publishes to Zigbee, saves to NVS (with a 5 s debounce), drives the LED, runs the health check and kicks the watchdogs.
-- **display** (prio 3): renders and refreshes the e-paper. A refresh blocks for seconds, so it gets its own task and the control loop never waits on the panel.
+- **display** (prio 3): renders and refreshes the e-paper. A refresh blocks for seconds inside this task only (BUSY is polled with `vTaskDelay`), so the control loop and the watchdog kick never wait on the panel.
 - **zigbee** (prio 5): ZBOSS main loop. Remote writes come in through callbacks and go into the shared settings under a mutex.
 - **esp_timer**: 10 ms button sampling, which feeds a queue.
 
@@ -92,8 +92,10 @@ coordinator with an unset clock is ignored). Until the first usable answer, read
 the time is extrapolated with the monotonic clock. zigpy/ZHA answers these reads with the HA host's local time,
 so DST changes are picked up within an hour. **Until the first sync after boot the time is unknown: the
 DAY setpoints of both programs are held, no morning boost runs, setpoint edits go to the DAY period**, and
-the screen shows *Day (no clock)* (*Schedule period* = `No_clock_holding_day`). Once known, the time is kept
-across later network loss (extrapolated) until the next reboot.
+the screen shows *Day (no clock)* (*Schedule period* = `No_clock_holding_day`) with no clock digits.
+Once known, the home status bar shows the local time as 24-hour **HH:MM**, right-aligned (the same 24-hour
+form as the schedule editor). The time is omitted while a fault banner or other long status line would
+meet it; the banner is kept whole. The time is kept across later network loss (extrapolated) until the next reboot.
 
 | Setting | Attr (0xFC57) | Type | Default | Range |
 |---|---|---|---|---|
@@ -237,8 +239,9 @@ ignored (except *Zigbee → hold M*), and after a hold action the rest of that h
 
 UP/DOWN move (wrapping), M selects. Editors: UP/DOWN change, M saves. **10 s without a key anywhere
 in the menu returns to the main screen without saving.** Leaving the menu (Back, a boost start,
-timeout) does a full refresh to clear ghosting; inside the menu each key press is a partial refresh,
-and the usual every-20th-refresh full refresh still applies.
+timeout) does a full refresh to clear ghosting; inside the menu each key press is a partial refresh.
+Those partials count toward the same de-ghost rule as the home screen (below), and leaving the menu
+still forces a full refresh.
 
 | Item | What it does |
 |---|---|
@@ -274,9 +277,38 @@ hold timings fed through the real debouncer).
 | ![night temp](docs/display_menu_schedule_temp.png) | ![boost time](docs/display_menu_schedule_boost.png) | ![boost offset](docs/display_menu_schedule_offset.png) |
 | ![info](docs/display_menu_info.png) | ![hold 5 s](docs/display_menu_hold_pair.png) | ![reset warning](docs/display_menu_reset_warning.png) |
 Display refreshes: a partial refresh ~0.4 s after a button change. Background changes (temperature,
-humidity, running state, link) refresh at most every 3 min, as partials. Every 20th refresh, or every
-6 h, is a full refresh to clear ghosting. The panel deep-sleeps between refreshes. Displayed temperature
-is rounded to 0.1 °C before comparing, so sensor noise doesn't trigger refreshes.
+humidity, running state, link, and the clock) share **one** slot. While the Zigbee clock is unknown
+that slot is at most every 3 min. Once the clock is known it is the next local-minute rollover (about
+60 s): the display task extrapolates `minuteStartMs` from `ZbThermostatLocalClock()`, so the digits
+update when the minute changes rather than on a free-running 60 s timer that can lag an extra minute.
+A sensor change waits for that same slot; there is no separate clock-only refresh. If the extrapolated
+minute never advances, a dirty screen is still flushed after 90 s. The panel
+deep-sleeps between refreshes. Displayed temperature is rounded to 0.1 °C before comparing, so sensor
+noise doesn't trigger refreshes.
+
+A full refresh clears ghosting. Once-a-minute partials must not full-flash every 20 updates (that
+would be a flash about every 20 minutes). A full refresh runs when **both** 3 hours have passed since
+the last full refresh **and** 40 partials have been shown (whichever comes later), or when 6 hours
+have passed, or after a failed refresh, or when the menu is left. The GDEY029T94 datasheet recommends
+a full refresh after every 5 partials to limit ghosting; this firmware does not follow that cadence,
+because a partial every minute would then flash the room every 5 minutes.
+
+The BUSY wait for a refresh (up to about 5 s full / 2 s partial) runs only in the display task and
+polls with `vTaskDelay`, so the control task and the watchdog kick are never blocked on the panel. A
+dead panel is reported and does not stop heating.
+
+**Partial-refresh wear (GDEY029T94).** A partial every minute is about 1440 updates a day, about 0.53
+million a year. Good Display's GDEY029T94 specification lists optical **Life** as **1,000,000 times or
+5 years** at operating temperature (not split between full and partial). At that figure, counting
+every partial as one update spends about half of the 1,000,000-cycle rating per year; the "or 5 years"
+clause is the other limit, and the datasheet does not say partials count 1:1 with full updates. The
+same specification gives a partial refresh time of 0.3 s typical at 25 °C (this driver's BUSY timeout
+allows up to 2 s) and asks that the panel be refreshed at least every 24 hours so a stored image does
+not stick. The 6 hour full-refresh cap is inside that 24 hour note.
+
+![longest banner that still shows the time](docs/display_preview_clock_banner.png)
+![longest banner, time dropped](docs/display_preview_clock_clash.png)
+
 Settings (mode, fan, the program schedule, calibration, boost preferences, swing, units) are saved to NVS 5 s after the last change.
 
 ## Building
@@ -650,8 +682,9 @@ false); USB Serial/JTAG console is on. Details and the Zigbee manufacturer-code 
 - Default reporting isn't configured on the device. ZHA and Z2M set it up when the device joins. No
   manufacturer-specific attributes yet (fan run-on time, minimum-time overrides, °F/°C over Zigbee via the
   Thermostat UI Config cluster 0x0204).
-- Boost: the remaining-minutes field on the screen follows the 3-minute background refresh limit, so
-  it can lag by up to 3 minutes (HA gets it every minute). Boost options can only be edited from HA
+- Boost: the remaining-minutes field on the screen follows the background refresh, so it can lag by up
+  to a minute once the clock is known and by up to 3 minutes before that (HA gets it every minute).
+  Boost options can only be edited from HA
   (locally only start/cancel). The quirk is tested with mocks against zha 2.3.1 / zha-quirks 2.3.0,
   not in a live HA instance.
 - One program for every day of the week (no weekday/weekend split).

@@ -6,6 +6,8 @@
 #include "sht40_parse.h"
 #include "buttons.h"
 #include "display_model.h"
+#include "display_policy.h"
+#include "font.h"
 #include <string.h>
 
 /** Sht40Crc8() matches the Sensirion datasheet example (0xBEEF -> 0x92). */
@@ -290,6 +292,8 @@ static void RenderPreview(void)
     m.fahrenheit = true;
     m.swing = 50;     /* +/-0.9 F */
     m.schedState = 1; /* Day, clock synced (not "Day (no clock)") */
+    m.clockKnown = true;
+    m.localMinute = 21 * 60 + 5; /* 21:05, 24-hour */
     DisplayRender(&s_fb, &m);
     int black = 0;
     for (int y = 0; y < GFX_H; y++)
@@ -297,6 +301,231 @@ static void RenderPreview(void)
             black += GfxGet(&s_fb, x, y);
     CHECK(black > 500 && black < GFX_W * GFX_H / 2);
     WritePbm(&s_fb, "display_preview.pbm");
+}
+
+/** Count black pixels in [x0, x1) x [y0, y1). */
+static int InkRect(const GfxFb *pFb, int x0, int y0, int x1, int y1)
+{
+    int n = 0;
+    for (int y = y0; y < y1; y++)
+        for (int x = x0; x < x1; x++)
+            n += GfxGet(pFb, x, y);
+    return n;
+}
+
+/** Count white pixels in the right-hand HH:MM slot of the status bar (y = 108, small font). */
+static int TimeSlotWhite(const GfxFb *pFb)
+{
+    int timeX = GFX_W - 4 - GfxTextWidth(&kFontSmall, "23:59");
+    int n = 0;
+    for (int y = 108; y < 108 + kFontSmall.height; y++)
+        for (int x = timeX; x < GFX_W; x++)
+            n += !GfxGet(pFb, x, y);
+    return n;
+}
+
+/** Black pixels in that same HH:MM slot. */
+static int TimeSlotInk(const GfxFb *pFb)
+{
+    int timeX = GFX_W - 4 - GfxTextWidth(&kFontSmall, "23:59");
+    return InkRect(pFb, timeX, 108, GFX_W, 108 + kFontSmall.height);
+}
+
+/**
+ * Mismatched pixels between the status-bar time slot and `pHhmm` drawn right-aligned at y = 108.
+ * Zero means the clock is exactly the right-aligned string.
+ */
+static int TimeSlotDiff(const GfxFb *pFb, const char *pHhmm)
+{
+    int timeW = GfxTextWidth(&kFontSmall, pHhmm);
+    int timeX = GFX_W - 4 - timeW;
+    static GfxFb s_ref;
+    GfxClear(&s_ref);
+    GfxText(&s_ref, &kFontSmall, timeX, 108, pHhmm, true);
+    int diff = 0;
+    for (int y = 108; y < 108 + kFontSmall.height; y++)
+        for (int x = timeX; x < GFX_W; x++)
+            diff += GfxGet(pFb, x, y) != GfxGet(&s_ref, x, y);
+    return diff;
+}
+
+/** Mismatched pixels of `pS` drawn in the small font at (x, y) against the frame. */
+static int TextDiff(const GfxFb *pFb, int x, int y, const char *pS)
+{
+    int w = GfxTextWidth(&kFontSmall, pS);
+    static GfxFb s_ref;
+    GfxClear(&s_ref);
+    GfxText(&s_ref, &kFontSmall, x, y, pS, true);
+    int diff = 0;
+    for (int yy = y; yy < y + kFontSmall.height; yy++)
+        for (int xx = x; xx < x + w; xx++)
+            diff += GfxGet(pFb, xx, yy) != GfxGet(&s_ref, xx, yy);
+    return diff;
+}
+
+/** A home model in heat / °F with the Zigbee link line, used by the clock previews. */
+static DisplayModel ClockHome(bool known, U16 minute)
+{
+    DisplayModel m;
+    memset(&m, 0, sizeof m);
+    m.tempValid = true;
+    m.temp = 2147;
+    m.rhValid = true;
+    m.rh = 4630;
+    m.s = (CtrlSettings){.mode = kCtrlModeHeat, .fan = kCtrlFanAuto, .heatSp = 2111, .coolSp = 2444};
+    m.link = kLinkJoined;
+    m.fahrenheit = true;
+    m.schedState = known ? 1 : 0;
+    m.clockKnown = known;
+    m.localMinute = minute;
+    return m;
+}
+
+/** 24h HH:MM, midnight wrap, no time while the clock is unknown, and "Day (no clock)" kept. */
+static void ClockOnStatusBar(void)
+{
+    char b[8];
+    FormatHhmm(b, sizeof b, 0);
+    CHECK(!strcmp(b, "00:00"));
+    FormatHhmm(b, sizeof b, 1439);
+    CHECK(!strcmp(b, "23:59"));
+    FormatHhmm(b, sizeof b, 60);
+    CHECK(!strcmp(b, "01:00"));
+    FormatHhmm(b, sizeof b, 1440);
+    CHECK(!strcmp(b, "00:00"));
+
+    static GfxFb s_fb, s_midnight;
+    DisplayModel unknown = ClockHome(false, 21 * 60 + 5);
+    DisplayRender(&s_fb, &unknown);
+    CHECK_EQ(TimeSlotInk(&s_fb), 0);
+    CHECK_EQ(TextDiff(&s_fb, 8, 84, "Day (no clock)"), 0);
+
+    DisplayModel day = ClockHome(true, 21 * 60 + 5);
+    DisplayRender(&s_fb, &day);
+    CHECK_EQ(TimeSlotDiff(&s_fb, "21:05"), 0);
+    CHECK(TimeSlotInk(&s_fb) > 0);
+    CHECK_EQ(TextDiff(&s_fb, 8, 84, "Day"), 0);
+    /* "Day" must not be the prefix of "Day (no clock)" still sitting on the glass */
+    {
+        int dayW = GfxTextWidth(&kFontSmall, "Day");
+        CHECK_EQ(InkRect(&s_fb, 8 + dayW, 84, 8 + dayW + 48, 84 + kFontSmall.height), 0);
+    }
+    /* four-pixel right margin: the time advance ends at x = 291 */
+    CHECK_EQ(InkRect(&s_fb, GFX_W - 4, 108, GFX_W, 108 + kFontSmall.height), 0);
+
+    DisplayModel m2359 = ClockHome(true, 1439);
+    DisplayRender(&s_midnight, &m2359);
+    CHECK_EQ(TimeSlotDiff(&s_midnight, "23:59"), 0);
+    WritePbm(&s_midnight, "display_preview_midnight.pbm");
+    DisplayModel m0000 = ClockHome(true, 0);
+    DisplayRender(&s_fb, &m0000);
+    CHECK_EQ(TimeSlotDiff(&s_fb, "00:00"), 0);
+    CHECK(memcmp(s_fb.buf, s_midnight.buf, sizeof s_fb.buf) != 0);
+    WritePbm(&s_fb, "display_preview_midnight_0000.pbm");
+}
+
+/**
+ * Longest real status strings at 296 px. Time stays when it fits ("Updating firmware 100%",
+ * a boost line, the link line) and is dropped when a fault or long banner would meet it.
+ */
+static void ClockBannerClash(void)
+{
+    static GfxFb s_fb;
+    DisplayModel m = ClockHome(true, 23 * 60 + 59);
+
+    m.pBanner = "Updating firmware 100%"; /* longest banner that still leaves a gap */
+    DisplayRender(&s_fb, &m);
+    CHECK_EQ(TimeSlotDiff(&s_fb, "23:59"), 0);
+    WritePbm(&s_fb, "display_preview_clock_banner.pbm");
+
+    m.pBanner = "SAFE MODE: repeated resets";
+    DisplayRender(&s_fb, &m);
+    CHECK_EQ(TimeSlotInk(&s_fb), 0);
+    CHECK_EQ(TextDiff(&s_fb, 4, 108, "SAFE MODE: repeated resets"), 0);
+
+    m.pBanner = "Already paired (reset to re-pair)"; /* longest banner the firmware shows */
+    DisplayRender(&s_fb, &m);
+    CHECK_EQ(TextDiff(&s_fb, 4, 108, "Already paired (reset to re-pair)"), 0);
+    /* The banner itself runs into the time slot; dropping the clock must match a no-clock frame. */
+    {
+        DisplayModel bare = m;
+        static GfxFb s_bare;
+        bare.clockKnown = false;
+        DisplayRender(&s_bare, &bare);
+        CHECK(memcmp(s_fb.buf, s_bare.buf, sizeof s_fb.buf) == 0);
+    }
+    WritePbm(&s_fb, "display_preview_clock_clash.pbm");
+
+    m.pBanner = "Zigbee: connected";
+    /* pBanner replaces the link line; this string is the short one and must keep the time */
+    DisplayRender(&s_fb, &m);
+    CHECK_EQ(TimeSlotDiff(&s_fb, "23:59"), 0);
+
+    m.pBanner = NULL;
+    m.view.kind = kViewHomeBanner;
+    snprintf(m.view.hint, sizeof m.view.hint, "Let go: pair  |  hold on: reset");
+    DisplayRender(&s_fb, &m);
+    CHECK_EQ(TimeSlotWhite(&s_fb), 0); /* inverted bar, time dropped: no light pixels in the slot */
+
+    memset(&m.view, 0, sizeof m.view);
+    m.boost = kBoostTimed;
+    m.boostDir = kCtrlModeHeat;
+    m.boostMinLeft = 120;
+    DisplayRender(&s_fb, &m);
+    CHECK(TimeSlotWhite(&s_fb) > 0); /* "BOOST heat 120 min left" fits beside the time */
+}
+
+/**
+ * Background slot: 3 min while the clock is unknown; once the clock is known, the next local
+ * minute (including 23:59 -> 00:00 and a DST jump), not lastRefresh + 60 s. De-ghost waits for
+ * 3 h and 40 partials, with a 6 h cap, so 20 once-a-minute partials do not full-flash.
+ */
+static void RefreshPolicy(void)
+{
+    CHECK_EQ(DISPLAY_BG_UNKNOWN_MS, 3u * 60u * 1000u);
+    CHECK_EQ(DISPLAY_BG_KNOWN_MS, 60u * 1000u);
+    CHECK_EQ(DISPLAY_BG_CAP_MS, 90u * 1000u);
+    CHECK_EQ(DISPLAY_FULL_GAP_MS, 3ULL * 3600ULL * 1000ULL);
+    CHECK_EQ(DISPLAY_FULL_PARTIALS, 40);
+    CHECK_EQ(DISPLAY_FULL_CAP_MS, 6ULL * 3600ULL * 1000ULL);
+
+    /* unknown clock: dirty models wait 3 min; a clean model never refreshes */
+    CHECK(!DisplayBackgroundDue(false, false, true, 179999, 0, 0, 0, -1));
+    CHECK(DisplayBackgroundDue(false, false, true, 180000, 0, 0, 0, -1));
+    CHECK(!DisplayBackgroundDue(false, false, false, 180000, 0, 0, 0, -1));
+    CHECK(DisplayBackgroundDue(true, false, true, 0, 0, 0, 0, -1));
+    CHECK(!DisplayBackgroundDue(true, false, false, 1000, 0, 0, 0, -1));
+
+    U64 start = 1000000; /* monotonic start of local minute 23:59 */
+    CHECK_EQ(DisplayClockMinute(1439, start, start + 59999), 1439);
+    CHECK_EQ(DisplayClockMinute(1439, start, start + 60000), 0); /* 23:59 -> 00:00 */
+    CHECK_EQ(DisplayClockMinute(1439, start, start + 120000), 1);
+    CHECK_EQ(DisplayClockMinute(1439, 0, start + 60000), 1439); /* phase unknown: no extrapolate */
+
+    /* urgent refresh 50 s into the minute must not hold the new minute until +60 s */
+    CHECK(!DisplayBackgroundDue(false, true, true, start + 59000, start + 50000, 1439, start, 1439));
+    CHECK(DisplayBackgroundDue(false, true, false, start + 60000, start + 50000, 1439, start, 1439));
+    /* sensor change mid-minute rides along; it does not open a second refresh path */
+    CHECK(!DisplayBackgroundDue(false, true, true, start + 10000, start, 1439, start, 1439));
+    /* stuck phase (minute start unknown, posted minute not moving): flush a dirty model at the cap */
+    CHECK(!DisplayBackgroundDue(false, true, true, 89999, 0, 10, 0, 10));
+    CHECK(DisplayBackgroundDue(false, true, true, 90000, 0, 10, 0, 10));
+    CHECK(!DisplayBackgroundDue(false, true, false, 90000, 0, 10, 0, 10));
+
+    /* DST / resync: local minute jumps an hour; due immediately, not at the next rollover */
+    U64 now = 5000000;
+    CHECK(DisplayBackgroundDue(false, true, true, now, now - 5000, 4 * 60, now - 1000, 3 * 60));
+
+    /* 20 partials (and even 40, two hours in) must not force a full flash */
+    CHECK(!DisplayRefreshIsFull(false, false, 20, 20ull * 60000ull, 0));
+    CHECK(!DisplayRefreshIsFull(false, false, 40, 40ull * 60000ull, 0));
+    CHECK(!DisplayRefreshIsFull(false, false, 100, 2ull * 3600ull * 1000ull, 0));
+    CHECK(!DisplayRefreshIsFull(false, false, 39, 3ull * 3600ull * 1000ull, 0));
+    CHECK(DisplayRefreshIsFull(false, false, 40, 3ull * 3600ull * 1000ull, 0));
+    CHECK(!DisplayRefreshIsFull(false, false, 0, 6ull * 3600ull * 1000ull - 1ull, 0));
+    CHECK(DisplayRefreshIsFull(false, false, 0, 6ull * 3600ull * 1000ull, 0));
+    CHECK(DisplayRefreshIsFull(true, false, 0, 0, 0));
+    CHECK(DisplayRefreshIsFull(false, true, 0, 0, 0));
 }
 
 /** Run every test in this file; exit status 1 if any failed (tinytest DONE()). */
@@ -313,5 +542,8 @@ int main(void)
     RUN(RenderPreview);
     RUN(RenderPreviewCoolCelsiusFault);
     RUN(RenderPreviewBoosts);
+    RUN(ClockOnStatusBar);
+    RUN(ClockBannerClash);
+    RUN(RefreshPolicy);
     DONE();
 }

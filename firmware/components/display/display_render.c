@@ -10,6 +10,13 @@ static I32 RoundDiv(I32 v, I32 d)
 }
 
 /** See display_model.h. */
+void FormatHhmm(char *pOut, int n, U16 minuteOfDay)
+{
+    unsigned m = (unsigned)minuteOfDay % 1440u;
+    snprintf(pOut, n, "%02u:%02u", m / 60u, m % 60u);
+}
+
+/** See display_model.h. */
 void FormatTemp(char *pOut, int n, I16 c100, bool f, bool withTenths)
 {
     I32 v = f ? (I32)c100 * 9 / 5 + 3200 : c100;
@@ -159,6 +166,32 @@ static void RenderView(GfxFb *pFb, const MenuView *pV)
         HintLine(pFb, pV->hint);
 }
 
+#define STATUS_MARGIN   4 /* px inset of the status bar text from each edge */
+#define STATUS_TIME_GAP 8 /* px kept clear between the left text and HH:MM */
+
+/**
+ * Draw the home status bar: `pLeft` at the left, and 24h HH:MM right-aligned when the clock is
+ * known and the two strings would not meet. `inverted` fills the bar and draws light-on-dark
+ * (boost, hold-to-pair). A collision drops the time; the left text is never clipped to make room.
+ */
+static void DrawStatusBar(GfxFb *pFb, const DisplayModel *pM, const char *pLeft, bool inverted)
+{
+    if (inverted)
+        GfxFillRect(pFb, 0, 105, GFX_W, GFX_H - 105, true);
+    bool ink = !inverted;
+    if (pM->clockKnown)
+    {
+        char hhmm[6];
+        FormatHhmm(hhmm, sizeof hhmm, pM->localMinute);
+        int timeW = GfxTextWidth(&kFontSmall, hhmm);
+        int timeX = GFX_W - STATUS_MARGIN - timeW;
+        int leftW = GfxTextWidth(&kFontSmall, pLeft);
+        if (STATUS_MARGIN + leftW + STATUS_TIME_GAP <= timeX)
+            GfxText(pFb, &kFontSmall, timeX, 108, hhmm, ink);
+    }
+    GfxText(pFb, &kFontSmall, STATUS_MARGIN, 108, pLeft, ink);
+}
+
 /** Menu view or home screen. See display_model.h. */
 void DisplayRender(GfxFb *pFb, const DisplayModel *pM)
 {
@@ -267,12 +300,11 @@ void DisplayRender(GfxFb *pFb, const DisplayModel *pM)
     GfxHline(pFb, 0, 104, GFX_W);
     if (pM->view.kind == kViewHomeBanner)
     {
-        GfxFillRect(pFb, 0, 105, GFX_W, GFX_H - 105, true);
-        GfxText(pFb, &kFontSmall, 4, 108, pM->view.hint, false);
+        DrawStatusBar(pFb, pM, pM->view.hint, true);
     }
     else if (pM->pBanner)
     {
-        GfxText(pFb, &kFontSmall, 4, 108, pM->pBanner, true);
+        DrawStatusBar(pFb, pM, pM->pBanner, false);
     }
     else if (pM->boost != kBoostNone)
     {
@@ -287,11 +319,10 @@ void DisplayRender(GfxFb *pFb, const DisplayModel *pM)
             snprintf(b, sizeof b, "BOOST %s %u min left", pD, (unsigned)pM->boostMinLeft);
         }
         /* inverted bar so a running boost is obvious from across the room */
-        GfxFillRect(pFb, 0, 105, GFX_W, GFX_H - 105, true);
-        GfxText(pFb, &kFontSmall, 4, 108, b, false);
+        DrawStatusBar(pFb, pM, b, true);
     }
     else
     {
-        GfxText(pFb, &kFontSmall, 4, 108, LinkStr(pM->link), true);
+        DrawStatusBar(pFb, pM, LinkStr(pM->link), false);
     }
 }

@@ -142,3 +142,15 @@ void ZbThermostatFactoryReset(void);
  * Returns false until the first successful sync after boot.
  */
 bool ZbThermostatLocalMinute(U16 *pMinute);
+
+/**
+ * Same clock as ZbThermostatLocalMinute(), plus the monotonic instant the current local minute
+ * began. Safe from any task (spinlock).
+ *
+ * `pMinute` receives minutes after local midnight, 0..1439. `pMinuteStartMs` receives the
+ * monotonic ms at which that minute began, or 0 if it began before boot. Either pointer may be
+ * NULL. Both are left untouched when false is returned.
+ *
+ * Returns false until the first successful sync after boot.
+ */
+bool ZbThermostatLocalClock(U16 *pMinute, U64 *pMinuteStartMs);
