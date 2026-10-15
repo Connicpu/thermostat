@@ -81,7 +81,7 @@ YAML options are in [`example.yaml`](example.yaml):
 ## Releasing
 Push a tag named `card-vX.Y.Z` (e.g. `git tag card-v1.0.0 && git push origin card-v1.0.0`).
 `.github/workflows/card-release.yml` runs the tests, checks that `dist/` matches a fresh build, then
-attaches `dist/connie-thermostat-card.js` to that tag's GitHub release, creating the release if needed.
+attaches `dist/connie-thermostat-card.js` and `dist/THIRD_PARTY_LICENSES.txt` to that tag's GitHub release, creating the release if needed.
 The workflow has only `contents: write`, and every action is pinned by SHA. Bump `CARD_VERSION`
 (`src/connie-thermostat-card.js`) and `package.json` first. Firmware tags don't trigger it.
 

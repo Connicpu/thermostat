@@ -11,12 +11,15 @@ await esbuild.build({
   outfile: 'dist/connie-thermostat-card.js',
 });
 
-/* Full BSD-3-Clause text for the bundled Lit packages, shipped beside the HACS asset. */
+/* Full license text for the bundled Lit packages and @mdi/js icon paths, shipped beside the HACS asset. */
 const kLitPkgs = ['lit', 'lit-element', 'lit-html', '@lit/reactive-element'];
 writeFileSync(
   'dist/THIRD_PARTY_LICENSES.txt',
   kLitPkgs
     .map((p) => `===== ${p} (bundled in connie-thermostat-card.js) =====\n\n` +
       readFileSync(`node_modules/${p}/LICENSE`, 'utf8').trim() + '\n')
-    .join('\n'),
+    .join('\n') +
+    '\n===== @mdi/js =====\n\n' +
+    readFileSync('node_modules/@mdi/js/LICENSE', 'utf8').trim() +
+    '\n',
 );
