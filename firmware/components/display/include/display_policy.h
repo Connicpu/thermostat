@@ -42,10 +42,10 @@ U16 DisplayClockMinute(U16 localMinute, U64 minuteStartMs, U64 nowMs);
  * refreshes when DisplayClockMinute() differs from `lastPaintedMinute` (the next local-minute
  * rollover, or a step such as DST), even if the model is not otherwise dirty. `lastPaintedMinute`
  * is -1 until a minute has actually been shown. A failed show does not record it.
- * While the clock is known, `first && dirty` is due immediately if `lastRefreshMs` is 0 (no attempt
- * yet) and otherwise only after DISPLAY_FAIL_BACKOFF_MS, including when the painted minute already
- * matches. That retries a failed frame in a few seconds instead of at the next rollover, without
- * polling a dead panel every loop.
+ * `first && dirty` is due immediately if `lastRefreshMs` is 0 (no attempt yet) and otherwise only
+ * after DISPLAY_FAIL_BACKOFF_MS. That gate applies whether or not the clock is known, so a failed
+ * show retries in a few seconds instead of the next rollover or the next loop. When the clock is
+ * known it also covers a painted minute that already matches.
  * Sensor changes while the minute is unchanged ride along to that rollover. If the extrapolated
  * minute never advances, a dirty model is still flushed after DISPLAY_BG_CAP_MS.
  *

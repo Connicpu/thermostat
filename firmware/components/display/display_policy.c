@@ -43,8 +43,13 @@ bool DisplayBackgroundDue(
             return true;
         return false;
     }
+    /* Same failure gate as the clock-known path: a dead panel must not retry every loop. */
     if (first)
-        return dirty;
+    {
+        if (!dirty)
+            return false;
+        return lastRefreshMs == 0 || nowMs - lastRefreshMs >= DISPLAY_FAIL_BACKOFF_MS;
+    }
     return dirty && nowMs - lastRefreshMs >= DISPLAY_BG_UNKNOWN_MS;
 }
 

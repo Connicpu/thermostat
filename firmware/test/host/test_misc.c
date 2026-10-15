@@ -550,6 +550,15 @@ static void RefreshPolicy(void)
         CHECK(DisplayBackgroundDue(true, true, true, 200, 0, minuteNow, 0, (int)minuteNow));
     }
 
+    /* Failed show, clock unknown: same backoff. Not every 200 ms poll, and not the 3 min slot. */
+    {
+        U64 failedAt = 800000;
+        CHECK(!DisplayBackgroundDue(true, false, true, failedAt + DISPLAY_FAIL_BACKOFF_MS - 1, failedAt, 0, 0, -1));
+        CHECK(DisplayBackgroundDue(true, false, true, failedAt + DISPLAY_FAIL_BACKOFF_MS, failedAt, 0, 0, -1));
+        CHECK(!DisplayBackgroundDue(true, false, false, failedAt + DISPLAY_FAIL_BACKOFF_MS, failedAt, 0, 0, -1));
+        CHECK(DisplayBackgroundDue(true, false, true, 200, 0, 0, 0, -1));
+    }
+
     /* DST / resync: local minute jumps an hour; due immediately, not at the next rollover */
     U64 now = 5000000;
     CHECK(DisplayBackgroundDue(false, true, true, now, now - 5000, 4 * 60, now - 1000, 3 * 60));
