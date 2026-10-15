@@ -4,9 +4,9 @@
   "description": "Lovelace card for Connie's Super Awesome Thermostat V3 (ZHA)",
   "private": true,
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "scripts": {
-    "build": "esbuild src/connie-thermostat-card.js --bundle --format=esm --minify --legal-comments=eof --target=es2021 --outfile=dist/connie-thermostat-card.js",
+    "build": "node build.mjs",
     "test": "vitest run",
     "screenshots": "node demo/screenshot.mjs"
   },

@@ -1,0 +1,122 @@
+Connie Thermostat V3
+Copyright (c) 2026 Connicpu
+
+This product includes software and other materials developed by third parties.
+Their licenses are summarized below; full texts are linked. This project's own
+code is under the MIT License in LICENSE.
+
+---------------------------------------------------------------------------
+Lit (lit, lit-html, lit-element, @lit/reactive-element)
+---------------------------------------------------------------------------
+Copyright 2017–2022 Google LLC
+SPDX-License-Identifier: BSD-3-Clause
+https://github.com/lit/lit/blob/main/LICENSE
+
+Bundled into firmware/ha/lovelace-card/dist/connie-thermostat-card.js. The BSD-3
+notices are preserved at the end of that file.
+
+---------------------------------------------------------------------------
+Material Design Icons (@mdi/js)
+---------------------------------------------------------------------------
+Icons: Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
+Code packaging: MIT (https://opensource.org/licenses/MIT)
+Pictogrammers Free License — see https://github.com/Templarian/MaterialDesign/blob/master/LICENSE
+Bundled path data from @mdi/js into firmware/ha/lovelace-card/dist/connie-thermostat-card.js.
+The Apache-2.0 / Pictogrammers notice is also appended to that bundle.
+
+---------------------------------------------------------------------------
+DejaVu Sans Bold (e-paper bitmap font)
+---------------------------------------------------------------------------
+The 1-bpp glyphs in firmware/components/display/font_data.c are generated from
+DejaVu Sans Bold (tools/gen_font.py). DejaVu changes are public domain; the
+underlying Bitstream Vera fonts carry this notice:
+
+  Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved.
+  Bitstream Vera is a trademark of Bitstream, Inc.
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of the fonts accompanying this license ("Fonts") and associated
+  documentation files (the "Font Software"), to reproduce and distribute the
+  Font Software, including without limitation the rights to use, copy, merge,
+  publish, distribute, and/or sell copies of the Font Software, and to permit
+  persons to whom the Font Software is furnished to do so, subject to the
+  following conditions:
+
+  The above copyright and trademark notices and this permission notice shall
+  be included in all copies of one or more of the Font Software typefaces.
+
+  The Font Software may be modified, altered, or added to, and in particular
+  the designs of glyphs or characters in the Fonts may be modified and
+  additional glyphs or characters may be added to the Fonts, only if the fonts
+  are renamed to names not containing either the words "Bitstream" or the word
+  "Vera".
+
+  This License becomes null and void to the extent applicable to Fonts or Font
+  Software that has been modified and is distributed under the "Bitstream Vera"
+  names.
+
+  The Font Software may be sold as part of a larger software package but no
+  copy of one or more of the Font Software typefaces may be sold by itself.
+
+  THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+  OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF COPYRIGHT, PATENT,
+  TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL BITSTREAM OR THE GNOME
+  FOUNDATION BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, INCLUDING
+  ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES,
+  WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF
+  THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM OTHER DEALINGS IN THE
+  FONT SOFTWARE.
+
+  Except as contained in this notice, the names of Gnome, the Gnome
+  Foundation, and Bitstream Inc., shall not be used in advertising or
+  otherwise to promote the sale, use or other dealings in this Font Software
+  without prior written authorization from the Gnome Foundation or Bitstream
+  Inc., respectively. For further information, contact: fonts at gnome dot
+  org.
+
+Source: https://dejavu-fonts.github.io/ / Bitstream Vera license.
+
+---------------------------------------------------------------------------
+Liberation Sans (case OpenSCAD text only)
+---------------------------------------------------------------------------
+Referenced by name in case/thermostat_case.scad for on-device silk text at
+render time. The font file is not vendored in this repository. Liberation
+fonts are SIL Open Font License 1.1: https://github.com/liberationfonts/liberation-fonts
+
+---------------------------------------------------------------------------
+Espressif ESP-IDF and esp-zigbee-sdk
+---------------------------------------------------------------------------
+Not vendored in git (fetched at build time into firmware/managed_components/,
+which is gitignored). Apache License 2.0.
+  https://github.com/espressif/esp-idf
+  https://github.com/espressif/esp-zigbee-sdk
+
+The Zigbee manufacturer code 0x131B used in this project is Espressif's sample
+/ SDK default (see MANUFACTURER_ID.md). It is not a CSA code assigned to
+Connicpu.
+
+---------------------------------------------------------------------------
+Good Display GDEY029T94 (SSD1680) init / partial-refresh sequences
+---------------------------------------------------------------------------
+firmware/components/display/ssd1680.c implements the panel driver. The init
+and partial-refresh command sequences follow Good Display's GDEY029T94 sample
+code and datasheet (not a verbatim copy of their sample tree). Confirm
+redistribution terms against the PDF/sample package you used before shipping
+products based on this driver.
+
+---------------------------------------------------------------------------
+LCSC / EasyEDA 3D STEP models
+---------------------------------------------------------------------------
+kicad/tstat.3dshapes/*.step (and .wrl) are mechanical models obtained from
+LCSC / EasyEDA part pages for board preview and the case fit. They are
+included for this hardware project; redistribution terms follow the vendor's
+site terms. Replace or remove them if you need a stricter provenance chain.
+
+---------------------------------------------------------------------------
+KiCad library footprints / symbols (standard SMD)
+---------------------------------------------------------------------------
+Some footprints embedded in the PCB were generated with kicad-footprint-generator
+(KiCad libraries, typically CC-BY-SA 4.0 with exception for generated outputs —
+see https://gitlab.com/kicad/libraries/kicad-footprints). Custom footprints live
+under kicad/tstat.pretty/ and are part of this project's MIT-licensed work.

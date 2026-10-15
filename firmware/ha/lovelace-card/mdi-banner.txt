@@ -1,0 +1,1 @@
+/*! @mdi/js icon paths: Apache-2.0 / Pictogrammers Free License - https://github.com/Templarian/MaterialDesign/blob/master/LICENSE */

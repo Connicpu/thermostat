@@ -634,6 +634,13 @@ Write the docs as natural prose sentences. Cover purpose, parameters, return val
 
 `tools/check_docs.py` enforces this. It uses the same libclang setup, compile databases and file scope as `check_naming.py`, plus our files outside the databases. It exits non-zero and lists every struct or function without a preceding `/** */` block, and every doc that still uses a Doxygen `@` tag. CI runs it in the host-test job next to the naming check.
 
+## Security
+
+OTA images are not signature-checked; join uses open install-code policy (`install_code_policy`
+false); USB Serial/JTAG console is on. Details and the Zigbee manufacturer-code situation
+(`0x131B` = Espressif sample default): see the repo-root [README](../README.md#security) and
+[MANUFACTURER_ID.md](../MANUFACTURER_ID.md).
+
 ## Known gaps / TODO
 - **Not run on hardware.** The SSD1680 init and partial-refresh sequences follow Good Display's
   GDEY029T94 sample code, but haven't been checked against a real panel. Display rotation is a guess.
