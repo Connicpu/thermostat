@@ -66,7 +66,8 @@ void DisplayPost(const DisplayModel *pM, bool urgent)
 
 /**
  * Record the local minute already written into pM->localMinute (extrapolated before render), so a
- * failed refresh or a skipped identical frame does not immediately schedule another one.
+ * skipped identical frame does not immediately schedule another one. A failed show does not call
+ * this: the minute was not painted, and the retry is the first-and-dirty backoff.
  */
 static void NotePaintedMinute(const DisplayModel *pM, int *pPainted)
 {
@@ -86,7 +87,7 @@ static void DisplayTask(void *pArg)
 {
     U64 lastRefresh = 0, lastFull = 0;
     int partials = 0;
-    int paintedMinute = -1; /* -1 until a minute has been attempted */
+    int paintedMinute = -1; /* -1 until a minute has been shown */
     U8 epoch = 0;
     bool first = true;
     for (;;)
@@ -143,7 +144,12 @@ static void DisplayTask(void *pArg)
             ESP_LOGE(kTag, "refresh failed: %s", esp_err_to_name(err));
             first = true; /* retry with a full refresh next time */
             lastRefresh = now;
-            NotePaintedMinute(&m, &paintedMinute); /* don't spin on the same minute */
+            /* Do not record the minute: it is not on the glass. Mark the model dirty again so
+             * the clock-known path retries after DISPLAY_FAIL_BACKOFF_MS instead of the next
+             * rollover. The backoff is what keeps a dead panel off the 200 ms loop. */
+            xSemaphoreTake(s_mtx, portMAX_DELAY);
+            s_dirty = true;
+            xSemaphoreGive(s_mtx);
             continue;
         }
         s_prev = s_fb;

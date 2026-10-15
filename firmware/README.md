@@ -289,7 +289,8 @@ noise doesn't trigger refreshes.
 A full refresh clears ghosting. Once-a-minute partials must not full-flash every 20 updates (that
 would be a flash about every 20 minutes). A full refresh runs when **both** 3 hours have passed since
 the last full refresh **and** 40 partials have been shown (whichever comes later), or when 6 hours
-have passed, or after a failed refresh, or when the menu is left. The GDEY029T94 datasheet recommends
+have passed, or after a failed refresh (retried a few seconds later, not held until the next
+minute), or when the menu is left. The GDEY029T94 datasheet recommends
 a full refresh after every 5 partials to limit ghosting; this firmware does not follow that cadence,
 because a partial every minute would then flash the room every 5 minutes.
 

@@ -25,9 +25,18 @@ bool DisplayBackgroundDue(
 {
     if (clockKnown)
     {
+        /* Failed show: the minute was not recorded, and the model is dirty again.
+         * Due after a few seconds even when the minute already matches what was
+         * painted earlier. No attempt yet (lastRefresh 0) paints immediately.
+         * Inside the backoff, return here so a minute mismatch cannot spin. */
+        if (first && dirty)
+        {
+            if (lastRefreshMs == 0 || nowMs - lastRefreshMs >= DISPLAY_FAIL_BACKOFF_MS)
+                return true;
+            return false;
+        }
         U16 minuteNow = DisplayClockMinute(localMinute, minuteStartMs, nowMs);
-        /* Rollover, first paint, or a step (DST / resync): due at that minute, not
-         * lastRefresh + 60 s, so the digits do not lag an extra minute. */
+        /* Rollover or a step (DST / resync): due at that minute, not lastRefresh + 60 s. */
         if ((int)minuteNow != lastPaintedMinute)
             return true;
         if (dirty && nowMs - lastRefreshMs >= DISPLAY_BG_CAP_MS)

@@ -485,6 +485,7 @@ static void RefreshPolicy(void)
     CHECK_EQ(DISPLAY_BG_UNKNOWN_MS, 3u * 60u * 1000u);
     CHECK_EQ(DISPLAY_BG_KNOWN_MS, 60u * 1000u);
     CHECK_EQ(DISPLAY_BG_CAP_MS, 90u * 1000u);
+    CHECK_EQ(DISPLAY_FAIL_BACKOFF_MS, 5u * 1000u);
     CHECK_EQ(DISPLAY_FULL_GAP_MS, 3ULL * 3600ULL * 1000ULL);
     CHECK_EQ(DISPLAY_FULL_PARTIALS, 40);
     CHECK_EQ(DISPLAY_FULL_CAP_MS, 6ULL * 3600ULL * 1000ULL);
@@ -511,6 +512,43 @@ static void RefreshPolicy(void)
     CHECK(!DisplayBackgroundDue(false, true, true, 89999, 0, 10, 0, 10));
     CHECK(DisplayBackgroundDue(false, true, true, 90000, 0, 10, 0, 10));
     CHECK(!DisplayBackgroundDue(false, true, false, 90000, 0, 10, 0, 10));
+
+    /* Failed show, clock known: minute already matches, model still dirty. Due after the
+     * backoff, not at the next rollover, and not on the very next 200 ms poll. */
+    {
+        U64 failedAt = 800000;
+        U16 minuteNow = 10; /* minuteStart 0: no extrapolation, so this is the painted minute */
+        CHECK(!DisplayBackgroundDue(
+            true,
+            true,
+            true,
+            failedAt + DISPLAY_FAIL_BACKOFF_MS - 1,
+            failedAt,
+            minuteNow,
+            0,
+            (int)minuteNow));
+        CHECK(DisplayBackgroundDue(
+            true,
+            true,
+            true,
+            failedAt + DISPLAY_FAIL_BACKOFF_MS,
+            failedAt,
+            minuteNow,
+            0,
+            (int)minuteNow));
+        /* nothing new to draw: a clean model is not a retry */
+        CHECK(!DisplayBackgroundDue(
+            true,
+            true,
+            false,
+            failedAt + DISPLAY_FAIL_BACKOFF_MS,
+            failedAt,
+            minuteNow,
+            0,
+            (int)minuteNow));
+        /* no attempt yet: the first dirty frame is not held for the backoff */
+        CHECK(DisplayBackgroundDue(true, true, true, 200, 0, minuteNow, 0, (int)minuteNow));
+    }
 
     /* DST / resync: local minute jumps an hour; due immediately, not at the next rollover */
     U64 now = 5000000;
