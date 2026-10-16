@@ -48,6 +48,7 @@ Espressif's v5.3.2 docs only say "Python 3.8 or newer". Arch tracks the newest C
    ```
 2. **Older Python, only if `install.sh` still fails.** IDF uses whichever `python3` is first on `PATH` and names the venv after that version. With uv:
    ```sh
+   cd ~
    sudo pacman -S --needed uv
    uv python install 3.12
    export PATH="$(dirname "$(uv python find 3.12)"):$PATH"
@@ -56,7 +57,7 @@ Espressif's v5.3.2 docs only say "Python 3.8 or newer". Arch tracks the newest C
    ~/esp/esp-idf/install.sh esp32c6
    . ~/esp/esp-idf/export.sh
    ```
-   Run that `export PATH=...` line again in every new shell before `. ~/esp/esp-idf/export.sh`.
+   In every new shell, `cd ~` first (inside a project `.venv`, `uv python find 3.12` returns that venv's interpreter), then run the `export PATH=...` line again before `. ~/esp/esp-idf/export.sh`.
 
    The same fallback with pyenv, if you don't want uv. `pyenv install --list` picks the newest 3.12 patch it knows:
    ```sh
@@ -76,7 +77,7 @@ Espressif's v5.3.2 docs only say "Python 3.8 or newer". Arch tracks the newest C
    sudo systemctl enable --now docker.service
    sudo usermod -aG docker "$USER"
    ```
-   Log out and back in so `groups` lists `docker`. Until it does, put `sudo` in front of `docker`. The build command is the box at the end of step 4. Build in the container, then flash from the host (step 6).
+   Membership in the `docker` group is root-equivalent. Log out and back in so `groups` lists `docker`. Until it does, put `sudo` in front of `docker`. The build command is the box at the end of step 4. Build in the container, then flash from the host with the esptool commands in that box.
 
 ## 3. Serial port permissions
 
@@ -130,13 +131,17 @@ There are no special environment variables or extra sdkconfig profiles for produ
 
 `sdkconfig.variant` is a CI-only check. Applied on top of `sdkconfig.defaults`, it turns **off** `CONFIG_THERMO_DISPLAY_FAHRENHEIT`, `CONFIG_THERMO_HW_WDT_ENABLE` and `CONFIG_PM_ENABLE`. CI also passes `-DEPD_ROTATION=3` on that build. **Don't use it for a real image.** The one variant knob you might actually need is `-DEPD_ROTATION=3`, if the screen comes out mirrored or upside down (see step 7).
 
-> **Container alternative (only if `install.sh` failed):** from `thermostat/firmware`. Step 2 starts Docker (`sudo systemctl enable --now docker.service`) and adds your user to the `docker` group. If `groups` does not list `docker` yet, put `sudo` in front of `docker` below. `$(id -u)` still expands to your user, so the files stay yours. If an earlier container run as root left `build/` or `sdkconfig` behind, remove them first (`sudo rm -rf build sdkconfig`).
+> **Container alternative (only if `install.sh` failed):** from `thermostat/firmware`. Step 2 starts Docker (`sudo systemctl enable --now docker.service`) and adds your user to the `docker` group, which is root-equivalent. If `groups` does not list `docker` yet, put `sudo` in front of `docker` below. `$(id -u)` still expands to your user, so the files stay yours. If an earlier container run as root left `build/` or `sdkconfig` behind, remove them first (`sudo rm -rf build sdkconfig`).
 > ```sh
 > docker run --rm -it --user "$(id -u):$(id -g)" -e HOME=/tmp \
 >   -v "$PWD":/project -w /project espressif/idf:v5.3.2 \
 >   bash -c '. "$IDF_PATH/export.sh" && idf.py set-target esp32c6 build && tools/check_release.sh'
 > ```
-> `--user` and `HOME=/tmp` keep `build/` and `sdkconfig` owned by you. Build in the container, then flash from the host with step 6. Do not pass `--device=/dev/ttyACM0` into `docker run`: the board re-enumerates on reset and the device node inside the container disappears. If the host has no IDF, run the `esptool.py write_flash` line the build prints, on the host, with the port set to `/dev/ttyACM0`.
+> `--user` and `HOME=/tmp` keep `build/` and `sdkconfig` owned by you. Build in the container, then flash from the host. Do not pass `--device=/dev/ttyACM0` into `docker run`: the board re-enumerates on reset and the device node inside the container disappears. The `esptool.py` line the build prints points at the container's `/opt/esp` paths, and a host without IDF has no esptool. Arch's `esptool` package is v5, where the subcommand is `write-flash`. IDF writes `build/flash_args`. From `thermostat/firmware`:
+> ```sh
+> sudo pacman -S --needed esptool
+> cd build && esptool --chip esp32c6 -p /dev/ttyACM0 -b 460800 write-flash @flash_args
+> ```
 
 ### What lands in flash
 
