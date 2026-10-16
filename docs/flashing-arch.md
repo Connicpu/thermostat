@@ -10,10 +10,10 @@ This guide takes you from a fresh Arch install to a flashed, paired Thermostat V
 
 ## 1. Install the host packages
 
-These are the Arch packages Espressif lists for ESP-IDF v5.3.2, plus `python-pip`:
+These are the Arch packages Espressif lists for ESP-IDF v5.3.2, plus `python-pip` and `usbutils` (`lsusb` in step 5):
 
 ```sh
-sudo pacman -S --needed gcc git make flex bison gperf python python-pip cmake ninja ccache dfu-util libusb
+sudo pacman -S --needed gcc git make flex bison gperf python python-pip cmake ninja ccache dfu-util libusb usbutils
 ```
 
 `ccache` is optional, but it speeds up rebuilds. You don't need anything from the AUR. ESP-IDF installs its own RISC-V toolchain, esptool and a Python virtualenv under `~/.espressif`.
@@ -38,16 +38,45 @@ Then, in every new shell where you want to build:
 
 ### The Arch Python caveat
 
-Espressif's v5.3.2 docs only say "Python 3.8 or newer". Arch tracks the newest CPython, which may be newer than anything v5.3.2 was tested against. If `install.sh` fails while it creates the Python environment (pip resolution or build errors), try these fixes in order:
+Espressif's v5.3.2 docs only say "Python 3.8 or newer". Arch tracks the newest CPython, which may be newer than anything v5.3.2 was tested against. The v5.3.2 Python requirements (the constraints file) install and import on Arch's Python 3.14. That check did not run the full `install.sh`. If `install.sh` fails while it creates the Python environment (pip resolution or build errors), try these fixes in order:
 
-1. **Clear stale state and retry.** A pip-installed `virtualenv` in `~/.local` can clash with Arch's packaged one ([esp-idf#7809](https://github.com/espressif/esp-idf/issues/7809)):
+1. **Clear stale state and retry.** A pip-installed `virtualenv` in `~/.local` can clash with Arch's packaged one ([esp-idf#7809](https://github.com/espressif/esp-idf/issues/7809)). The `grep` finds a user-installed `virtualenv` and uninstalls it. If there isn't one, that line exits 1; paste the block into a normal shell (not `set -e`) so `install.sh` still runs:
    ```sh
    rm -rf ~/.espressif/python_env
-   pip uninstall --user virtualenv 2>/dev/null   # only if you installed it with pip
+   python3 -m pip list --user 2>/dev/null | grep -qi '^virtualenv ' && python3 -m pip uninstall -y --break-system-packages virtualenv
    ~/esp/esp-idf/install.sh esp32c6
    ```
-2. **Use an older Python for IDF only.** Install Python 3.12 with pyenv (`sudo pacman -S pyenv`) or with uv. Then put it first on `PATH` when you run `install.sh` and `export.sh`. IDF picks up whichever `python3` it finds first and names the venv after that version.
-3. **Build in the same container CI uses.** This route doesn't depend on Arch's Python at all (`sudo pacman -S docker`, then start the docker service). See the box at the end of step 4.
+2. **Older Python, only if `install.sh` still fails.** IDF uses whichever `python3` is first on `PATH` and names the venv after that version. With uv:
+   ```sh
+   sudo pacman -S --needed uv
+   uv python install 3.12
+   export PATH="$(dirname "$(uv python find 3.12)"):$PATH"
+   hash -r
+   python3 --version   # 3.12.x
+   ~/esp/esp-idf/install.sh esp32c6
+   . ~/esp/esp-idf/export.sh
+   ```
+   Run that `export PATH=...` line again in every new shell before `. ~/esp/esp-idf/export.sh`.
+
+   The same fallback with pyenv, if you don't want uv. `pyenv install --list` picks the newest 3.12 patch it knows:
+   ```sh
+   sudo pacman -S --needed pyenv
+   ver=$(pyenv install --list | sed -n 's/^[[:space:]]*\(3\.12\.[0-9][0-9]*\)$/\1/p' | tail -n 1)
+   pyenv install "$ver"
+   export PATH="$(pyenv root)/versions/${ver}/bin:$PATH"
+   hash -r
+   python3 --version   # 3.12.x
+   ~/esp/esp-idf/install.sh esp32c6
+   . ~/esp/esp-idf/export.sh
+   ```
+   Repeat the `export PATH=...` line in every new shell before `export.sh`, the same way as with uv.
+3. **Build in the same container CI uses.** Only if the two fixes above failed. This route doesn't depend on Arch's Python:
+   ```sh
+   sudo pacman -S --needed docker
+   sudo systemctl enable --now docker.service
+   sudo usermod -aG docker "$USER"
+   ```
+   Log out and back in so `groups` lists `docker`. Until it does, put `sudo` in front of `docker`. The build command is the box at the end of step 4. Build in the container, then flash from the host (step 6).
 
 ## 3. Serial port permissions
 
@@ -101,12 +130,13 @@ There are no special environment variables or extra sdkconfig profiles for produ
 
 `sdkconfig.variant` is a CI-only check. Applied on top of `sdkconfig.defaults`, it turns **off** `CONFIG_THERMO_DISPLAY_FAHRENHEIT`, `CONFIG_THERMO_HW_WDT_ENABLE` and `CONFIG_PM_ENABLE`. CI also passes `-DEPD_ROTATION=3` on that build. **Don't use it for a real image.** The one variant knob you might actually need is `-DEPD_ROTATION=3`, if the screen comes out mirrored or upside down (see step 7).
 
-> **Container alternative (no host Python issues):** from `thermostat/firmware`:
+> **Container alternative (only if `install.sh` failed):** from `thermostat/firmware`. Step 2 starts Docker (`sudo systemctl enable --now docker.service`) and adds your user to the `docker` group. If `groups` does not list `docker` yet, put `sudo` in front of `docker` below. `$(id -u)` still expands to your user, so the files stay yours. If an earlier container run as root left `build/` or `sdkconfig` behind, remove them first (`sudo rm -rf build sdkconfig`).
 > ```sh
-> docker run --rm -it -v "$PWD":/project -w /project espressif/idf:v5.3.2 \
+> docker run --rm -it --user "$(id -u):$(id -g)" -e HOME=/tmp \
+>   -v "$PWD":/project -w /project espressif/idf:v5.3.2 \
 >   bash -c '. "$IDF_PATH/export.sh" && idf.py set-target esp32c6 build && tools/check_release.sh'
 > ```
-> To flash from the container, add `--device=/dev/ttyACM0`. Or flash from the host with esptool using the command `idf.py build` prints at the end (the files are in `build/`).
+> `--user` and `HOME=/tmp` keep `build/` and `sdkconfig` owned by you. Build in the container, then flash from the host with step 6. Do not pass `--device=/dev/ttyACM0` into `docker run`: the board re-enumerates on reset and the device node inside the container disappears. If the host has no IDF, run the `esptool.py write_flash` line the build prints, on the host, with the port set to `/dev/ttyACM0`.
 
 ### What lands in flash
 
@@ -166,12 +196,12 @@ From `firmware/README.md`. Do this before connecting 24 VAC:
 
 **Install the quirk first** (`firmware/ha/zha_quirk/`):
 
-1. In `configuration.yaml`:
+1. Merge this into the existing `zha:` block in `configuration.yaml` (add the block if there is none). `/config` is the Home Assistant OS / container config path, not a path on the Arch PC:
    ```yaml
    zha:
      custom_quirks_path: /config/custom_zha_quirks/
    ```
-2. Copy `firmware/ha/zha_quirk/connie_thermostat_v3.py` into `/config/custom_zha_quirks/`.
+2. Copy `firmware/ha/zha_quirk/connie_thermostat_v3.py` into `/config/custom_zha_quirks/` on that Home Assistant machine.
 3. Restart Home Assistant.
 
 **Pair:**
@@ -184,7 +214,7 @@ From `firmware/README.md`. Do this before connecting 24 VAC:
 **Lovelace card** (optional, `firmware/ha/lovelace-card/`):
 
 - *Manual:* copy `dist/connie-thermostat-card.js` to `/config/www/connie-thermostat-card.js`. Then go to Settings → Dashboards → ⋮ → Resources → Add resource, URL `/local/connie-thermostat-card.js`, type *JavaScript module*. Reload the browser, then edit the dashboard → Add card → **Connie Thermostat V3**.
-- *HACS:* HACS → ⋮ → Custom repositories → `https://github.com/Connicpu/thermostat`, type *Dashboard*. HACS installs `connie-thermostat-card.js` from the **GitHub release asset**, not from the `firmware/ha/lovelace-card/` subfolder. A release that does not attach that file cannot be installed this way; use the manual copy instead.
+- *HACS:* HACS → ⋮ → Custom repositories → `https://github.com/Connicpu/thermostat`, type *Dashboard*. HACS installs `connie-thermostat-card.js` from the **GitHub release asset**, not from the `firmware/ha/lovelace-card/` subfolder. **HACS installs from the newest GitHub release in this repo, whatever kind it is.** If a release without `connie-thermostat-card.js` (for example a firmware release) becomes the latest, HACS can't install or update the card. Use the manual copy instead.
 
 (Zigbee2MQTT is also supported through the untested external converter at `firmware/z2m/thermostat-v3.js`. See the firmware README.)
 
