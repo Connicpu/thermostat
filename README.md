@@ -30,6 +30,7 @@ More: case renders in [case/](case/), every menu screen in [firmware/README.md](
 - v2-original/: the previous V2 design
 
 Warning: don't connect USB while 24VAC is wired unless you use a USB isolator.
+First-time flashing on Arch Linux: [docs/flashing-arch.md](docs/flashing-arch.md).
 
 This project is shared as-is. It is not seeking contributions or pull requests.
 

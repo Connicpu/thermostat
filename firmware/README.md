@@ -223,7 +223,7 @@ Changes made on the device (buttons) are written into the local attributes, so c
 | UP / DOWN | Main screen: setpoint ±1 °F (or ±0.5 °C). Auto-repeats after 0.6 s. HEAT edits the heat setpoint, COOL edits the cool setpoint, in both cases **of the current program period** (persisted). Ignored in OFF |
 | UP + DOWN | Start a timed boost, or cancel the running one |
 | M (short) | Open the menu |
-| M hold 5 s | Bottom bar: *Let go: pair / hold on: reset*. **Releasing between 5 and 8 s starts pairing** |
+| M hold 5 s | Bottom bar: `Let go: pair  \|  hold on: reset`. **Releasing between 5 and 8 s starts pairing** |
 | M hold 8 s | Full-screen **factory reset warning** ("keep holding M to reset, release to cancel"). Releasing now cancels and the screen is restored with a full refresh |
 | M hold 15 s | **Factory reset**: outputs off, settings erased, leave the network, reboot |
 | RESET pinhole | Hardware reset |
@@ -313,6 +313,8 @@ not stick. The 6 hour full-refresh cap is inside that 24 hour note.
 Settings (mode, fan, the program schedule, calibration, boost preferences, swing, units) are saved to NVS 5 s after the last change.
 
 ## Building
+
+Arch Linux, from a fresh install through the first flash and ZHA pairing: [docs/flashing-arch.md](../docs/flashing-arch.md).
 
 ```sh
 # one-time: ESP-IDF v5.3.x
@@ -499,6 +501,8 @@ Every row also passes the safety monitor.
 
 ## Flashing: USB ONLY WITH 24 VAC DISCONNECTED
 
+Arch Linux host setup, the CI build, and first-time pairing: [docs/flashing-arch.md](../docs/flashing-arch.md).
+
 > ⚠️ **Never plug USB in while the board is wired to the HVAC system.** Board ground is the
 > bridge rectifier's negative node, not C. With 24 VAC connected, a USB cable to a grounded PC can
 > push current through a rectifier diode and the PC's ground, which can damage the board, the PC or the
@@ -521,16 +525,29 @@ Once the device is on the wall, update it **over Zigbee OTA** (below) instead of
 ## Pairing
 
 The device starts network steering by itself whenever it isn't joined (on first boot or after a factory
-reset) and retries every 10 s. The bottom line of the screen shows *Zigbee: pairing...*. To pair again
-later: hold MODE for 10 s (factory reset), or hold it for 3 s if it's already unjoined.
+reset). A failed attempt backs off (10 s, then 30 s, 1 min, 2 min, 5 min, then every 15 min; at most
+14 attempts in 2 h). The bottom line of the screen shows *Zigbee: pairing...*. To pair again later,
+on the main screen hold **M for 5 s** until the bottom bar says `Let go: pair  |  hold on: reset`,
+then **release between 5 and 8 s**. Keep holding to **15 s** for a factory reset (a full-screen
+warning appears at 8 s; releasing between 8 and 15 s cancels). Menu → *Zigbee* → hold M for **1.5 s**
+also starts pairing.
 
 ### ZHA (primary)
-Install the boost quirk first (`ha/zha_quirk/README.md`): add `zha: custom_quirks_path:` and copy
-the file there. Then: Settings → Devices & services → Zigbee Home Automation → *Add device*, then power the thermostat or
-start pairing. ZHA's generic thermostat support should pick up cluster 0x0201 and create a
-`climate` entity (**with the quirk: hvac_modes off/heat/cool only, fan modes auto/on**; both setpoints, HVAC action from running state), plus
-humidity and temperature sensors and a fan-mode control. No quirk should be needed. If the fan mode or
-running state doesn't show up, a small ZHA quirk v2 can be added later.
+Install the quirk first (`ha/zha_quirk/README.md`). In `configuration.yaml`:
+
+```yaml
+zha:
+  custom_quirks_path: /config/custom_zha_quirks/
+```
+
+Copy `ha/zha_quirk/connie_thermostat_v3.py` into `/config/custom_zha_quirks/` and restart Home Assistant.
+Then: Settings → Devices & services → Zigbee Home Automation → *Add device*, and power the thermostat or
+start pairing. With the quirk installed, ZHA creates a `climate` entity (**hvac_modes off/heat/cool
+only, fan modes auto/on**; both setpoints, HVAC action from running state), plus humidity and
+temperature sensors and the boost and schedule entities. The device page should list the quirk as
+"(Connie / thermostat-v3)". If it paired before the quirk was installed, use Device → ⋮ →
+*Reconfigure*, or remove it and pair again. See *Climate modes without Auto* below for why the quirk
+replaces the Thermostat cluster.
 
 #### Climate modes without Auto (ZHA)
 
@@ -580,8 +597,10 @@ The converter is written against the standard `fz.thermostat` / `tz.thermostat_*
    isn't healthy within 60 s of boot (control loop running, sensor valid) is rolled back on the next reset.
 
 ## Bring-up checklist (before connecting 24 VAC)
-1. With the board on USB and no HVAC, check that the log shows SHT40 readings and the screen draws.
-   If the image is mirrored or upside down, build with `-DEPD_ROTATION=3` (see `gfx.c`).
+1. With the board on USB and no HVAC, check that the screen draws a home screen with a temperature.
+   A good SHT40 read is not logged (the sensor is read every 2 s); CRC/I2C errors and
+   `EVT fault sensor init` are. If the image is mirrored or upside down, build with
+   `-DEPD_ROTATION=3` (see `gfx.c`).
 2. Confirm that W/Y/G stay low at boot, in the bootloader, and during and after a forced watchdog
    reset (scope or LED on DRV_*).
 3. Confirm that the STWD100 resets the chip when the loop is stalled (e.g. a debug build with a `while(1)`).
