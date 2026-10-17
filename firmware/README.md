@@ -394,7 +394,7 @@ time sync, OTA pending-verify and rollback all run the shipping code.
   mutation check: setting the compressor min-off to 1 s makes the monitor fail
   `cool_cycles_room_model`.
 * **CI** (`.github/workflows/firmware.yml`):
-  * a production `idf.py build` that fails on any warning;
+  * a production `idf.py build` that fails on any warning, then fails if the image's App version contains `card-`;
   * `tools/check_release.sh` (no `sim_*`/fake symbols or simulator strings in the ELF);
   * host unit tests, ZHA quirk tests, and every HOOTL scenario (JUnit XML);
   * an esp32sim smoke boot of the variant image (bootloader + partition table + app).
@@ -607,11 +607,37 @@ Z2M only exposes devices it has a definition for. This model is custom, so **Z2M
 The converter is written against the standard `fz.thermostat` / `tz.thermostat_*` helpers and is
 **untested**, because no hardware exists yet. Its import paths may need adjusting for your Z2M version.
 
+## Firmware version
+
+The boot log line `App version` is the string in the image's app description (`PROJECT_VER` / `esp_app_desc.version`). ESP-IDF would fill that from plain `git describe --always --tags --dirty`, which follows the nearest tag of any kind. Lovelace card tags then show up as the firmware version, for example `card-v1.1.1-20-g9511c9e`.
+
+`firmware/CMakeLists.txt` sets `PROJECT_VER` before `project()` (`version.cmake`):
+
+1. `git describe --tags --match 'fw-v*' --dirty`, with the `fw-v` prefix removed. A tag `fw-v0.3.0` on this commit is `0.3.0`. Commits after it are `0.3.0-5-gabcdef1`, and a dirty tree gets a `-dirty` suffix.
+2. If there is no `fw-v*` tag, or the checkout is too shallow to see one, `firmware/version.txt` plus `-g` and the short hash, for example `0.3.0-g9511c9e`. The same `-dirty` suffix applies. No git at all: the `version.txt` line on its own.
+
+`version.txt` is a single `X.Y.Z` line (no comment; IDF would read that file raw if `PROJECT_VER` were unset). It must equal `FW_VERSION_MAJOR.MINOR.PATCH` in `components/board/include/fw_version.h`. The build refuses a string that contains `card-`, is longer than 31 characters (the app-description field), or does not start with that semver.
+
+The production CI job checks out full history and tags so `git describe` can see `fw-v*`. A shallow clone still builds, using `version.txt` and the short hash, and never a `card-v*` tag. The card job and `card-release.yml` are unchanged: a `card-v*` tag still only publishes the Lovelace card.
+
+Zigbee and OTA numbers do **not** come from `git describe`, and they never followed the card tags. They stay on the `FW_VERSION_*` semver, which `version.txt` and the leading `X.Y.Z` of the app version string match.
+
+| What a coordinator sees | Source | Value at 0.3.0 |
+|---|---|---|
+| Basic SWBuildID | `FW_VERSION`, a 5-character ZCL string (`\x05` length prefix) | `0.3.0` |
+| Basic DateCode | not added | absent |
+| OTA client file version | `FW_OTA_FILE_VERSION`, `0xMMmmpppp` from the same three numbers | `0x00030000` |
+| Menu *Device info → Firmware* | `FW_VERSION` | `0.3.0` |
+
+The OTA numeric scheme stays `0xMMmmpppp`. It was not derived from the card tag, so a card tag in the old app string never changed which image the device thought it was running. The string inside the `.bin` (what the boot log prints, and what rides along inside a Zigbee OTA image) is the part that was wrong. The Zigbee OTA *file header* is written later by `image_builder_tool.py` from the number you pass it, which should be `FW_OTA_FILE_VERSION`.
+
+**Releasing firmware.** Tag `fw-vX.Y.Z` (for example `git tag fw-v0.3.0 && git push origin fw-v0.3.0`). In that same commit, set `FW_VERSION_*` and `version.txt` to `X.Y.Z`. There is no firmware release workflow yet; the tag is what the next image's app version is named from. Keep publishing the Lovelace card with `card-v*` tags, and keep attaching `connie-thermostat-card.js` to every GitHub release (see `ha/lovelace-card/README.md`).
+
 ## OTA updates over Zigbee
 
 > A freshly updated image confirms itself only after it has been up 60 s, is healthy, and has rejoined the Zigbee network. If it hasn't rejoined within 10 minutes (including when the coordinator/HA is simply offline), it rolls back to the previous image; the update will be offered again later. If no previous image exists, it logs an error and keeps running.
 
-1. Bump `FW_VERSION_*` in `components/board/include/fw_version.h` (the OTA file version is derived from it) and build.
+1. Bump `FW_VERSION_*` in `components/board/include/fw_version.h` and put the same `X.Y.Z` in `version.txt` (the OTA file version is `0xMMmmpppp` derived from `FW_VERSION_*`). Tag the release `fw-vX.Y.Z` when you publish it, and build.
 2. Wrap `build/thermostat_v3.bin` in a Zigbee OTA file with Espressif's
    `esp-zigbee-sdk/tools/image_builder_tool/image_builder_tool.py`, using manufacturer 0x434E, image type 0x0301 and the new version (e.g. 0.2.1 → 0x00020001).
 3. **ZHA:** put the `.ota` file in the directory set by `zha: zigpy_config: ota: otau_directory`. **Z2M:**

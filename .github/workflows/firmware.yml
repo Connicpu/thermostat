@@ -17,11 +17,39 @@ jobs:
     defaults: { run: { shell: bash, working-directory: firmware } }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history and tags so `git describe --match fw-v*` can see firmware tags.
+          # A shallow clone still builds (version.txt + short hash). Card and host jobs stay shallow.
+          fetch-depth: 0
+          fetch-tags: true
       - name: idf.py build (warnings are errors)
         run: |
           . $IDF_PATH/export.sh
           idf.py set-target esp32c6 build 2>&1 | tee build.log
           if grep -E '(^|[^-])warning:' build.log; then echo "::error::compiler warnings"; exit 1; fi
+      - name: App version is a firmware version, not a card tag
+        run: |
+          python3 - <<'PY'
+          import pathlib, struct, sys
+          data = pathlib.Path("build/thermostat_v3.bin").read_bytes()
+          magic = struct.pack("<I", 0xABCD5432)
+          i = data.find(magic)
+          if i < 0 or i + 80 > len(data):
+              print("::error::esp_app_desc not found in thermostat_v3.bin", file=sys.stderr)
+              sys.exit(1)
+          ver = data[i + 16:i + 48].split(b"\x00", 1)[0].decode("utf-8", "replace")
+          name = data[i + 48:i + 80].split(b"\x00", 1)[0].decode("utf-8", "replace")
+          print(f"App version: {ver}")
+          if name != "thermostat_v3":
+              print(f"::error::unexpected project name {name!r}", file=sys.stderr)
+              sys.exit(1)
+          if "card-" in ver:
+              print(f"::error::App version contains a Lovelace card tag: {ver}", file=sys.stderr)
+              sys.exit(1)
+          if not ver:
+              print("::error::empty App version", file=sys.stderr)
+              sys.exit(1)
+          PY
       - name: No simulator code in the release ELF
         run: . $IDF_PATH/export.sh && tools/check_release.sh
       - name: Kconfig-variant build (Fahrenheit/HW WDT/PM off, EPD_ROTATION=3; warnings are errors)
