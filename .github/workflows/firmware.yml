@@ -92,7 +92,7 @@ jobs:
           path: .emu/bin
           key: esp32sim-bin-${{ env.ESP32SIM_SHA }}-rust-${{ env.RUST_TOOLCHAIN }}-${{ runner.os }}-${{ runner.arch }}
       - name: Cache cargo registry (only used when the binary must be rebuilt)
-        if: success() && steps.emu-bin.outputs.cache-hit != 'true'
+        if: steps.emu-bin.outputs.cache-hit != 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -102,7 +102,7 @@ jobs:
           key: esp32sim-cargo-${{ env.ESP32SIM_SHA }}
           restore-keys: esp32sim-cargo-
       - name: Build esp32sim at the pinned commit
-        if: success() && steps.emu-bin.outputs.cache-hit != 'true'
+        if: steps.emu-bin.outputs.cache-hit != 'true'
         working-directory: ${{ runner.temp }}
         run: |
           rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
@@ -114,7 +114,7 @@ jobs:
           cargo "+$RUST_TOOLCHAIN" build --locked --release -p esp32sim
           mkdir -p "$EMU_HOME/bin" && cp target/release/esp32sim "$EMU_HOME/bin/"
       - name: Save esp32sim binary (now, so a failing smoke run does not force a rebuild next time)
-        if: success() && steps.emu-bin.outputs.cache-hit != 'true'
+        if: steps.emu-bin.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .emu/bin

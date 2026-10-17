@@ -80,11 +80,11 @@ bool DisplayRefreshIsFull(bool first, bool epochChanged, int partials, U64 nowMs
  * True when the display task has been silent for DISPLAY_STALL_MS.
  *
  * `aliveMs` is the display task's last loop time and `nowMs` is the app task's sample from the
- * start of its loop. The display task stamps its heartbeat after that sample whenever it runs
- * while the app task waits on the model mutex, so `aliveMs` can be ahead of `nowMs`. Unsigned
- * subtraction would wrap and look like a stall of millions of milliseconds. A heartbeat in the
- * future is not a stall: the gap counts only when nowMs is strictly later than aliveMs and the
- * difference is at least DISPLAY_STALL_MS.
+ * start of its loop. SensorRead() runs after that sample, and a failing read takes long enough
+ * for the display task to stamp its heartbeat in between, so `aliveMs` can be ahead of `nowMs`.
+ * Unsigned subtraction would wrap and look like a stall of millions of milliseconds. A heartbeat
+ * in the future is not a stall: the gap counts only when nowMs is strictly later than aliveMs and
+ * the difference is at least DISPLAY_STALL_MS.
  *
  * Returns true when the display task should be reported stalled.
  */

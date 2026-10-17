@@ -857,10 +857,10 @@ static void AppTask(void *pArg)
         /* 8. health check -> watchdogs. Kick only if every check passed.
          *    The display is NOT part of it: a dead panel must not stop heating
          *    (or reboot-loop the thermostat); it is reported instead.
-         *    `now` was sampled at the top of this loop. The display task stamps s_alive
-         *    when it next runs, which can be after that sample (this task waits on the
-         *    display mutex). A stamp ahead of `now` is not a stall: unsigned subtraction
-         *    would wrap. */
+         *    `now` was sampled at the top of this loop. SensorRead() runs after that
+         *    sample, and a failing read (I2C NAK and bus reset) takes long enough for
+         *    the display task to stamp s_alive with a later time. A stamp ahead of
+         *    `now` is not a stall: unsigned subtraction would wrap. */
         bool dispFault = !DisplayRunning() || DisplayHeartbeatStalled(DisplayLastAliveMs(), now);
         if (dispFault != evtDispFault)
         {
