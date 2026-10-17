@@ -629,7 +629,9 @@ The converter is written against the standard `fz.thermostat` / `tz.thermostat_*
    reset (scope or LED on DRV_*).
 3. Confirm that the STWD100 resets the chip when the loop is stalled (e.g. a debug build with a `while(1)`).
 4. Measure self-heating: compare against a reference thermometer with the board in its case after 2 h,
-   then set `CONFIG_THERMO_SELF_HEAT_OFFSET_C100`.
+   then set `CONFIG_THERMO_SELF_HEAT_OFFSET_C100`. The rev 11 case is modeled to cut the triac-induced
+   rise by about 10–25% (not yet measured). Tape the new edge slots and repeat the same calls for an
+   A/B log before changing the offset.
 5. Only then connect R/C/W/Y/G. Do the first heat and cool calls while you're watching the equipment.
 
 ## Code style

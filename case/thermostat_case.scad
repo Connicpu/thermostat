@@ -1,7 +1,8 @@
 // Connie's Super Awesome Thermostat V3 - parametric case (OpenSCAD)
 // Units mm. Board coords: origin top-left, x right, y down (same as KiCad, board-relative).
 // Case coords: origin outer bottom-left of backplate, X right, Y up, Z out of wall (wall surface Z=0).
-part = "assembly";   // backplate | shell | caps | assembly | exploded | section
+// rev11: three air zones (hot | middle | sensor duct). Front face, cat, swirls, window, and buttons are unchanged.
+part = "assembly";   // backplate | shell | caps | assembly | exploded | section | section_airflow
 explode = 0;         // used by "exploded"
 $fn = 48;
 
@@ -54,10 +55,57 @@ swirl_style = "bold";                // "subtle" | "bold" | "none"
 swirl_w = swirl_style=="bold" ? 1.8 : 1.2;   // line width (>=3 extrusion widths at 0.4 nozzle)
 swirl_margin = 2.0;                  // clearance to window/buttons/holes/lettering/cat
 
+// ---- rev11 airflow zones ----
+// Front-face clearances include JLCPCB's ±0.16 mm board thickness. The board sits on the
+// standoffs, so a thicker board raises the front face and a thinner one does not move the back.
+pcb_tol = 0.16;
+part_clr = 0.5;
+vslot_w = 1.6; vslot_p = 3.2;        // edge-vent slot / web (1.6 = 4 lines at a 0.4 mm nozzle)
+vslot_z = [6.5, 23.8];               // above the 5.5 mm lip, 1.0 mm short of the front skin
+ribL_bx = [26.8, 28.4];              // rear divider, hot zone | middle
+// Rib S is the reviewer's "move" fix, 0.2 mm further right than 118.8 so the Ø0.65 J2 peg
+// at board x118.11 keeps >=0.5 mm. A notch over the peg would open the duct at the inlet.
+ribS_bx = [119.0, 120.6];            // rear divider, middle | sensor duct
+rib_gap = 0.4;                       // rib top -> PCB back. Never let the rib touch the board.
+rib_end_y = 2.7;                     // lip outer face; caps the rib out to here above the lip
+curtain_bx = [27.7, 29.0];           // front curtain. Overlaps the panel's left rib (fuses a 0.26 mm sliver).
+                                     // 0.6 mm clear of L1, so that Y-band can sit down near the board.
+curtain_z_floor = 0.9;               // empty board / solder: 0.5 + 0.16 tol + a solder fillet
+// [board y0, y1, height above the PCB]. Lower everywhere the parts allow; C2 holds 3.4.
+curtain_notches = [
+  [8.4, 11.6, 1.5],                  // R23 0805 (max ~0.65)
+  [23.4, 26.6, 1.5],                 // R33
+  [38.4, 41.6, 1.5],                 // R43
+  [47.8, 52.2, 3.4]                  // C2 1210 at its 2.7 mm max
+];
+part_bx = [115.9, 117.8];            // front partition. Overlaps the button tubes (fuses a 0.30 mm sliver).
+part_z0 = 1.3;                       // clears a 0.55 mm 0402 with the 0.16 mm board tolerance
+part_d3_z = 3.2;                     // D3 SMA; raised past Zt+3.0 so +0.16 mm still leaves 0.5
+part_j2_z = 4.0;                     // J2 USB-C body is 3.26
+baffle_gap = part_clr + pcb_tol;     // 0.66: still 0.5 mm when the board is thick
+baffle_x0 = island[0] - 1.25;        // outer left wall, >=0.5 mm clear of R14
+baffle_xi = baffle_x0 + 1.2;         // 1.2 mm wall
+L_vx = [for (i = [0:7]) 6.0 + i*vslot_p];                 // hot-zone top/bottom slot centres (case X)
+S_vx = [for (i = [0:5]) 126.8 + i*vslot_p];               // sensor slots, all to the right of rib S
+L_sy = [7.0, 10.2, 13.4, 16.6, 55.0, 58.2, 61.4, 64.6];   // left wall: low inlet, high exhaust (case Y)
+S_sy = [for (i = [0:7]) 23.0 + i*vslot_p];                // right wall, rear, island band (case Y)
+
 // ---------------- helpers ----------------
 module rrect(w,h,r){ offset(r) square([w-2*r,h-2*r]); }
 module rbox(w,h,d,r){ linear_extrude(d) translate([r,r]) rrect(w,h,r); }
 module slot2d(l,w){ hull(){ translate([-l/2+w/2,0]) circle(d=w); translate([l/2-w/2,0]) circle(d=w);} }
+// Rear zone wall. Full height inside the lip; above the lip it reaches the lip's outer face
+// so the 2.3 x 11.5 mm end windows against the shell close. Prints upright, no supports.
+module zone_rib(bx0, bx1) {
+  rw = bx1 - bx0;
+  ztop = Z_pcb_b - rib_gap;
+  translate([cx(bx0), po + lip_t - 0.2, 0])
+    cube([rw, ph - 2*lip_t + 0.4, ztop]);
+  translate([cx(bx0), rib_end_y, lip_h])
+    cube([rw, lip_t + 0.2, ztop - lip_h]);
+  translate([cx(bx0), H - rib_end_y - lip_t - 0.2, lip_h])
+    cube([rw, lip_t + 0.2, ztop - lip_h]);
+}
 
 // ---------------- backplate ----------------
 pw = W-2*wall-2*clr; ph = H-2*wall-2*clr; po = wall+clr;
@@ -70,20 +118,21 @@ module backplate(){
       // perimeter lip that the shell slides over
       // (full height all round; rev10 removed the notch under C43)
       translate([po,po,0]) difference(){ rbox(pw,ph,lip_h,3); translate([lip_t,lip_t,-1]) rbox(pw-2*lip_t,ph-2*lip_t,lip_h+2,1.5); }
-      // snap bumps (45 deg both sides, print without supports)
+      // snap bumps (45 deg both sides, print without supports). Base embeds 0.1 mm into the lip so the bumps fuse.
       for(s=[[W/2-35,po,0],[W/2+35,po,0],[W/2-35,H-po,180],[W/2+35,H-po,180]])
-        translate([s[0],s[1],3.2]) rotate([0,0,s[2]]) rotate([0,90,0]) linear_extrude(10,center=true) polygon([[0.9,0],[0,-0.8],[-0.9,0]]);
+        translate([s[0],s[1],3.2]) rotate([0,0,s[2]]) rotate([0,90,0]) linear_extrude(10,center=true) polygon([[0.9,0.1],[0.9,0],[0,-0.8],[-0.9,0],[-0.9,0.1]]);
       // PCB standoffs with locating pins
       for(h=holes) translate([cx(h[0]),cy(h[1]),0]){ cylinder(d=8,h=Z_pcb_b); cylinder(d=3.9,h=Z_pcb_b+pcb_t-0.2); }
+      zone_rib(ribL_bx[0], ribL_bx[1]);
+      zone_rib(ribS_bx[0], ribS_bx[1]);
     }
     // centred drywall wire hole; wires bend into the rear right-angle plug
     translate([W/2,H/2,-1]) linear_extrude(plate_t+2) offset(3) square([wire_open[0]-6,wire_open[1]-6],center=true);
     // 4 drywall anchor screw holes with pan-head recesses
     for(p=anchors) translate([p[0],p[1],-1]){ cylinder(d=anchor_d,h=plate_t+2); translate([0,0,plate_t+1-anchor_head_h]) cylinder(d=anchor_head_d,h=anchor_head_h+0.01); }
-    // vents under the SHT40 island (chimney inlet)
-    for(i=[0:4]) translate([cx(island[0]+1.5+i*2.75),cy((island[1]+island[3])/2),-1]) linear_extrude(plate_t+2) square([1.6,12],center=true);
-    // label recess
-    translate([W/2-37,H/2,plate_t-0.6]) linear_extrude(1) text("TOP ^  V3",size=4,halign="center",valign="center");   // left of the wire hole (was inside it)
+    // rev11: the drywall-facing island slots are gone (they opened the sensor duct onto the wall)
+    // label recess, moved right so rib L does not cut it
+    translate([W/2-26,H/2,plate_t-0.6]) linear_extrude(1) text("TOP ^  V3",size=3.5,halign="center",valign="center");
   }
 }
 
@@ -107,10 +156,25 @@ module shell(pk=true){   // pk=false: preview only, pockets left solid (inlays s
           translate([0,0,Z_panel_b-0.9]) cube([6,1.2,Z_in-Z_panel_b+0.9+0.01]);
           translate([0,0,Z_panel_b-0.9]) rotate([0,90,0]) linear_extrude(6) polygon([[0,0],[-0.9,0],[0,-0.7]]); }
       }
-      // thermal baffle around SHT40 island (stops 0.8 mm above PCB), open to right wall
-      translate([0,0,Z_pcb_t+0.8]) linear_extrude(Z_in-Z_pcb_t-0.8+0.01) difference(){
-        translate([cx(island[0]-1.4),cy(island[3]+1.6)]) square([W-wall-cx(island[0]-1.4)+0.5, island[3]-island[1]+3.2]);
-        translate([cx(island[0]-0.4),cy(island[3]+0.6)]) square([W, island[3]-island[1]+1.2]);
+      // thermal baffle around SHT40 island, open to the right wall
+      translate([0,0,Z_pcb_t+baffle_gap]) linear_extrude(Z_in-Z_pcb_t-baffle_gap+0.01) difference(){
+        translate([cx(baffle_x0),cy(island[3]+1.6)]) square([W-wall-cx(baffle_x0)+0.5, island[3]-island[1]+3.2]);
+        translate([cx(baffle_xi),cy(island[3]+0.6)]) square([W, island[3]-island[1]+1.2]);
+      }
+      // front curtain, hot zone | panel. Sits near the board, notched up over each part.
+      difference(){
+        translate([cx(curtain_bx[0]), wall-0.01, Z_pcb_t+curtain_z_floor])
+          cube([curtain_bx[1]-curtain_bx[0], H-2*wall+0.02, Z_in-Z_pcb_t-curtain_z_floor+0.01]);
+        for (n = curtain_notches)
+          translate([cx(curtain_bx[0])-1, cy(n[1]), Z_pcb_t-1])
+            cube([curtain_bx[1]-curtain_bx[0]+2, n[1]-n[0], 1+n[2]]);
+      }
+      // front partition, buttons | sensor compartment. Notched over D3 and J2.
+      difference(){
+        translate([cx(part_bx[0]), wall-0.01, Z_pcb_t+part_z0])
+          cube([part_bx[1]-part_bx[0], H-2*wall+0.02, Z_in-Z_pcb_t-part_z0+0.01]);
+        translate([cx(part_bx[0])-1, cy(48.5), Z_pcb_t-1]) cube([5, 48.5-44.5, 1+part_d3_z]);
+        translate([cx(part_bx[0])-1, cy(65), Z_pcb_t-1]) cube([5, 65-54.5, 1+part_j2_z]);
       }
       // button guide tubes
       for(b=btn) translate([cx(b[0]),cy(b[1]),Z_pcb_t+3.5]) cylinder(d=8.6,h=Z_in-Z_pcb_t-3.5);
@@ -131,6 +195,12 @@ module shell(pk=true){   // pk=false: preview only, pockets left solid (inlays s
     // vents: front over island (outlet), right side wall, bottom wall below island
     for(i=[0:4]) translate([cx(island[0]+1.5+i*2.75),cy((island[1]+island[3])/2),Z_in-1]) linear_extrude(10) square([1.6,11],center=true);
     for(i=[0:3]) translate([W-wall-1, cy(island[1]+2+i*3.2)-0.8, Z_pcb_t+1]) cube([wall+2,1.6,Z_in-Z_pcb_t-2]);
+    // rev11 hot-zone chimney: bottom in, top out, left wall low in / high out. Top slots kept.
+    for (x = L_vx) for (y = [-1, H-wall-1]) translate([x-vslot_w/2, y, vslot_z[0]]) cube([vslot_w, wall+2, vslot_z[1]-vslot_z[0]]);
+    for (y = L_sy) translate([-1, y-vslot_w/2, vslot_z[0]]) cube([wall+2, vslot_w, vslot_z[1]-vslot_z[0]]);
+    // rev11 sensor duct: bottom in, top out, plus right-wall rear slots at the island band
+    for (x = S_vx) for (y = [-1, H-wall-1]) translate([x-vslot_w/2, y, vslot_z[0]]) cube([vslot_w, wall+2, vslot_z[1]-vslot_z[0]]);
+    for (y = S_sy) translate([W-wall-1, y-vslot_w/2, vslot_z[0]]) cube([wall+2, vslot_w, Z_pcb_b-1-vslot_z[0]]);
     // snap windows matching backplate bumps
     for(x=[W/2-35,W/2+35]) for(y=[-1,H-wall-1]) translate([x-5.5,y,3.2-1.0]) cube([11,wall+2,2.0]);
     // inlay pockets (filled by black text / orange cat bodies)
@@ -203,6 +273,8 @@ else if(part=="section_j1") difference(){ union(){ color("lightgray") backplate(
   translate([-1,-1,-30]) cube([W+2, cy(58)+1, 80]); }   // cut along the J1 pin row / C43 centre (board y=58)
 else if(part=="section_j1x") difference(){ union(){ color("lightgray") backplate(); pcb(); epd(); color("white") shell(false); }
   translate([cx(term[0]),-1,-30]) cube([W, H+2, 80]); }   // cut across J1 + plug + wire bend (board x=70)
+else if(part=="section_airflow") difference(){ union(){ color("lightgray") backplate(); pcb(); epd(); color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); for(b=btn) color("orange") translate([cx(b[0]),cy(b[1]),sw_top]) cap(); }
+  translate([-1, cy(32), -30]) cube([W+2, H, 80]); }   // cut at board y=32, through the SHT40 and both zone ribs
 // rear clearance check: tallest rear parts must clear the backplate top (plate_t)
 assert(Z_pcb_b-bulk_h>plate_t+1, "C43 hits backplate");
 assert(Z_pcb_b-plug_h>plate_t-plug_pocket+1, "J1 plug hits backplate");
