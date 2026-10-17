@@ -136,7 +136,9 @@ j2=[r for r in res if r[0].startswith('J2')]
 if j2:
   w=min(j2,key=lambda r:r[2])
   print('J2 rear tails/peg worst: %-28s vs %-14s %6.2f'%(w[0],w[1],w[2]))
-# board outline vs shell. A designed kiss (0, or a numeric -0.0) is not a failure.
+# board outline vs shell. Both of these are a designed kiss (0, or a numeric -0.0).
+# Sampling the contact can report a few hundredths of a millimetre of overlap, so
+# -0.05 mm of slack is allowed here only. Part rows above still fail on any c<0.
 d=trimesh.proximity.ProximityQuery(shell).signed_distance(np.vstack([pcbm.vertices,pcbm.sample(20000)]))
 pcb_shell=-float(d.max())
 print('PCB outline vs shell',round(pcb_shell,2))
