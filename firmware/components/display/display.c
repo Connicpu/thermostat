@@ -81,7 +81,9 @@ static void NotePaintedMinute(const DisplayModel *pM, int *pPainted)
  * unchanged, choose full vs partial, and push it to the panel. A failed refresh is logged and the
  * next one is a full refresh. Ssd1680Show waits on BUSY in this task only (vTaskDelay), so the
  * control task and its watchdog kick keep running; s_alive is refreshed each loop and a single
- * panel wait (a few seconds) stays under the app task's display-stall threshold.
+ * panel wait (a few seconds) stays under the app task's display-stall threshold. The stamp can
+ * land after the app task has already sampled its clock; DisplayHeartbeatStalled() treats a
+ * heartbeat ahead of that sample as alive.
  */
 static void DisplayTask(void *pArg)
 {

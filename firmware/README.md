@@ -396,7 +396,9 @@ time sync, OTA pending-verify and rollback all run the shipping code.
 * **CI** (`.github/workflows/firmware.yml`):
   * a production `idf.py build` that fails on any warning;
   * `tools/check_release.sh` (no `sim_*`/fake symbols or simulator strings in the ELF);
-  * host unit tests, ZHA quirk tests, and every HOOTL scenario (JUnit XML).
+  * host unit tests, ZHA quirk tests, and every HOOTL scenario (JUnit XML);
+  * an esp32sim smoke boot of the variant image (bootloader + partition table + app).
+    Not a required check yet.
 * **SIM isolation.** No firmware source has a simulator ifdef. The simulator is purely
   a different build (`test/hootl/CMakeLists.txt`), and `tools/check_release.sh` asserts
   that no simulator code reaches the firmware ELF.
@@ -406,6 +408,25 @@ time sync, OTA pending-verify and rollback all run the shipping code.
   preemptive and non-deterministic. Hours-long scenarios would take hours and flake.
   The plain-CMake host build gets the same "real sources, fake HAL" result
   deterministically.
+
+### Emulator smoke boot (esp32sim, real image)
+
+CI also boots the **real linked image** (our bootloader, partition table, otadata and
+app) on an emulated ESP32-C6 with [esp32sim](https://github.com/mikroverk/esp32sim)
+(MIT, runs locally; pinned commit in `.github/workflows/firmware.yml`). Nothing is
+attached, so a healthy image prints `EVT cfg loaded`, then `SENSOR FAIL` (the SHT40
+NAKs), `epd: BUSY timeout` and `display: refresh failed: ESP_ERR_TIMEOUT` (the panel
+never releases BUSY), and a Zigbee steering retry. The run must reach `[emu] stop:
+Halted` on the cycle budget, with no panic, abort, assert, reset or boot error, and
+the control task must still be logging its 2 s `sht40: I2C error` heartbeat
+(`test/emu/smoke.sh`). This exercises what HOOTL fakes: the real IDF drivers, startup
+order, partition table and bootloader, preemptive FreeRTOS on the RISC-V core, and
+esp-zigbee/ZBOSS starting the real 802.15.4 driver.
+
+It boots the **variant** image (`sdkconfig.variant`, PM off), because esp32sim does not
+model light sleep. With `CONFIG_PM_ENABLE` on, the guest stalls entering sleep. It is a
+smoke test of one boot: no SHT40 or SSD1680 models, no coordinator, and on the C6 the
+TIMG and LP watchdogs never fire. The `emulator` job is not a required status check yet.
 
 **What it does not cover (still needs the bench / hardware bring-up checklist):**
 * real drivers and silicon: the IDF GPIO/SPI/I2C drivers, the IEEE 802.15.4 radio
@@ -427,7 +448,10 @@ time sync, OTA pending-verify and rollback all run the shipping code.
   documented (OTA: START, RECEIVE…, APPLY, CHECK, FINISH; ZED reboot with no network is
   modelled both as REBOOT(OK)+NO_ACTIVE_LINKS_LEFT and as REBOOT(ESP_FAIL)). Server-side
   OTA timeouts are modelled as a stall (no ABORT from the stack);
-* the e-paper's actual optics (the framebuffer is checked, not the panel).
+* the e-paper's actual optics (the framebuffer is checked, not the panel);
+* the real compiled image: covered only as a boot smoke test by the emulator layer
+  (see "Emulator smoke boot"), which itself cannot cover light sleep, watchdog
+  resets, a Zigbee join, or any attached-peripheral behaviour.
 
 #### Failure-mode coverage
 

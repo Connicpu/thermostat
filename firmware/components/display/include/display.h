@@ -32,7 +32,9 @@ void DisplayPost(const DisplayModel *pM, bool urgent);
 
 /**
  * Returns the monotonic time (ms since boot) at which the display task last ran its loop (every
- * ≤200 ms); used by the health check to detect a stalled panel task.
+ * ≤200 ms); used by the health check to detect a stalled panel task. The task can stamp this
+ * after the app task has already sampled its clock, so compare the two with
+ * DisplayHeartbeatStalled() rather than subtracting them.
  */
 U64 DisplayLastAliveMs(void);
 

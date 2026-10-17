@@ -63,3 +63,9 @@ bool DisplayRefreshIsFull(bool first, bool epochChanged, int partials, U64 nowMs
         return true;
     return age >= DISPLAY_FULL_GAP_MS && partials >= DISPLAY_FULL_PARTIALS;
 }
+
+/** See display_policy.h. */
+bool DisplayHeartbeatStalled(U64 aliveMs, U64 nowMs)
+{
+    return nowMs > aliveMs && nowMs - aliveMs >= DISPLAY_STALL_MS;
+}

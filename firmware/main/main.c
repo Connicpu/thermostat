@@ -13,6 +13,7 @@
 #include <string.h>
 #include "control.h"
 #include "display.h"
+#include "display_policy.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
 #include "esp_pm.h"
@@ -40,7 +41,6 @@ static const char *kTag = "app";
 #define LOOP_MS             250
 #define SAVE_DELAY_MS       5000             /* coalesce NVS writes */
 #define HWDT_ARM_AFTER_MS   10000            /* arm STWD100 once the loop is proven healthy */
-#define DISPLAY_STALL_MS    30000            /* display task must loop at least this often */
 #define OTA_VALID_AFTER_MS  60000            /* min healthy uptime before confirming a new image */
 #define OTA_JOIN_TIMEOUT_MS (10 * 60 * 1000) /* roll back if never rejoined Zigbee by then */
 #define BANNER_MS           4000
@@ -856,8 +856,12 @@ static void AppTask(void *pArg)
 
         /* 8. health check -> watchdogs. Kick only if every check passed.
          *    The display is NOT part of it: a dead panel must not stop heating
-         *    (or reboot-loop the thermostat); it is reported instead. */
-        bool dispFault = !DisplayRunning() || (now - DisplayLastAliveMs()) >= DISPLAY_STALL_MS;
+         *    (or reboot-loop the thermostat); it is reported instead.
+         *    `now` was sampled at the top of this loop. The display task stamps s_alive
+         *    when it next runs, which can be after that sample (this task waits on the
+         *    display mutex). A stamp ahead of `now` is not a stall: unsigned subtraction
+         *    would wrap. */
+        bool dispFault = !DisplayRunning() || DisplayHeartbeatStalled(DisplayLastAliveMs(), now);
         if (dispFault != evtDispFault)
         {
             EVT("EVT display fault=%d", dispFault);

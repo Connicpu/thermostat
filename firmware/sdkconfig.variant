@@ -1,5 +1,7 @@
 # Kconfig-variant check (CI "variant" build): every THERMO_* bool and PM flipped off from
 # sdkconfig.defaults. Applied on top of sdkconfig.defaults; never used for release images.
+# The emulator smoke job boots this image and depends on PM / light sleep staying off:
+# esp32sim does not model light sleep, and a PM-on guest stalls in the PMU sleep sequence.
 #   idf.py -B build-variant -DSDKCONFIG=build-variant/sdkconfig \
 #          -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.variant" -DEPD_ROTATION=3 build
 # CONFIG_THERMO_DISPLAY_FAHRENHEIT is not set

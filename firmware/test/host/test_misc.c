@@ -583,6 +583,22 @@ static void RefreshPolicy(void)
     CHECK(DisplayRefreshIsFull(false, true, 0, 0, 0));
 }
 
+/**
+ * The display task stamps s_alive after the app task has sampled now. That heartbeat is ahead of
+ * the sample; subtracting the two unsigned times would wrap and look like a stall of millions of
+ * milliseconds. DisplayHeartbeatStalled() flags a stall only once the sample is DISPLAY_STALL_MS
+ * past the heartbeat.
+ */
+static void DisplayStallIgnoresHeartbeatAheadOfSample(void)
+{
+    CHECK(!DisplayHeartbeatStalled(1000, 1000));
+    CHECK(!DisplayHeartbeatStalled(1000, 1000 + DISPLAY_STALL_MS - 1));
+    CHECK(DisplayHeartbeatStalled(1000, 1000 + DISPLAY_STALL_MS));
+    CHECK(!DisplayHeartbeatStalled(635, 634));      /* stamp landed after the sample */
+    CHECK(!DisplayHeartbeatStalled(UINT64_MAX, 1)); /* subtraction would wrap */
+    CHECK(DisplayHeartbeatStalled(0, DISPLAY_STALL_MS));
+}
+
 /** Run every test in this file; exit status 1 if any failed (tinytest DONE()). */
 int main(void)
 {
@@ -600,5 +616,6 @@ int main(void)
     RUN(ClockOnStatusBar);
     RUN(ClockBannerClash);
     RUN(RefreshPolicy);
+    RUN(DisplayStallIgnoresHeartbeatAheadOfSample);
     DONE();
 }

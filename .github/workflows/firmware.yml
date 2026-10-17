@@ -31,7 +31,123 @@ jobs:
             -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.variant" -DEPD_ROTATION=3 build 2>&1 | tee variant.log
           if grep -E '(^|[^-])warning:' variant.log; then echo "::error::compiler warnings (variant)"; exit 1; fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with: { name: firmware, path: "firmware/build/*.bin" }
+        with:
+          name: firmware
+          if-no-files-found: error
+          # Root is firmware/build/, so *.bin stays at the top level as before.
+          path: |
+            firmware/build/*.bin
+            firmware/build/*.elf
+            firmware/build/flash_args
+            firmware/build/bootloader/bootloader.bin
+            firmware/build/bootloader/bootloader.elf
+            firmware/build/partition_table/partition-table.bin
+      - name: Merge the emulator flash image (variant build, PM/light sleep off; never a release)
+        run: |
+          . "$IDF_PATH/export.sh"
+          cd build-variant
+          esptool.py --chip esp32c6 merge_bin -o emu-flash.bin --fill-flash-size 8MB @flash_args
+      - name: Upload the emulator image
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: firmware-emu
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            firmware/build-variant/emu-flash.bin
+            firmware/build-variant/thermostat_v3.elf
+            firmware/build-variant/bootloader/bootloader.elf
+
+  # Not a required status check yet. Branch protection does not list this job.
+  emulator:
+    name: Emulator smoke boot (esp32sim, real image)
+    needs: production
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: write # cache save
+    env:
+      # mikroverk/esp32sim main, 2026-10-16. Bump deliberately (see "Bumping esp32sim").
+      ESP32SIM_SHA: 142805d5399e0c3cf25995fe21ba524e75a2b3cb
+      RUST_TOOLCHAIN: "1.99.1"
+      # espressif/esp-rom-elfs, same pins as esp32sim's tools/fetch-rom-elfs.sh (Apache-2.0).
+      ROM_RELEASE: "20260528"
+      ROM_TARBALL_SHA256: caa463d3cbef2430a5a35847c1d9f2f152403b17a802050927ff60c8da54fe46
+      ROM_C6_SHA256: 788e1d38724aeb8fd974fa10c4a7b089c02627d35342ce84b9e0b12b239f3551
+      EMU_HOME: ${{ github.workspace }}/.emu
+    defaults: { run: { shell: bash, working-directory: firmware } }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Recorded PM-off boot passes the smoke checker
+        run: test/emu/smoke.sh check test/emu/fixtures/pm-off-boot.log 7000
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { name: firmware-emu, path: firmware/build-emu }
+
+      # esp32sim binary, keyed on its commit + toolchain: a hit skips Rust entirely.
+      - name: Cache esp32sim binary
+        id: emu-bin
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .emu/bin
+          key: esp32sim-bin-${{ env.ESP32SIM_SHA }}-rust-${{ env.RUST_TOOLCHAIN }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Cache cargo registry (only used when the binary must be rebuilt)
+        if: success() && steps.emu-bin.outputs.cache-hit != 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: esp32sim-cargo-${{ env.ESP32SIM_SHA }}
+          restore-keys: esp32sim-cargo-
+      - name: Build esp32sim at the pinned commit
+        if: success() && steps.emu-bin.outputs.cache-hit != 'true'
+        working-directory: ${{ runner.temp }}
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          git init -q esp32sim && cd esp32sim
+          git remote add origin https://github.com/mikroverk/esp32sim.git
+          git fetch -q --depth 1 origin "$ESP32SIM_SHA"
+          git checkout -q FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$ESP32SIM_SHA"
+          cargo "+$RUST_TOOLCHAIN" build --locked --release -p esp32sim
+          mkdir -p "$EMU_HOME/bin" && cp target/release/esp32sim "$EMU_HOME/bin/"
+      - name: Save esp32sim binary (now, so a failing smoke run does not force a rebuild next time)
+        if: success() && steps.emu-bin.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .emu/bin
+          key: ${{ steps.emu-bin.outputs.cache-primary-key }}
+
+      - name: Cache C6 mask ROM
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with: { path: .emu/rom, key: "esp-rom-elfs-c6-${{ env.ROM_C6_SHA256 }}" }
+      - name: Fetch and verify the C6 mask ROM
+        run: |
+          rom="$EMU_HOME/rom/esp32c6_rev0_rom.elf"
+          if ! echo "$ROM_C6_SHA256  $rom" | sha256sum -c --status 2>/dev/null; then
+            mkdir -p "$EMU_HOME/rom" && tmp=$(mktemp -d)
+            curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o "$tmp/rom.tgz" \
+              "https://github.com/espressif/esp-rom-elfs/releases/download/$ROM_RELEASE/esp-rom-elfs-$ROM_RELEASE.tar.gz"
+            echo "$ROM_TARBALL_SHA256  $tmp/rom.tgz" | sha256sum -c
+            tar -xzf "$tmp/rom.tgz" -C "$tmp"
+            cp "$(find "$tmp" -name esp32c6_rev0_rom.elf | head -n 1)" "$rom"
+            echo "$ROM_C6_SHA256  $rom" | sha256sum -c
+          fi
+
+      - name: Boot the real image for 10 emulated seconds and check the log
+        run: |
+          test/emu/smoke.sh run \
+            --emu "$EMU_HOME/bin/esp32sim" \
+            --rom "$EMU_HOME/rom/esp32c6_rev0_rom.elf" \
+            --image build-emu/emu-flash.bin \
+            --elf build-emu/thermostat_v3.elf --elf build-emu/bootloader/bootloader.elf \
+            --seconds 10 --timeout 120 \
+            --log "$RUNNER_TEMP/emu-smoke.log"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with: { name: emu-smoke-log, path: "${{ runner.temp }}/emu-smoke.log", if-no-files-found: ignore }
 
   host:
     name: Host unit tests + HOOTL scenarios
