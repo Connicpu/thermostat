@@ -1,3 +1,12 @@
+# Clearance of the populated board against the case.
+# board.stl is not committed. From the repo root, with KiCad 9, and without
+# --drill-origin (this script places the export itself):
+#   kicad-cli pcb export stl -o board.stl --force --cut-vias-in-body \
+#       kicad/thermostat-v3.kicad_pcb
+# Assembly-frame solids, not the flipped print STLs:
+#   OPENSCADPATH=case openscad -o back.stl -D 'part="none"' -D 'which="b"' scripts/case_fit_export.scad
+#   OPENSCADPATH=case openscad -o shell.stl -D 'part="none"' -D 'which="s"' scripts/case_fit_export.scad
+# Run this script in the directory that contains back.stl, shell.stl, and board.stl.
 import trimesh,numpy as np,sys,os,re,math
 P=dict(standoff_h=14.0,panel_gap=5.0)   # rev10 case
 for a in sys.argv[1:]: k,v=a.split('='); P[k]=float(v)
@@ -39,6 +48,9 @@ parts+= [box('L1 SWPA6045 6.0x6.0x4.5',21.1,53.5,27.1,59.5,Zt,Zt+4.5),
  box('Q2 DPAK x2.3',14.5,6.6,25.9,13.4,Zt,Zt+2.3),
  box('Q3 DPAK x2.3',14.5,21.6,25.9,28.4,Zt,Zt+2.3),
  box('Q4 DPAK x2.3',14.5,36.6,25.9,43.4,Zt,Zt+2.3),
+ box('R22 0805 max 2.15x1.40x0.65',29.425,15.50,31.575,16.90,Zt,Zt+0.65),
+ box('R32 0805 max 2.15x1.40x0.65',29.425,30.50,31.575,31.90,Zt,Zt+0.65),
+ box('R42 0805 max 2.15x1.40x0.65',29.425,45.50,31.575,46.90,Zt,Zt+0.65),
  box('R23 0805 x0.70',26.50,8.9,28.00,11.1,Zt,Zt+0.70),
  box('R33 0805 x0.70',26.50,23.9,28.00,26.1,Zt,Zt+0.70),
  box('R43 0805 x0.70',26.50,38.9,28.00,41.1,Zt,Zt+0.70),
@@ -84,10 +96,7 @@ def rear_tails(pcb_path):
                 fil.apply_translation([X,Y,Zb-FILLET_H/2])
                 out.append(('%s rear fillet'%label, fil))
     return out
-try:
-    _root=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-except NameError:
-    _root=os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0]))) if sys.argv and sys.argv[0] not in ('', '-c') else '/workspace'
+_root=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _pcb=os.path.join(_root,'kicad','thermostat-v3.kicad_pcb')
 if os.path.exists(_pcb):
     parts+=rear_tails(_pcb)
@@ -120,14 +129,20 @@ for n,m in parts:
       worst=max(worst, q.signed_distance(pts+np.array([0,0,pcb_tol])).max())
     res.append((n,on,-worst))
 print('clearance mm (negative = interference); front parts include +%.2f mm board thickness'%pcb_tol)
+interfere=[r for r in res if r[2]<0]
 for n,on,c in sorted(res,key=lambda r:r[2]):
   if c<6 or n.startswith('J2'): print('%-42s vs %-14s %6.2f %s'%(n,on,c,'INTERFERE' if c<0 else ('TIGHT' if c<1 else '')))
 j2=[r for r in res if r[0].startswith('J2')]
 if j2:
   w=min(j2,key=lambda r:r[2])
   print('J2 rear tails/peg worst: %-28s vs %-14s %6.2f'%(w[0],w[1],w[2]))
-# board outline vs shell
+# board outline vs shell. A designed kiss (0, or a numeric -0.0) is not a failure.
 d=trimesh.proximity.ProximityQuery(shell).signed_distance(np.vstack([pcbm.vertices,pcbm.sample(20000)]))
-print('PCB outline vs shell',round(-d.max(),2))
+pcb_shell=-float(d.max())
+print('PCB outline vs shell',round(pcb_shell,2))
 d=trimesh.proximity.ProximityQuery(back).signed_distance(np.vstack([pcbm.vertices,pcbm.sample(20000)]))
-print('PCB vs backplate (standoff seat expected 0)',round(-d.max(),2))
+pcb_back=-float(d.max())
+print('PCB vs backplate (standoff seat expected 0)',round(pcb_back,2))
+if interfere or pcb_shell<-0.05 or pcb_back<-0.05:
+    print('INTERFERE')
+    sys.exit(1)

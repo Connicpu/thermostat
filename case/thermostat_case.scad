@@ -65,12 +65,19 @@ vslot_z = [6.5, 23.8];               // above the 5.5 mm lip, 1.0 mm short of th
 ribL_bx = [26.8, 28.4];              // rear divider, hot zone | middle
 // Rib S is the reviewer's "move" fix, 0.2 mm further right than 118.8 so the Ø0.65 J2 peg
 // at board x118.11 keeps >=0.5 mm. A notch over the peg would open the duct at the inlet.
+// The locating pins are Ø3.9 in Ø4.3 holes, so the board can still shift ±0.2 mm.
+// Rib S (board x119.0) does not line up with the front partition, which ends at board x117.8.
+// That 1.2 mm offset times the 1.1 mm board-edge gap is an ~1.3 mm² leak around the edge,
+// between the sensor duct and the middle zone.
 ribS_bx = [119.0, 120.6];            // rear divider, middle | sensor duct
 rib_gap = 0.4;                       // rib top -> PCB back. Never let the rib touch the board.
 rib_end_y = 2.7;                     // lip outer face; caps the rib out to here above the lip
 curtain_bx = [27.7, 29.0];           // front curtain. Overlaps the panel's left rib (fuses a 0.26 mm sliver).
                                      // 0.6 mm clear of L1, so that Y-band can sit down near the board.
-curtain_z_floor = 0.9;               // empty board / solder: 0.5 + 0.16 tol + a solder fillet
+// C17408 (R22/R32/R42) max body is 2.15 x 1.40 x 0.65. The left edge sits 0.425 mm
+// right of this wall. On a +0.16 mm board a 1.0 mm floor leaves ~0.47 mm at the corner;
+// 1.1 mm leaves >=0.5 mm. These three sit between the notches, so the floor is what clears them.
+curtain_z_floor = 1.1;
 // [board y0, y1, height above the PCB]. Lower everywhere the parts allow; C2 holds 3.4.
 curtain_notches = [
   [8.4, 11.6, 1.5],                  // R23 0805 (max ~0.65)

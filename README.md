@@ -36,11 +36,19 @@ Air inside the case is split into three zones:
 - **Middle zone.** The ESP32-C6, the display, and the wiring hole. No new vents here. Fill the hole in the wall around the cable with putty. That air now stays in the middle zone.
 - **Sensor duct** (right). The SHT40 island. Bottom-edge slots and a band of slots on the right wall feed it. The top-edge slots and the existing front island slots exhaust it. Two ribs on the backplate and a partition in the shell separate it from the middle zone. The old slots in the backplate under the island are gone: they faced the drywall, and they opened the duct onto the wall.
 
-The ribs stop 0.4 mm short of the board, and above the lip they run out to the lip's outer face so they actually meet the shell. Every new wall keeps at least 0.5 mm off the parts, including the USB-C shield legs and locating peg on the back of the board. Front clearances include the ±0.16 mm board-thickness tolerance.
+The ribs stop 0.4 mm short of the board, and above the lip they run out to the lip's outer face so they come within 0.3 mm of the shell. Every new wall keeps at least 0.5 mm off the parts, including the USB-C shield legs and locating peg on the back of the board. Front clearances include the ±0.16 mm board-thickness tolerance.
 
-**Expected benefit.** A zonal model puts the triac-induced sensor rise about **10–25% lower** than the open case this replaces. That is a model, not a measurement. Most of the remaining error is heat flowing along the PCB ground pour, which a case cannot stop, and the vents themselves carry only a small share of the hot zone's heat. The walls matter more than the hole count: they also keep wall-cavity air from the wiring hole out of the sensor.
+**Expected benefit.** A zonal model puts the triac-induced sensor rise about **10–25% lower** than the open case this replaces. That is a model, not a measurement. Most of the remaining error is heat flowing along the PCB ground pour, which a case cannot stop, and the vents themselves carry only a small share of the hot zone's heat. The walls matter more than the hole count: they also help keep wall-cavity air from the wiring hole away from the sensor.
 
-**Check it.** Log a heat call and a cool call against a reference thermometer, with a clamp meter on W, Y, and G. Then tape over the new edge slots and repeat the same calls. The taped case is the old airflow; the open slots are this one. Leave the −0.1 °C baseline offset alone until that log says otherwise.
+**Check it.** Log a heat call and a cool call against a reference thermometer, with a clamp meter on W, Y, and G. Taping the new edge slots only removes the vents, about 6% of the model. It is not the old airflow: the ribs, the partition, and the curtain stay, so that A/B will likely show little difference. A true before/after needs a print of the previous case revision. `CONFIG_THERMO_SELF_HEAT_OFFSET_C100` defaults to 0. About −0.1 °C is a suggested starting value to set via ZHA after that log, not a configured default.
+
+`board.stl` is not in the repo. From the repo root, export the populated board with KiCad 9 (do not pass `--drill-origin`; `scripts/case_fit.py` places the model):
+
+```
+kicad-cli pcb export stl -o board.stl --force --cut-vias-in-body kicad/thermostat-v3.kicad_pcb
+```
+
+The script header also has the OpenSCAD lines for the assembly-frame `back.stl` and `shell.stl` it checks against.
 
 - kicad/: KiCad 9 project
 - fab/: Gerbers plus JLC BOM/CPL
