@@ -41,7 +41,7 @@ entry 0x4086c11a
 [0;32mI (65) cpu_start: cpu freq: 160000000 Hz[0m
 [0;32mI (65) app_init: Application information:[0m
 [0;32mI (65) app_init: Project name:     thermostat_v3[0m
-[0;32mI (65) app_init: App version:      card-v1.1.1-16-ge8d4777[0m
+[0;32mI (65) app_init: App version:      0.3.0-ge8d4777[0m
 [0;32mI (66) app_init: Compile time:     Oct 17 2026 20:38:52[0m
 [0;32mI (66) app_init: ELF file SHA256:  a9be65979...[0m
 [0;32mI (66) app_init: ESP-IDF:          v5.3.2[0m

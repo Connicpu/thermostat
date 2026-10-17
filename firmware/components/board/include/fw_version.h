@@ -1,6 +1,7 @@
 /* fw_version.h - semver for the on-device menu, Zigbee SW build ID, and OTA file version.
  * firmware/version.txt must match these three numbers. The boot-log App version is
- * PROJECT_VER from version.cmake (an fw-v* tag, or version.txt plus the short hash). */
+ * PROJECT_VER from version.cmake: an fw-v* tag, version.txt plus the short hash, or
+ * version.txt-nogit when git cannot be read. */
 #pragma once
 #include "core.h"
 #define FW_VERSION_MAJOR 0

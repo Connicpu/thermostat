@@ -28,7 +28,17 @@ static const char *kTag = "zb";
 #define MODEL_ID \
     "\x0d"       \
     "thermostat-v3"
-#define SW_BUILD_ID "\x05" FW_VERSION /* ZCL char string: length prefix, keep FW_VERSION 5 chars */
+
+/**
+ * Basic cluster SWBuildID as a ZCL character string. The first byte is the length of
+ * FW_VERSION, from sizeof, so a longer semver cannot keep a stale length prefix. A NUL
+ * follows the text and is not part of the length.
+ */
+static struct
+{
+    char len;
+    char text[sizeof(FW_VERSION)];
+} s_swBuildId = {(char)(sizeof(FW_VERSION) - 1), FW_VERSION};
 
 #define RUNNING_HEAT 0x0001
 #define RUNNING_COOL 0x0002
@@ -788,7 +798,7 @@ static esp_zb_ep_list_t *BuildEndpoint(const CtrlSettings *pInit, I8 calib)
     esp_zb_attribute_list_t *pBasic = esp_zb_basic_cluster_create(&basicCfg);
     esp_zb_basic_cluster_add_attr(pBasic, ESP_ZB_ZCL_ATTR_BASIC_MANUFACTURER_NAME_ID, MANUFACTURER_NAME);
     esp_zb_basic_cluster_add_attr(pBasic, ESP_ZB_ZCL_ATTR_BASIC_MODEL_IDENTIFIER_ID, MODEL_ID);
-    esp_zb_basic_cluster_add_attr(pBasic, ESP_ZB_ZCL_ATTR_BASIC_SW_BUILD_ID, SW_BUILD_ID);
+    esp_zb_basic_cluster_add_attr(pBasic, ESP_ZB_ZCL_ATTR_BASIC_SW_BUILD_ID, &s_swBuildId);
     TRY(esp_zb_cluster_list_add_basic_cluster(pCl, pBasic, SERVER));
 
     esp_zb_identify_cluster_cfg_t idCfg = {.identify_time = 0};
