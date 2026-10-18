@@ -852,7 +852,7 @@ static esp_zb_ep_list_t *BuildEndpoint(const CtrlSettings *pInit, I8 calib)
     const U8 rw = ESP_ZB_ZCL_ATTR_ACCESS_READ_WRITE | ESP_ZB_ZCL_ATTR_MANUF_SPEC;
     const U8 ro = ESP_ZB_ZCL_ATTR_ACCESS_READ_ONLY | ESP_ZB_ZCL_ATTR_ACCESS_REPORTING | ESP_ZB_ZCL_ATTR_MANUF_SPEC;
     /* TRY() logs #x, the call's text. Breaking right after '(' would add a space to those log
-     * strings (and to .rodata), so this block keeps its original layout. */
+     * strings (and to .rodata), so this block is formatted by hand. */
     /* clang-format off */
     TRY(esp_zb_cluster_add_manufacturer_attr(pBc, ZB_BOOST_CLUSTER_ID, kZbBoostAttrSetpoint, ZB_BOOST_MANUF_CODE,
                                              ESP_ZB_ZCL_ATTR_TYPE_S16, rw, &s_boostSp));

@@ -13,7 +13,7 @@ clr = 0.3;                  // fit clearance
 plate_t = 3.0;              // backplate thickness
 standoff_h = 14.0;          // backplate face -> PCB back, so the 11.1 mm 15EDGK plug and 9.5 mm C43 clear a flat plate and lip
 pcb_t = 1.6;
-panel_gap = 5.0;            // PCB top -> panel back (allowed 4.6..5.2). The FPC fold radius is about 2.15 mm, and L1 sits beside the panel
+panel_gap = 5.0;            // PCB top -> panel back (allowed 4.6..5.2). 5.0 gives an FPC fold radius of about 2.15 mm; L1 sits outside the panel footprint
 panel_t = 1.2;
 front_t = 2.0;              // front face thickness
 BW = 140; BH = 64;          // PCB
@@ -63,8 +63,8 @@ part_clr = 0.5;
 vslot_w = 1.6; vslot_p = 3.2;        // edge-vent slot / web (1.6 = 4 lines at a 0.4 mm nozzle)
 vslot_z = [6.5, 23.8];               // above the 5.5 mm lip, 1.0 mm short of the front skin
 ribL_bx = [26.8, 28.4];              // rear divider, hot zone | middle
-// Rib S is at board x 119.0 so the Ø0.65 J2 peg at board x 118.11 keeps >= 0.5 mm.
-// A notch over the peg would open the duct at the inlet.
+// Rib S is at board x 119.0 so the Ø0.65 J2 peg at board x 118.11 keeps >= 0.5 mm
+// (118.8 would leave only 0.37 mm). A notch over the peg would open the duct at the inlet.
 // The locating pins are Ø3.9 in Ø4.3 holes, so the board can still shift ±0.2 mm.
 // Rib S (board x119.0) does not line up with the front partition, which ends at board x117.8.
 // That 1.2 mm offset times the 1.1 mm board-edge gap is an ~1.3 mm² leak around the edge,

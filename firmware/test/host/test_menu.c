@@ -130,7 +130,7 @@ static void OpenAfterLongIdleDoesNotTimeOut(void)
     CHECK_EQ(s_m.st, kMsEditMode);
 }
 
-/** The mode editor cycles Heat -> Cool -> Off (ZCL Auto is not a supported mode), wraps, and saves with M. */
+/** The mode editor cycles Heat -> Cool -> Off (no Auto), wraps, and saves with M. */
 static void EditModeSaves(void)
 {
     Reset();
@@ -138,7 +138,7 @@ static void EditModeSaves(void)
     Sel();
     CHECK_EQ(s_m.st, kMsEditMode);
     Up(); /* Heat -> Cool */
-    Up(); /* Cool -> Off. ZCL Auto is not a supported mode */
+    Up(); /* -> Off (there is no Auto) */
     MenuAction a = Sel();
     CHECK_EQ(a.kind, kMaSetMode);
     CHECK_EQ(a.value, kCtrlModeOff);

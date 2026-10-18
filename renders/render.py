@@ -121,7 +121,7 @@ for bx, by in btn:
     o.location = (cx(bx), cy(by), Zpb + PT + 1.5 + E_CAP)
 
 # ---- PCB from KiCad GLB
-OY = OYT  # board origin Y offset in case coords; OX and OY are both 3.5
+OY = OYT  # board origin Y offset in case coords (OX = OYT = 3.5)
 pz = Zpb + E_PCB
 bpy.ops.import_scene.gltf(filepath=B + 'pcb.glb')
 have = set()
@@ -353,7 +353,7 @@ sc.collection.objects.link(ob)
 ob.data.materials.append(mat('jk', (0.7, 0.68, 0.6), 0.7))
 
 # ---- lighting / world / camera
-# World strength is 0.04. Each view's key light is stronger than its fill, so the contact shadow stays visible.
+# World strength is 0.04. A bright world (strength 0.45) flattens the shading.
 world = bpy.data.worlds.new('w')
 sc.world = world
 world.use_nodes = True

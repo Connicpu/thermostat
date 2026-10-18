@@ -8,7 +8,7 @@
 #include "sdkconfig.h"
 
 #define NS  "tstat"
-#define KEY "cfg3" /* new key: never collides with 0.2.x's tstat/cfg layout */
+#define KEY "cfg3" /* distinct from the 0.2.x cfg key so the two never collide */
 /* Kconfig bools are #defined to 1 when y and left undefined when n, so test with #ifdef. */
 #ifdef CONFIG_THERMO_DISPLAY_FAHRENHEIT
 #define FDEF true

@@ -114,7 +114,7 @@ meet it; the banner is kept whole. The time is kept across later network loss (e
 All are manufacturer-specific (code 0x434E) on the existing 0xFC57 cluster, persisted in NVS.
 
 **Settings storage.** All settings live in one versioned blob, `{version, Persist}`, under the NVS key
-`cfg3` (namespace `tstat`; a new key so it never collides with the 0.2.x `cfg` blob). The current layout is **version 1** (no hardware has shipped, so there are no
+`cfg3`, distinct from the 0.2.x `cfg` key so the two never collide (namespace `tstat`). The current layout is **version 1** (no hardware has shipped, so there are no
 older layouts to migrate). A blob with an unknown version or size loads the defaults. A future layout change
 bumps `SETTINGS_VERSION` and adds a migration branch in `SettingsDecode()` (`main/settings_codec.c`, host-tested
 in `test/host/test_settings.c`).
@@ -658,10 +658,9 @@ The OTA numeric scheme is `0xMMmmpppp` from `FW_VERSION_*`. The string inside th
 4. Measure self-heating: compare against a reference thermometer with the board in its case after 2 h.
    The case is modeled to cut the triac-induced rise by about 10–25% versus the same case
    with one undivided cavity (no ribs, partition, or curtain). That figure is not yet measured.
-   Taping the edge slots removes only the vents, about 6% of the modeled sensor rise. The ribs,
-   the partition, and the curtain stay, so that comparison is not the airflow of that undivided
-   cavity and will likely show little difference. Measuring what the walls do needs a second
-   print without the ribs, partition, and curtain.
+   Taping the edge slots removes only the vents, about 6% of the modeled sensor rise; the ribs,
+   partition, and curtain stay, so expect little difference. Measuring what the walls do needs
+   a second print without the ribs, partition, and curtain.
    The two offsets add, so use only one. `CONFIG_THERMO_SELF_HEAT_OFFSET_C100` is build-time
    (`menuconfig`, then a reflash) and defaults to 0. ZHA sets the thermostat's LocalTemperatureCalibration
    attribute, in 0.1 °C steps over ±2.5 °C, applied on top of that build-time offset. About −0.1 °C is
