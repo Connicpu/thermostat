@@ -353,7 +353,7 @@ sc.collection.objects.link(ob)
 ob.data.materials.append(mat('jk', (0.7, 0.68, 0.6), 0.7))
 
 # ---- lighting / world / camera
-# World strength is 0.04. A bright world (strength 0.45) flattens the shading.
+# Dim world (0.04), a strong key and a weak fill for contact shadows, a wall darker than the shell, and an emissive sRGB e-paper. A bright world (0.45) flattens the shading.
 world = bpy.data.worlds.new('w')
 sc.world = world
 world.use_nodes = True
