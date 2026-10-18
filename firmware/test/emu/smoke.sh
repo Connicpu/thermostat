@@ -22,6 +22,10 @@
 #
 # Recorded PM-off boot (same 7000 ms liveness threshold as a 10 s run):
 #   smoke.sh check test/emu/fixtures/pm-off-boot.log 7000
+# fixtures/pm-off-boot.log was captured from the variant image at 28dab7e
+# (App version 0.3.0-g28dab7e) and normalised to LF. To re-record it, run
+# `smoke.sh run` against a PM-off image (`--build build-variant`, or a merged
+# `--image`), strip CR with `sed 's/\r$//'`, and replace the fixture.
 set -euo pipefail
 
 REQUIRED=(

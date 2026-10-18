@@ -5,14 +5,18 @@
 # (for example card-v1.1.1-20-g9511c9e).
 #
 # -DPROJECT_VER=... is kept as given (still rejected if it contains card- or
-# exceeds 31 characters).
+# exceeds 31 characters). An empty -DPROJECT_VER= is not an override: it falls
+# through to the rules below, which is how `idf.py -DPROJECT_VER= reconfigure`
+# clears a cached one. `idf.py` has no -U; `cmake -UPROJECT_VER <build>` also
+# clears it.
 #
 # Otherwise, in order:
-#   1. `git describe --tags --match fw-v* --dirty`, fw-v prefix stripped, when that
-#      tag's X.Y.Z matches FW_VERSION_*. A release tag stays X.Y.Z. An rc tag
-#      fw-vX.Y.Z-rcN stays X.Y.Z-rcN, and commits after it are X.Y.Z-rcN-N-g<hash>.
-#      A tag on HEAD whose X.Y.Z does not match is a fatal error. A nearer-but-older
-#      tag is ignored.
+#   1. `git describe --tags --match fw-v* --dirty`, fw-v prefix stripped, when the
+#      tag is fw-vX.Y.Z or fw-vX.Y.Z-rcN and that X.Y.Z matches FW_VERSION_*.
+#      A release tag stays X.Y.Z. An rc tag stays X.Y.Z-rcN, and commits after it
+#      are X.Y.Z-rcN-N-g<hash>. Any other fw-v tag (fw-v0.3.1b, fw-v0.3.1-beta)
+#      is a WARNING and is ignored. A matching-form tag on HEAD whose X.Y.Z does
+#      not match the header is a fatal error. A nearer-but-older tag is ignored.
 #   2. firmware/version.txt plus -g and the short hash (and -dirty if the worktree
 #      has tracked changes). version.txt is one X.Y.Z line, the same numbers as
 #      FW_VERSION_*, so the OTA file version (0xMMmmpppp) stays consistent.
@@ -53,6 +57,15 @@ function(_fw_reject_bad ver)
     endif()
 endfunction()
 
+# The CI image check accepts the same two tag shapes. fw-v0.3.1b and fw-v0.3.1-beta do not qualify.
+function(_fw_accepted_fw_tag tag out)
+    if("${tag}" MATCHES "^fw-v[0-9]+\\.[0-9]+\\.[0-9]+(-rc[0-9]+)?$")
+        set(${out} TRUE PARENT_SCOPE)
+    else()
+        set(${out} FALSE PARENT_SCOPE)
+    endif()
+endfunction()
+
 # -DPROJECT_VER=... arrives as a cache variable. A later set() would shadow it.
 if(DEFINED PROJECT_VER AND NOT "${PROJECT_VER}" STREQUAL "")
     _fw_reject_bad("${PROJECT_VER}")
@@ -80,7 +93,6 @@ set(_fw_ver "")
 set(_fw_from "version.txt")
 set(_fw_git_ok FALSE)
 set(_fw_git_err "")
-set(_git_dir "")
 set(_sym_ref "")
 
 find_package(Git QUIET)
@@ -125,7 +137,24 @@ if(_fw_git_ok)
         ERROR_VARIABLE _desc_err
         OUTPUT_STRIP_TRAILING_WHITESPACE
         ERROR_STRIP_TRAILING_WHITESPACE)
-    if(_exact_rc EQUAL 0 AND _exact MATCHES "^fw-v")
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" describe --tags --abbrev=0 --match fw-v*
+        WORKING_DIRECTORY "${_fw_src}"
+        RESULT_VARIABLE _tag_rc
+        OUTPUT_VARIABLE _tag
+        ERROR_VARIABLE _tag_err
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_STRIP_TRAILING_WHITESPACE)
+    set(_fw_tag "")
+    set(_fw_tag_ok FALSE)
+    if(_tag_rc EQUAL 0 AND _tag MATCHES "^fw-v")
+        set(_fw_tag "${_tag}")
+        _fw_accepted_fw_tag("${_fw_tag}" _fw_tag_ok)
+    endif()
+    if(NOT _fw_tag STREQUAL "" AND NOT _fw_tag_ok)
+        message(WARNING
+            "fw version: ignoring ${_fw_tag}; only fw-vX.Y.Z and fw-vX.Y.Z-rcN are used. Using version.txt plus the short hash")
+    elseif(_fw_tag_ok AND _exact_rc EQUAL 0 AND _exact MATCHES "^fw-v")
         string(REGEX REPLACE "^fw-v" "" _exact_ver "${_exact}")
         _fw_leading_semver("${_exact_ver}" _exact_semver)
         if(NOT _exact_semver STREQUAL "${_fw_semver}")
@@ -139,7 +168,7 @@ if(_fw_git_ok)
             set(_fw_ver "${_exact_ver}")
         endif()
         set(_fw_from "fw-v tag")
-    elseif(_desc_rc EQUAL 0 AND _desc MATCHES "^fw-v")
+    elseif(_fw_tag_ok AND _desc_rc EQUAL 0 AND _desc MATCHES "^fw-v")
         string(REGEX REPLACE "^fw-v" "" _desc_ver "${_desc}")
         _fw_leading_semver("${_desc_ver}" _desc_semver)
         if(_desc_semver STREQUAL "${_fw_semver}")
@@ -205,8 +234,11 @@ set(PROJECT_VER "${_fw_ver}")
 
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_fw_txt}" "${_fw_hdr}")
 if(_fw_git_ok)
-    # HEAD stays "ref: refs/heads/<branch>" across commits. --git-path finds the
-    # branch file, packed-refs, and the reflog in this checkout or a worktree.
+    # HEAD changes on a branch switch, but stays "ref: refs/heads/<branch>" across
+    # commits, so the branch file is what a new commit updates. packed-refs covers
+    # a packed branch, and logs/HEAD covers the reflog. HEAD itself is watched so
+    # a checkout still reconfigures when the reflog is off. --git-path resolves
+    # all four in this checkout or a worktree.
     execute_process(
         COMMAND "${GIT_EXECUTABLE}" rev-parse --symbolic-full-name HEAD
         WORKING_DIRECTORY "${_fw_src}"
@@ -214,7 +246,7 @@ if(_fw_git_ok)
         OUTPUT_VARIABLE _sym_ref
         OUTPUT_STRIP_TRAILING_WHITESPACE
         ERROR_QUIET)
-    set(_fw_git_names "packed-refs" "logs/HEAD")
+    set(_fw_git_names "HEAD" "packed-refs" "logs/HEAD")
     if(_sym_rc EQUAL 0 AND _sym_ref MATCHES "^refs/")
         list(APPEND _fw_git_names "${_sym_ref}")
     endif()
