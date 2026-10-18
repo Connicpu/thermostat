@@ -36,9 +36,9 @@ static const char *kTag = "zb";
  */
 static struct
 {
-    char len;
+    U8 len;
     char text[sizeof(FW_VERSION)];
-} s_swBuildId = {(char)(sizeof(FW_VERSION) - 1), FW_VERSION};
+} s_swBuildId = {(U8)(sizeof(FW_VERSION) - 1), FW_VERSION};
 
 #define RUNNING_HEAT 0x0001
 #define RUNNING_COOL 0x0002

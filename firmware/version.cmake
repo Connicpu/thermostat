@@ -9,8 +9,10 @@
 #
 # Otherwise, in order:
 #   1. `git describe --tags --match fw-v* --dirty`, fw-v prefix stripped, when that
-#      tag's X.Y.Z matches FW_VERSION_*. A tag on HEAD whose X.Y.Z does not match
-#      is a fatal error. A nearer-but-older tag is ignored.
+#      tag's X.Y.Z matches FW_VERSION_*. A release tag stays X.Y.Z. An rc tag
+#      fw-vX.Y.Z-rcN stays X.Y.Z-rcN, and commits after it are X.Y.Z-rcN-N-g<hash>.
+#      A tag on HEAD whose X.Y.Z does not match is a fatal error. A nearer-but-older
+#      tag is ignored.
 #   2. firmware/version.txt plus -g and the short hash (and -dirty if the worktree
 #      has tracked changes). version.txt is one X.Y.Z line, the same numbers as
 #      FW_VERSION_*, so the OTA file version (0xMMmmpppp) stays consistent.
@@ -96,18 +98,8 @@ else()
     if(NOT _top_rc EQUAL 0)
         set(_fw_git_err "${_top_err}")
     else()
-        execute_process(COMMAND realpath "${_fw_src}"
-            RESULT_VARIABLE _real_rc
-            OUTPUT_VARIABLE _src_real OUTPUT_STRIP_TRAILING_WHITESPACE
-            ERROR_QUIET)
-        execute_process(COMMAND realpath "${_fw_src}/.."
-            RESULT_VARIABLE _real_parent_rc
-            OUTPUT_VARIABLE _parent_real OUTPUT_STRIP_TRAILING_WHITESPACE
-            ERROR_QUIET)
-        if(NOT _real_rc EQUAL 0 OR NOT _real_parent_rc EQUAL 0)
-            get_filename_component(_src_real "${_fw_src}" ABSOLUTE)
-            get_filename_component(_parent_real "${_fw_src}/.." ABSOLUTE)
-        endif()
+        get_filename_component(_src_real "${_fw_src}" REALPATH)
+        get_filename_component(_parent_real "${_fw_src}/.." REALPATH)
         if(_top STREQUAL "${_src_real}" OR _top STREQUAL "${_parent_real}")
             set(_fw_git_ok TRUE)
         else()
@@ -213,13 +205,8 @@ set(PROJECT_VER "${_fw_ver}")
 
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_fw_txt}" "${_fw_hdr}")
 if(_fw_git_ok)
-    execute_process(
-        COMMAND "${GIT_EXECUTABLE}" rev-parse --absolute-git-dir
-        WORKING_DIRECTORY "${_fw_src}"
-        RESULT_VARIABLE _git_dir_rc
-        OUTPUT_VARIABLE _git_dir
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_QUIET)
+    # HEAD stays "ref: refs/heads/<branch>" across commits. --git-path finds the
+    # branch file, packed-refs, and the reflog in this checkout or a worktree.
     execute_process(
         COMMAND "${GIT_EXECUTABLE}" rev-parse --symbolic-full-name HEAD
         WORKING_DIRECTORY "${_fw_src}"
@@ -227,15 +214,28 @@ if(_fw_git_ok)
         OUTPUT_VARIABLE _sym_ref
         OUTPUT_STRIP_TRAILING_WHITESPACE
         ERROR_QUIET)
-    if(_git_dir_rc EQUAL 0 AND NOT _git_dir STREQUAL "")
-        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_git_dir}/HEAD")
-        if(EXISTS "${_git_dir}/packed-refs")
-            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_git_dir}/packed-refs")
-        endif()
-        # HEAD stays "ref: refs/heads/<branch>" across commits. The branch file is what changes.
-        if(_sym_rc EQUAL 0 AND _sym_ref MATCHES "^refs/")
-            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_git_dir}/${_sym_ref}")
-        endif()
+    set(_fw_git_names "packed-refs" "logs/HEAD")
+    if(_sym_rc EQUAL 0 AND _sym_ref MATCHES "^refs/")
+        list(APPEND _fw_git_names "${_sym_ref}")
     endif()
+    foreach(_fw_git_name IN LISTS _fw_git_names)
+        execute_process(
+            COMMAND "${GIT_EXECUTABLE}" rev-parse --git-path "${_fw_git_name}"
+            WORKING_DIRECTORY "${_fw_src}"
+            RESULT_VARIABLE _gp_rc
+            OUTPUT_VARIABLE _gp
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET)
+        if(_gp_rc EQUAL 0 AND NOT _gp STREQUAL "")
+            if(IS_ABSOLUTE "${_gp}")
+                set(_gp_abs "${_gp}")
+            else()
+                get_filename_component(_gp_abs "${_fw_src}/${_gp}" ABSOLUTE)
+            endif()
+            if(EXISTS "${_gp_abs}")
+                set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_gp_abs}")
+            endif()
+        endif()
+    endforeach()
 endif()
 message(STATUS "App version: ${PROJECT_VER} (${_fw_from})")

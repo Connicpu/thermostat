@@ -2,13 +2,14 @@
 """Fail unless each image's esp_app_desc version is a firmware version.
 
 Accepted forms:
-  X.Y.Z-g<hash>       hash is at least 7 hex digits
+  X.Y.Z-g<hash>         hash is at least 7 hex digits
   X.Y.Z-N-g<hash>
-  X.Y.Z               only when HEAD is exactly the tag fw-vX.Y.Z
+  X.Y.Z-rcN-N-g<hash>
+  X.Y.Z                 only when HEAD is exactly the tag fw-vX.Y.Z
+  X.Y.Z-rcN             only when HEAD is exactly the tag fw-vX.Y.Z-rcN
 
 card-, -dirty, and -nogit are rejected. Prints the boot-log line for each image.
 """
-import os
 import pathlib
 import re
 import struct
@@ -18,7 +19,9 @@ import sys
 FW = pathlib.Path(__file__).resolve().parents[1]
 HASHED = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+-g[0-9a-f]{7,}$")
 AHEAD = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+-g[0-9a-f]{7,}$")
+RC_AHEAD = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+-rc[0-9]+-[0-9]+-g[0-9a-f]{7,}$")
 BARE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+RC = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+-rc[0-9]+$")
 
 
 def app_version(path):
@@ -54,11 +57,11 @@ def exact_fw_tag():
 
 
 def accept(ver, on_tag):
-    if "card-" in ver or "-dirty" in ver or ver.endswith("-nogit") or "-nogit" in ver:
+    if "card-" in ver or "-dirty" in ver or "-nogit" in ver:
         return False
-    if HASHED.fullmatch(ver) or AHEAD.fullmatch(ver):
+    if HASHED.fullmatch(ver) or AHEAD.fullmatch(ver) or RC_AHEAD.fullmatch(ver):
         return True
-    if BARE.fullmatch(ver) and on_tag == ver:
+    if (BARE.fullmatch(ver) or RC.fullmatch(ver)) and on_tag == ver:
         return True
     return False
 
@@ -78,7 +81,7 @@ def main(argv):
         if not accept(ver, on_tag):
             print(
                 f"::error::App version {ver!r} in {path} is not X.Y.Z-g<hash>, "
-                f"X.Y.Z-N-g<hash>, or a bare X.Y.Z on tag fw-v{ver}",
+                f"X.Y.Z-N-g<hash>, X.Y.Z-rcN-N-g<hash>, or X.Y.Z / X.Y.Z-rcN on that fw-v tag",
                 file=sys.stderr,
             )
             failed = True

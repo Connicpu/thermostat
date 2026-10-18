@@ -10,7 +10,7 @@ load:0x4086c110,len:0xd9c
 load:0x4086e610,len:0x2ffc
 entry 0x4086c11a
 [0;32mI (5) boot: ESP-IDF v5.3.2 2nd stage bootloader[0m
-[0;32mI (5) boot: compile time Oct 17 2026 20:38:55[0m
+[0;32mI (5) boot: compile time Oct 18 2026 00:00:16[0m
 [0;32mI (5) boot: chip revision: v0.1[0m
 [0;32mI (5) boot: efuse block revision: v0.3[0m
 [0;32mI (5) boot.esp32c6: SPI Speed      : 80MHz[0m
@@ -28,11 +28,11 @@ entry 0x4086c11a
 [0;32mI (7) boot:  6 ota_1            OTA app          00 11 00230000 00200000[0m
 [0;32mI (7) boot: End of partition table[0m
 [0;32mI (8) boot: No factory image, trying OTA 0[0m
-[0;32mI (8) esp_image: segment 0: paddr=00030020 vaddr=42070020 size=1665ch ( 91740) map[0m
-[0;32mI (15) esp_image: segment 1: paddr=00046684 vaddr=40800000 size=09994h ( 39316) load[0m
-[0;32mI (19) esp_image: segment 2: paddr=00050020 vaddr=42000020 size=65e90h (417424) map[0m
-[0;32mI (50) esp_image: segment 3: paddr=000b5eb8 vaddr=40809994 size=067a8h ( 26536) load[0m
-[0;32mI (52) esp_image: segment 4: paddr=000bc668 vaddr=40810140 size=02200h (  8704) load[0m
+[0;32mI (8) esp_image: segment 0: paddr=00030020 vaddr=42070020 size=16654h ( 91732) map[0m
+[0;32mI (15) esp_image: segment 1: paddr=0004667c vaddr=40800000 size=0999ch ( 39324) load[0m
+[0;32mI (19) esp_image: segment 2: paddr=00050020 vaddr=42000020 size=65e8ch (417420) map[0m
+[0;32mI (50) esp_image: segment 3: paddr=000b5eb4 vaddr=4080999c size=067a0h ( 26528) load[0m
+[0;32mI (52) esp_image: segment 4: paddr=000bc65c vaddr=40810140 size=02208h (  8712) load[0m
 [0;32mI (57) boot: Loaded app from partition at offset 0x30000[0m
 [0;32mI (57) boot: Set actual ota_seq=1 in otadata[0][0m
 [0;32mI (57) boot: Disabling RNG early entropy source...[0m
@@ -41,15 +41,15 @@ entry 0x4086c11a
 [0;32mI (65) cpu_start: cpu freq: 160000000 Hz[0m
 [0;32mI (65) app_init: Application information:[0m
 [0;32mI (65) app_init: Project name:     thermostat_v3[0m
-[0;32mI (65) app_init: App version:      0.3.0-ge8d4777[0m
-[0;32mI (66) app_init: Compile time:     Oct 17 2026 20:38:52[0m
-[0;32mI (66) app_init: ELF file SHA256:  a9be65979...[0m
+[0;32mI (65) app_init: App version:      0.3.0-g28dab7e[0m
+[0;32mI (65) app_init: Compile time:     Oct 18 2026 00:00:13[0m
+[0;32mI (66) app_init: ELF file SHA256:  7823a085b...[0m
 [0;32mI (66) app_init: ESP-IDF:          v5.3.2[0m
 [0;32mI (66) efuse_init: Min chip rev:     v0.0[0m
 [0;32mI (66) efuse_init: Max chip rev:     v0.99 [0m
 [0;32mI (66) efuse_init: Chip rev:         v0.1[0m
 [0;32mI (66) heap_init: Initializing. RAM available for dynamic allocation:[0m
-[0;32mI (66) heap_init: At 408190C0 len 00063550 (397 KiB): RAM[0m
+[0;32mI (66) heap_init: At 408190D0 len 00063540 (397 KiB): RAM[0m
 [0;32mI (66) heap_init: At 4087C610 len 00002F54 (11 KiB): RAM[0m
 [0;32mI (66) heap_init: At 50000000 len 00003FE8 (15 KiB): RTCRAM[0m
 [0;32mI (66) spi_flash: detected chip: generic[0m
@@ -159,7 +159,7 @@ error: pll_cal exceeds 2ms!!!
 [0;31mE (8527) i2c.master: clear bus failed.[0m
 [0;31mE (8527) i2c.master: i2c_master_transmit(1116): I2C transaction failed[0m
 
-[emu] stop: Halted — 1600000000 insns in 4.3s wall = 372.6 Minsn/s; emulated 10.000s (1600000000 cycles); 0 exceptions, 14528 interrupts
+[emu] stop: Halted — 1600000000 insns in 4.3s wall = 373.1 Minsn/s; emulated 10.000s (1600000000 cycles); 0 exceptions, 14528 interrupts
 [irq] per core, cpu-int: count (peripheral sources mapped to it)
   core0 int5        999  sources [59]
   core0 int8       3520  sources [22]

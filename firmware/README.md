@@ -394,7 +394,7 @@ time sync, OTA pending-verify and rollback all run the shipping code.
   mutation check: setting the compressor min-off to 1 s makes the monitor fail
   `cool_cycles_room_model`.
 * **CI** (`.github/workflows/firmware.yml`):
-  * a production `idf.py build` that fails on any warning, then fails unless both images' App version is `X.Y.Z-g<hash>` or `X.Y.Z-N-g<hash>` (a bare `X.Y.Z` only when that commit is the tag `fw-vX.Y.Z`; `card-`, `-dirty` and `-nogit` fail);
+  * a production `idf.py build` that fails on any warning, then fails unless both images' App version is `X.Y.Z-g<hash>`, `X.Y.Z-N-g<hash>`, or `X.Y.Z-rcN-N-g<hash>` (a bare `X.Y.Z` only when that commit is the tag `fw-vX.Y.Z`, and `X.Y.Z-rcN` only on `fw-vX.Y.Z-rcN`; `card-`, `-dirty` and `-nogit` fail);
   * `tools/check_release.sh` (no `sim_*`/fake symbols or simulator strings in the ELF);
   * host unit tests, ZHA quirk tests, and every HOOTL scenario (JUnit XML);
   * an esp32sim smoke boot of the variant image (bootloader + partition table + app).
@@ -611,15 +611,15 @@ The converter is written against the standard `fz.thermostat` / `tz.thermostat_*
 
 The boot log line `App version` is the string in the image's app description (`PROJECT_VER` / `esp_app_desc.version`). ESP-IDF would fill that from plain `git describe --always --tags --dirty`, which follows the nearest tag of any kind. Lovelace card tags then show up as the firmware version, for example `card-v1.1.1-20-g9511c9e`.
 
-`firmware/CMakeLists.txt` sets `PROJECT_VER` before `project()` (`version.cmake`). `-DPROJECT_VER=...` on the cmake command is used as-is.
+`firmware/CMakeLists.txt` sets `PROJECT_VER` before `project()` (`version.cmake`). `-DPROJECT_VER=...` on the cmake command is used as-is. That override is stored in the CMake cache, so later configures keep it until you clear it with `-UPROJECT_VER`.
 
-1. `git describe --tags --match 'fw-v*' --dirty`, with the `fw-v` prefix removed, when that tag's `X.Y.Z` matches `FW_VERSION_*`. A tag `fw-v0.3.0` on this commit is `0.3.0`. Commits after a matching tag are `0.3.0-5-gabcdef1`, and a dirty tree gets a `-dirty` suffix. You can bump `FW_VERSION_*` and `version.txt` to `0.3.1` and commit before tagging `fw-v0.3.1`: an older `fw-v0.3.0` is then ignored and the string comes from `version.txt` plus the hash. A commit that *is* `fw-v0.3.0` while the header already says `0.3.1` fails the build.
-2. If there is no usable `fw-v*` tag, or the checkout is too shallow to see one, `firmware/version.txt` plus `-g` and the short hash, for example `0.3.0-g9511c9e`. The same `-dirty` suffix applies.
-3. If git cannot be read at all (no git, a tarball, the tree sitting inside some other repo, or git refusing the directory), the version is `0.3.0-nogit`. That prints a CMake warning. In CI it fails the build, so a git-less image cannot look like a tagged release.
+1. `git describe --tags --match 'fw-v*' --dirty`, with the `fw-v` prefix removed, when that tag's `X.Y.Z` matches `FW_VERSION_*`. A tag `fw-v0.3.0` on this commit is `0.3.0`. A tag `fw-v0.3.1-rc1` is `0.3.1-rc1`, and commits after it are `0.3.1-rc1-5-gabcdef1`. Commits after a matching release tag are `0.3.0-5-gabcdef1`, and a dirty tree gets a `-dirty` suffix. `-dirty` is decided at configure time, so it refreshes only when CMake runs again, not on an incremental ninja build. You can bump `FW_VERSION_*` and `version.txt` to `0.3.1` and commit before tagging `fw-v0.3.1`: an older `fw-v0.3.0` is then ignored and the string comes from `version.txt` plus the hash. A commit that *is* `fw-v0.3.0` while the header already says `0.3.1` fails the build.
+2. If there is no usable `fw-v*` tag, or the checkout is too shallow to see one, `firmware/version.txt` plus `-g` and the short hash, for example `0.3.0-g9511c9e`. The same `-dirty` suffix applies, and it likewise refreshes only on reconfigure.
+3. If git cannot be read at all (no git, a tarball, the tree sitting inside some other repo, or git refusing the directory), the version is `0.3.0-nogit`. That prints a CMake warning. When `CI` is set, configure fails instead, so a git-less image cannot look like a tagged release. A packager that sets `CI=1` without a git checkout hits that fatal error.
 
 `version.txt` is a single `X.Y.Z` line (IDF would read that file raw if `PROJECT_VER` were unset). It must equal `FW_VERSION_MAJOR.MINOR.PATCH` in `components/board/include/fw_version.h`. The build refuses a string that contains `card-`, is longer than 31 characters (the app-description field), or does not start with that semver.
 
-The production CI job checks out full history (which includes tags) and marks `$GITHUB_WORKSPACE` as a safe git directory. The IDF container otherwise reports "dubious ownership": checkout's own safe.directory entry does not survive into the build step, and the image would be `0.3.0-nogit` (or, before that marker existed, a bare `0.3.0`). A shallow clone still builds, using `version.txt` and the short hash. The card job and `card-release.yml` are unchanged: a `card-v*` tag still only publishes the Lovelace card.
+The production CI job checks out full history (which includes tags) and marks `$GITHUB_WORKSPACE` as a safe git directory. The IDF container otherwise reports "dubious ownership": checkout's own safe.directory entry does not survive into the build step, and CI fails the build instead of producing `-nogit`. A shallow clone still builds, using `version.txt` and the short hash. The card job and `card-release.yml` are unchanged: a `card-v*` tag still only publishes the Lovelace card.
 
 Zigbee and OTA numbers come from the `FW_VERSION_*` semver. `version.txt` and the leading `X.Y.Z` of the app version string match those numbers. They were never taken from `git describe`, so a card tag in the old app string did not change the OTA file version.
 
