@@ -1,3 +1,5 @@
+Record of the repo's public-sharing setup, applied on 2026-10-15.
+
 # Making the repo public (checklist)
 
 This file is a runbook. It was applied on 2026-10-15: `main` at `85b30cf`, Issues/Discussions/
