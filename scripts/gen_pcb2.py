@@ -30,7 +30,7 @@ for n,yc in enumerate([10,25,40]):
     s(f'R{24+n*10}',15.5,yc-5.6,0); s(f'C{20+n}',20.5,yc-5.6,0)
     s(f'R{21+n*10}',42.5,yc+2.54,0); s(f'R{20+n*10}',42.5,yc+4.3,0)
 s('F1',13.5,46,0); s('D1',16,53.5,180); s('R51',20.0,48.6,90); s('D2',16,59.3,180)
-# Rev 10: buck stage shifted left so the 4.5 mm L1 sits OUTSIDE the e-paper footprint (panel x>=29.46); L1 SW pad faces U1 SW pin
+# The buck stage sits left so the 4.5 mm L1 is outside the e-paper footprint (panel x>=29.46); the L1 SW pad faces the U1 SW pin
 s('L1',24.1,56.5,180); s('U1',32,52,0); s('C2',28,50,90); s('D4',31,57.3,270); s('C3',34.2,55.7,0); s('R50',35.3,49.6,180)
 s('R1',37.5,51.5,0); s('R2',37.5,53,0); s('C4',22.0,61.8,0); s('C5',25.6,61.8,0)
 s('C1',44.5,55.5,0); s('C41',44.5,59.0,0); s('C42',49.0,56.0,90); s('C43',55,58,0)
@@ -54,7 +54,7 @@ for r,(x,y,a) in P.items(): fps[r].SetPosition(pt(x,y)); fps[r].SetOrientationDe
 # J1 vertical-entry header on the BACK (wires from wall)
 fps['J1'].Flip(fps['J1'].GetPosition(),pcbnew.FLIP_DIRECTION_LEFT_RIGHT)
 for _t in ('TP1','TP2','TP3','TP4'): fps[_t].Flip(fps[_t].GetPosition(),pcbnew.FLIP_DIRECTION_LEFT_RIGHT)   # test pads on the back
-fps['C43'].Flip(fps['C43'].GetPosition(),pcbnew.FLIP_DIRECTION_LEFT_RIGHT)   # 47uF/63V THT bulk on the BACK (12 mm standoff space)
+fps['C43'].Flip(fps['C43'].GetPosition(),pcbnew.FLIP_DIRECTION_LEFT_RIGHT)   # 47uF/63V THT bulk on the BACK, in the standoff space
 _j=fps['J1']; assert _j.GetLayer()==pcbnew.B_Cu and abs(pcbnew.ToMM(_j.GetPosition().x)-OX-70)<0.01 and abs(pcbnew.ToMM(_j.GetPosition().y)-OY-58)<0.01, 'J1 must sit at (70,58) on B.Cu (case wire hole)'
 miss=[r for r in fps if r not in P]; assert not miss, miss
 W,H=140,64
@@ -105,23 +105,23 @@ r13=[p for p in fps['R13'].Pads() if p.GetNumber()=='1'][0].GetPosition(); r14=[
 trk([(vx,vy),(pcbnew.ToMM(r13.x)-OX,pcbnew.ToMM(r13.y)-OY)],'+3V3',0.25); trk([(vx,vy),(pcbnew.ToMM(r14.x)-OX,pcbnew.ToMM(r14.y)-OY)],'+3V3',0.25)
 via(E,y1,'I2C_SDA'); via(E,y2,'I2C_SCL'); via(E,y3+1.2,'+3V3'); via(E,y4-1.2,'GND')
 assert pcbnew.ToMM(fps['L1'].GetBoundingBox(False).GetRight())-OX<29.46-0.3, 'L1 must stay outside the EPD footprint'
-# Rev 10: VIN_RECT (D1+ -> R51) pre-routed around D1's GND pad so the autorouter works around it (was rev9_fix_vrect.py post-fix)
+# VIN_RECT (D1+ -> R51) is pre-routed around D1's GND pad so the autorouter works around it
 trk([(19.1,54.7),(20.55,54.7),(20.55,50.06),(20.0,50.06)],'VIN_RECT',0.35)
-# Rev 10: DRV_G (R40/R41 -> U3 pad 27) pre-routed on the rev9 path; the autorouter otherwise gets walled off by the HV gate traces
+# DRV_G (R40/R41 -> U3 pad 27) is pre-routed; the HV gate traces would otherwise wall the autorouter off
 trk([(41.99,42.54),(41.99,44.3)],'DRV_G',0.25); trk([(41.99,43.183),(81.028,43.183),(85.014,39.197)],'DRV_G',0.25); via(85.014,39.197,'DRV_G')
 trk([(85.014,39.197),(83.746,37.929),(83.746,13.135),(82.539,11.928)],'DRV_G',0.25,pcbnew.B_Cu); via(82.539,11.928,'DRV_G')
 trk([(82.539,11.928),(82.723,11.744),(82.723,8.75),(83.75,8.75)],'DRV_G',0.25)
 TW_HV=1.0
-# Rev 10: triac MT1 snubber-resistor hop (R23/R33/R43 pad2 -> Q MT1) pre-routed (autorouter intermittently left it open)
+# Triac MT1 snubber-resistor hop (R23/R33/R43 pad2 -> Q MT1) is pre-routed; the autorouter leaves it open on some runs
 for _n,_yc in enumerate([10,25,40]):
     _net='HVAC_'+'WYG'[_n]; _d=_yc-25
     trk([(x,y+_d) for x,y in [(27.2,24.09),(27.33,23.96),(27.33,21.85),(24.88,19.4),(21.45,19.4),(21.68,19.63),(21.68,23.76),(23.41,25.49),(24.42,25.49),(24.42,27.29)]],_net,TW_HV)
-# Rev 10: VIN_HV feed C43 -> D3 pre-routed on the rev9 back-side path (below J1)
+# VIN_HV feed C43 -> D3 is pre-routed on the back, below J1
 trk([(55.0,58.0),(58.36,61.36),(93.68,61.36),(108.54,46.5)],'VIN_HV',0.5,pcbnew.B_Cu); via(108.54,46.5,'VIN_HV',0.8,0.4); trk([(108.54,46.5),(116.8,46.5)],'VIN_HV',0.5)
-# Rev 10: GND stitching for the buck input pocket (C2 / U1 GND) - the HV traces cut it off from the main top pour
+# GND stitching for the buck input pocket (C2 / U1 GND). The HV traces cut that pocket off from the main top pour
 trk([(28.0,48.53),(26.3,48.53)],'GND',0.5); via(26.3,48.53,'GND')
 trk([(33.35,52.0),(34.9,52.0)],'GND',0.4); via(34.9,52.0,'GND')
-# Rev 10: EPD +3V3 (J4 pins 15/16) escape via so the router can reach it from the back layer
+# EPD +3V3 (J4 pins 15/16) escape via so the router can reach it from the back layer
 trk([(99.05,42.24),(99.93,42.24),(99.93,42.74),(99.05,42.74)],'+3V3',0.25); trk([(99.93,42.49),(101.0,42.49)],'+3V3',0.3); via(101.0,42.49,'+3V3')
 ds=b.GetDesignSettings(); ds.SetAuxOrigin(pt(0,64)); ds.SetGridOrigin(pt(0,64))   # fab origin = board bottom-left (gerbers, drill, CPL)
 pcbnew.SaveBoard(sys.argv[1],b)

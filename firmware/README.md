@@ -43,7 +43,7 @@ All of these live in `control.c`, and the tests in `test/host/test_control.c` co
 | Rule | Default |
 |---|---|
 | Temperature swing (hysteresis) | Configurable 0.1–1.0 °C, default ±0.5 °C, stored in NVS. Heat on at SP−swing, off at SP+swing; cooling is the mirror image. Minimum on/off times and changeover delays still apply on top. Set from HA (*Temperature swing* number, Zigbee 0xFC57/0x0010); shown on the e-paper as `+/-0.5°` next to the humidity (in °F when the display is in °F) |
-| Modes | Off / Heat / Cool. **There is no Auto (heat/cool changeover) mode**: the program schedule replaced it. Heat and cool setpoints are independent (no deadband), because only one of them is ever active |
+| Modes | Off / Heat / Cool. **There is no Auto (heat/cool changeover) mode.** The program schedule selects heat or cool. Heat and cool setpoints are independent (no deadband), because only one of them is ever active |
 | Setpoint range | 10.0–32.0 °C |
 | **Compressor minimum off-time** | **5 min**, also applied from boot, so a power blip can't short-cycle the compressor |
 | Compressor minimum on-time | 3 min. Mode change or failsafe stops it immediately |
@@ -224,7 +224,7 @@ Changes made on the device (buttons) are written into the local attributes, so c
 | UP + DOWN | Start a timed boost, or cancel the running one |
 | M (short) | Open the menu |
 | M hold 5 s | Bottom bar: `Let go: pair  \|  hold on: reset`. **Releasing between 5 and 8 s starts pairing** |
-| M hold 8 s | Full-screen **factory reset warning** ("keep holding M to reset, release to cancel"). Releasing now cancels and the screen is restored with a full refresh |
+| M hold 8 s | Full-screen **factory reset warning** ("keep holding M to reset, release to cancel"). Releasing before the reset cancels it and the screen is restored with a full refresh |
 | M hold 15 s | **Factory reset**: outputs off, settings erased, leave the network, reboot |
 | RESET pinhole | Hardware reset |
 
@@ -609,7 +609,7 @@ The converter is written against the standard `fz.thermostat` / `tz.thermostat_*
 
 ## Firmware version
 
-The boot log line `App version` is the string in the image's app description (`PROJECT_VER` / `esp_app_desc.version`). ESP-IDF would fill that from plain `git describe --always --tags --dirty`, which follows the nearest tag of any kind. Lovelace card tags then show up as the firmware version, for example `card-v1.1.1-20-g9511c9e`.
+The boot log line `App version` is the string in the image's app description (`PROJECT_VER` / `esp_app_desc.version`). ESP-IDF's own default is plain `git describe --always --tags --dirty`, which follows the nearest tag of any kind, including a Lovelace card tag such as `card-v1.1.1-20-g9511c9e`. `version.cmake` sets `PROJECT_VER` first so the app version does not follow those tags.
 
 `firmware/CMakeLists.txt` sets `PROJECT_VER` before `project()` (`version.cmake`). `-DPROJECT_VER=...` on the cmake or `idf.py` command is used as-is. That override is stored in the CMake cache, so later configures keep it. `idf.py` rejects `-UPROJECT_VER`. Clear it with `idf.py -DPROJECT_VER= reconfigure` (the empty value is not an override, so the automatic version comes back) or with `cmake -UPROJECT_VER build`.
 
@@ -619,9 +619,9 @@ The boot log line `App version` is the string in the image's app description (`P
 
 `version.txt` is a single `X.Y.Z` line (IDF would read that file raw if `PROJECT_VER` were unset). It must equal `FW_VERSION_MAJOR.MINOR.PATCH` in `components/board/include/fw_version.h`. The build refuses a string that contains `card-`, is longer than 31 characters (the app-description field), or does not start with that semver.
 
-The production CI job checks out full history (which includes tags) and marks `$GITHUB_WORKSPACE` as a safe git directory. The IDF container otherwise reports "dubious ownership": checkout's own safe.directory entry does not survive into the build step, and CI fails the build instead of producing `-nogit`. A shallow clone still builds, using `version.txt` and the short hash. The card job and `card-release.yml` are unchanged: a `card-v*` tag still only publishes the Lovelace card.
+The production CI job checks out full history (which includes tags) and marks `$GITHUB_WORKSPACE` as a safe git directory. The IDF container otherwise reports "dubious ownership": checkout's own safe.directory entry does not survive into the build step, and CI fails the build instead of producing `-nogit`. A shallow clone still builds, using `version.txt` and the short hash. The card job and `card-release.yml` publish only the Lovelace card, and only on a `card-v*` tag.
 
-Zigbee and OTA numbers come from the `FW_VERSION_*` semver. `version.txt` and the leading `X.Y.Z` of the app version string match those numbers. They were never taken from `git describe`, so a card tag in the old app string did not change the OTA file version.
+Zigbee and OTA numbers come from the `FW_VERSION_*` semver. `version.txt` and the leading `X.Y.Z` of the app version string match those numbers. The OTA file version does not come from `git describe`.
 
 | What a coordinator sees | Source | Value at 0.3.0 |
 |---|---|---|
@@ -630,7 +630,7 @@ Zigbee and OTA numbers come from the `FW_VERSION_*` semver. `version.txt` and th
 | OTA client file version | `FW_OTA_FILE_VERSION`, `0xMMmmpppp` from the same three numbers | `0x00030000` |
 | Menu *Device info → Firmware* | `FW_VERSION` | `0.3.0` |
 
-The OTA numeric scheme stays `0xMMmmpppp`. It was not derived from the card tag, so a card tag in the old app string never changed which image the device thought it was running. The string inside the `.bin` (what the boot log prints, and what rides along inside a Zigbee OTA image) is the part that was wrong. The Zigbee OTA *file header* is written later by `image_builder_tool.py` from the number you pass it, which should be `FW_OTA_FILE_VERSION`.
+The OTA numeric scheme is `0xMMmmpppp` from `FW_VERSION_*`. The string inside the `.bin` is what the boot log prints, and that same string rides along inside a Zigbee OTA image. The Zigbee OTA file header is written later by `image_builder_tool.py` from the number you pass it, which should be `FW_OTA_FILE_VERSION`.
 
 **Releasing firmware.** Tag `fw-vX.Y.Z` (for example `git tag fw-v0.3.0 && git push origin fw-v0.3.0`). In that same commit, set `FW_VERSION_*` and `version.txt` to `X.Y.Z`. There is no firmware release workflow yet; the tag is what the next image's app version is named from. Keep publishing the Lovelace card with `card-v*` tags, and keep attaching `connie-thermostat-card.js` to every GitHub release (see `ha/lovelace-card/README.md`).
 
@@ -656,10 +656,10 @@ The OTA numeric scheme stays `0xMMmmpppp`. It was not derived from the card tag,
    reset (scope or LED on DRV_*).
 3. Confirm that the STWD100 resets the chip when the loop is stalled (e.g. a debug build with a `while(1)`).
 4. Measure self-heating: compare against a reference thermometer with the board in its case after 2 h.
-   The rev 11 case is modeled to cut the triac-induced rise by about 10–25% (not yet measured).
-   Taping the new edge slots only removes the vents, about 6% of the modeled sensor rise. The ribs,
-   the partition, and the curtain stay, so the taped case is not the old airflow and that A/B will
-   likely show little difference. A true before/after needs a print of the previous case revision.
+   The case is modeled to cut the triac-induced rise by about 10–25% versus an open case (not yet measured).
+   Taping the edge slots removes only the vents, about 6% of the modeled sensor rise. The ribs,
+   the partition, and the curtain stay, so that comparison is not the open-case airflow and will
+   likely show little difference. Comparing against a print of the earlier case is what shows the walls.
    The two offsets add, so use only one. `CONFIG_THERMO_SELF_HEAT_OFFSET_C100` is build-time
    (`menuconfig`, then a reflash) and defaults to 0. ZHA sets the thermostat's LocalTemperatureCalibration
    attribute, in 0.1 °C steps over ±2.5 °C, applied on top of that build-time offset. About −0.1 °C is
@@ -684,7 +684,7 @@ Fixed-width types come from `components/core/include/core.h`: `U8 U16 U32 U64 I8
 
 Exempt, never renamed:
 - ESP-IDF, esp-zigbee and FreeRTOS names, types and callback signatures, including `app_main`. The HOOTL fakes keep the vendor names they implement. Our own `sim_*` fake helpers follow the rules.
-- Zigbee attribute/cluster IDs and NVS key strings, and log strings (HOOTL greps them). On-wire and NVS layouts are unchanged.
+- Zigbee attribute/cluster IDs and NVS key strings, and log strings (HOOTL greps them). Leave on-wire and NVS layouts as they are.
 
 Judgment calls:
 - Static `const` tables and strings are constants, so they take `k` and not `s_`/`p` (`static const char *kTag`).
@@ -692,7 +692,7 @@ Judgment calls:
 - Opaque handle typedefs (`TaskHandle_t`, `QueueHandle_t`) and function pointers don't take `p`. Only a source-level `*` does.
 - `const` locals stay camelCase. `k` is for static-storage constants.
 - Macro-hygiene temporaries starting with `_` are left alone.
-- A few functions got a verb so they don't clash with a type of the same name: `CtrlGetBoostStatus`, `SchedPeriodAt`, `MenuGetView`, `MenuOnKey`, `BuildMenuCtx`.
+- A few functions take a verb so they don't clash with a type of the same name: `CtrlGetBoostStatus`, `SchedPeriodAt`, `MenuGetView`, `MenuOnKey`, `BuildMenuCtx`.
 
 `tools/check_naming.py` checks all of this with libclang (`pip install libclang`). It reads the compile databases of the host-test, HOOTL and production builds, so build those first. It exits non-zero on any violation.
 - Production files are parsed a second time with a variant config: `CONFIG_THERMO_DISPLAY_FAHRENHEIT`, `CONFIG_THERMO_HW_WDT_ENABLE` and `CONFIG_PM_ENABLE` off, and `EPD_ROTATION=3`. That way both sides of our `#if`s get checked.
@@ -754,7 +754,7 @@ false); USB Serial/JTAG console is on. Details and the Zigbee manufacturer-code 
 ## Known gaps / TODO
 - **Not run on hardware.** The SSD1680 init and partial-refresh sequences follow Good Display's
   GDEY029T94 sample code, but haven't been checked against a real panel. Display rotation is a guess.
-- The light-sleep benefit is limited for now. The 10 ms button-sampling timer and the 250 ms loop wake the
+- The light-sleep benefit is limited. The 10 ms button-sampling timer and the 250 ms loop wake the
   CPU often. Next step: GPIO-interrupt wake for buttons (IO3/4/5 are LP-capable), with polling only while
   a button is held. Self-heating hasn't been measured in either mode.
 - Default reporting isn't configured on the device. ZHA and Z2M set it up when the device joins. No

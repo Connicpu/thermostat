@@ -1,5 +1,5 @@
 # Thermostat V3 – Part Plan (current: rev 14, 2026-10-13)
-This top section describes the board as it is now. The sections under "Change history" further down are kept for traceability; parts named there (BT136S, T435, SMBJ40A, 100 µF bulk, 68 µH / 3 Ω EPD boost, Si1308) are **superseded**.
+This top section describes the board. The sections under "Change history" further down are kept for traceability; parts named there (BT136S, T435, SMBJ40A, 100 µF bulk, 68 µH / 3 Ω EPD boost, Si1308) are **superseded**.
 The authoritative BOM is fab/thermostat-v3-BOM-JLC.csv, with prices and stock in fab/bom_prices.json (JLC API).
 
 ## Architecture (current)
@@ -27,11 +27,11 @@ The authoritative BOM is fab/thermostat-v3-BOM-JLC.csv, with prices and stock in
 | L2 | 47uH | L_APV_ANR3015 | C7427088 | extended |  |
 | C30,C31,C32,C33,C34,C35 | 1uF 50V | C_0603_1608Metric | C15849 | basic |  |
 | Q1 | AO3400A | SOT-23_AO3400A | C20917 | basic |  |
-| Q2,Q3,Q4 | T405-600B | TO-252_BT136S | C283473 | extended | T405-600B-TR (ST T4 logic-level, IGT 5mA IH 10mA; was T435-600B IH 35m |
+| Q2,Q3,Q4 | T405-600B | TO-252_BT136S | C283473 | extended | T405-600B-TR (ST T4 logic-level, IGT 5mA IH 10mA) |
 | R2,R5,R6,R7,R8,R9,R11,R12,R20,R30,R40 | 10k | R_0402_1005Metric | C25744 | basic |  |
 | C4,C5,C7,C39 | 10uF | C_0603_1608Metric | C19702 | basic |  |
 | C3,C8,C10,C11 | 100nF | C_0402_1005Metric | C1525 | basic |  |
-| D3,D4 | SS210 | SMA_SS210 | C14996 | basic | SS210 100V 2A Schottky (was B5819W 40V) |
+| D3,D4 | SS210 | SMA_SS210 | C14996 | basic | SS210 100V 2A Schottky |
 | C6,C9,C36,C38 | 1uF | C_0402_1005Metric | C52923 | basic |  |
 | SW1,SW2,SW3,SW4,SW5 | TS-1187A-B-A-B | SW_TS1187A | C318884 | basic |  |
 | R1 | 33k | R_0402_1005Metric | C25779 | basic |  |
@@ -53,11 +53,11 @@ The authoritative BOM is fab/thermostat-v3-BOM-JLC.csv, with prices and stock in
 | R15 | 1M | R_0402_1005Metric | C26083 | basic |  |
 | D6,D7,D8 | B5819W | SOD-123_B5819W | C8598 | basic |  |
 | D1 | MB10S | MBS_MB10S | C2488 | basic |  |
-| D2 | SMBJ40CA | SMB_SMBJ40A | C19077590 | preferred-ext | SMBJ40CA (bidirectional, JLC preferred-extended; was SMBJ40A C114003) |
+| D2 | SMBJ40CA | SMB_SMBJ40A | C19077590 | preferred-ext | SMBJ40CA (bidirectional, JLC preferred-extended) |
 | F1 | 0.5A 60V PTC | F1812_PTC | C70113 | extended | mSMD050-60V |
 | R10 | 1k | R_0402_1005Metric | C11702 | basic |  |
 | R51 | 3.3R 0.75W pulse | R_1206_3216Metric | C844038 | extended | CRCW12063R30FKEAHP (Vishay pulse-proof, 750 mW) |
-| L1 | 22uH | L_Sunlord_SWPA6045S | C83454 | extended | SWPA6045S220MT 22uH Isat 2.2A 89mOhm (was SWPA4030 1.0A) |
+| L1 | 22uH | L_Sunlord_SWPA6045S | C83454 | extended | SWPA6045S220MT 22uH Isat 2.2A 89mOhm |
 | U2 | USBLC6-2SC6 | SOT-23-6_USBLC6 | C7519 | extended |  |
 
 ## Layout rules (kicad/thermostat-v3.kicad_dru)

@@ -96,7 +96,7 @@ static void SanitizeBadValues(void)
 {
     Persist p;
     SettingsDefaults(&p, false);
-    p.s.mode = 0x01; /* old AUTO value: no longer a mode */
+    p.s.mode = 0x01; /* 0x01 is not a mode */
     p.swing = 999;
     p.fahrenheit = 7;
     p.sched.boostMin = 999;

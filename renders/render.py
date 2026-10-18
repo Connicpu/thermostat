@@ -10,8 +10,8 @@ bpy.ops.wm.read_factory_settings(use_empty=True)
 sc = bpy.context.scene
 W, H = 147, 71
 OX, OYT = 3.5, 3.5
-Zpb = 17.0
-PT = 1.6  # rev10: 3 plate + 14 standoff
+Zpb = 17.0  # backplate 3 mm + standoff 14 mm
+PT = 1.6  # PCB thickness
 # Explosion offsets: zero for assembled / closed views
 if VIEW in ('assembled', 'front'):
     E_PCB = E_EPD = E_SH = E_CAP = 0
@@ -34,7 +34,7 @@ def mat(name, col, rough=0.5, metal=0.0, trans=0.0, emit=0.0):
     return m
 
 
-# Saturated PLA under Filmic (no emission — emit flattened shading and looked chalky)
+# Pink and orange PLA carry a little emission so the color stays saturated. Stronger emission flattens the shading.
 M = dict(
     white=mat('pla_white', (0.68, 0.68, 0.66), 0.55),
     pink=mat('pink', (0.98, 0.05, 0.30), 0.32, emit=0.12),
@@ -353,9 +353,8 @@ sc.collection.objects.link(ob)
 ob.data.materials.append(mat('jk', (0.7, 0.68, 0.6), 0.7))
 
 # ---- lighting / world / camera
-# Washed-out diagnosis: AgX MHC crushed pink/orange; world 0.45 + multi-mega area lights
-# flattened shading; wall albedo ~ shell; EPD was diffuse-only. Fix: Filmic, low world,
-# strong key / weak fill for contact shadows, darker wall, emissive sRGB EPD.
+# Dim world, a strong key and a weak fill for contact shadows, a wall darker than the shell,
+# and an emissive sRGB e-paper. A bright world with large area lights flattens the shading.
 world = bpy.data.worlds.new('w')
 sc.world = world
 world.use_nodes = True
@@ -436,8 +435,8 @@ sc.cycles.use_fast_gi = False
 sc.render.resolution_x = 1600
 sc.render.resolution_y = 1100
 sc.render.film_transparent = False
-# Standard: AgX/Filmic were crushing saturated pink/orange PLA to near-black.
-# Exposure negative so the white shell shades instead of clipping; contrast from lighting.
+# Standard view, because AgX and Filmic crush saturated pink and orange PLA toward black.
+# Exposure is negative so the white shell keeps its shading. Contrast comes from the lighting.
 sc.view_settings.view_transform = 'Standard'
 sc.view_settings.look = 'None'
 sc.view_settings.exposure = -0.40

@@ -8,7 +8,7 @@
 #   OPENSCADPATH=case openscad -o shell.stl -D 'part="none"' -D 'which="s"' scripts/case_fit_export.scad
 # Run this script in the directory that contains back.stl, shell.stl, and board.stl.
 import trimesh,numpy as np,sys,os,re,math
-P=dict(standoff_h=14.0,panel_gap=5.0)   # rev10 case
+P=dict(standoff_h=14.0,panel_gap=5.0)   # case standoff and panel gap
 for a in sys.argv[1:]: k,v=a.split('='); P[k]=float(v)
 plate_t=3; pcb_t=1.6; pcb_tol=0.16   # JLCPCB 1.6 mm board, ±0.16 mm
 Zb=plate_t+P['standoff_h']; Zt=Zb+pcb_t; Zpb=Zt+P['panel_gap']
@@ -44,7 +44,7 @@ parts+= [box('L1 SWPA6045 6.0x6.0x4.5',21.1,53.5,27.1,59.5,Zt,Zt+4.5),
  box('J1 header body (datasheet 18.3x9.2x7.6)',70.05-9.15,50.05,70.05+9.15,59.25,Zb-7.6,Zb),
  box('J1 plug 15EDGK (18.3 x 15.6 x 11.1)',70.05-9.15,40.45,70.05+9.15,56.05,Zb-11.1,Zb),
  box('J1/C43 THT tails front (2.0)',49.5,56.5,79.0,59.5,Zt,Zt+2.0),
- # datasheet envelopes for parts the rev11 walls pass (used even when a 3D model is present)
+ # datasheet envelopes for parts the zone walls pass (used even when a 3D model is present)
  box('Q2 DPAK x2.3',14.5,6.6,25.9,13.4,Zt,Zt+2.3),
  box('Q3 DPAK x2.3',14.5,21.6,25.9,28.4,Zt,Zt+2.3),
  box('Q4 DPAK x2.3',14.5,36.6,25.9,43.4,Zt,Zt+2.3),

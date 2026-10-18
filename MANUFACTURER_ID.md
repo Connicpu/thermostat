@@ -15,14 +15,13 @@ This project's Zigbee manufacturer code is **`0x434E`** (ASCII `"CN"`):
 The Basic cluster manufacturer *name* string remains `"Connie"`; the model is `thermostat-v3`.
 
 **`0x434E` is this project's DIY code. It is not CSA-assigned and the device is not
-Zigbee-certified.** It was chosen from the quiet `0x3000`–`0x5FFF` band (empty in both
+Zigbee-certified.** The code sits in the quiet `0x3000`–`0x5FFF` band (empty in both
 zigbee-herdsman's manufacturer-code list and the live Matter DCL vendor registry as of
-2026-10-15), above CSA's sequential frontier (~`0x19xx`), and is not a common vanity value.
-CSA could assign it to a member later; for a single uncertified home device the collision
-risk is negligible. If this product is ever certified, switch to a CSA-assigned code.
+2026-10-15), above CSA's sequential frontier (~`0x19xx`), and away from common vanity values,
+so a single uncertified home device is unlikely to collide. CSA could assign it to a member
+later. If this product is ever certified, switch to a CSA-assigned code.
 
-Earlier drafts of this tree used Espressif's sample default `0x131B`. No devices had been
-built or paired yet, so the cutover was a straight replace (no field migration).
+No device has been built or paired, so there is no field migration from another code.
 
 ## Why not the alternatives
 

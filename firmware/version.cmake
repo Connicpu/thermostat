@@ -1,8 +1,9 @@
 # Firmware app version (PROJECT_VER / esp_app_desc), independent of Lovelace card tags.
 #
-# ESP-IDF otherwise runs `git describe --always --tags --dirty`, which follows the
-# nearest tag of any kind. card-v* tags then become the boot-log "App version"
-# (for example card-v1.1.1-20-g9511c9e).
+# ESP-IDF's own default is `git describe --always --tags --dirty`, which follows the
+# nearest tag of any kind. A card-v* tag (for example card-v1.1.1-20-g9511c9e) would
+# then be the boot-log "App version". This file sets PROJECT_VER first so that does
+# not happen.
 #
 # -DPROJECT_VER=... is kept as given (still rejected if it contains card- or
 # exceeds 31 characters). An empty -DPROJECT_VER= is not an override: it falls

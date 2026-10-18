@@ -1,7 +1,7 @@
 // Connie's Super Awesome Thermostat V3 - parametric case (OpenSCAD)
 // Units mm. Board coords: origin top-left, x right, y down (same as KiCad, board-relative).
 // Case coords: origin outer bottom-left of backplate, X right, Y up, Z out of wall (wall surface Z=0).
-// rev11: three air zones (hot | middle | sensor duct). Front face, cat, swirls, window, and buttons are unchanged.
+// Three air zones: hot, middle, and sensor duct. The front face is the window, the cat, the swirls, and the buttons.
 part = "assembly";   // backplate | shell | caps | assembly | exploded | section | section_airflow
 explode = 0;         // used by "exploded"
 $fn = 48;
@@ -11,9 +11,9 @@ W = 147; H = 71;            // outer footprint (drywall-anchor version); 1.1 mm 
 wall = 2.4;                 // shell side walls (>=2 mm)
 clr = 0.3;                  // fit clearance
 plate_t = 3.0;              // backplate thickness
-standoff_h = 14.0;          // backplate face -> PCB back (rev10: +2 mm so the 11.1 mm 15EDGK plug and 9.5 mm C43 clear a flat plate/lip)
+standoff_h = 14.0;          // backplate face -> PCB back, so the 11.1 mm 15EDGK plug and 9.5 mm C43 clear a flat plate and lip
 pcb_t = 1.6;
-panel_gap = 5.0;            // PCB top -> panel back (allowed 4.6..5.2, FPC fold); rev10: L1 no longer under the panel, back to 5.0 (FPC fold r~2.15)
+panel_gap = 5.0;            // PCB top -> panel back (allowed 4.6..5.2). L1 is not under the panel (FPC fold radius about 2.15 mm)
 panel_t = 1.2;
 front_t = 2.0;              // front face thickness
 BW = 140; BH = 64;          // PCB
@@ -33,7 +33,7 @@ holes = [[6.4,6.4],[133.6,6.4],[6.4,57.6],[133.6,57.6]];
 bulk = [53.25,58]; bulk_h = 9.5;          // rear C43 8x9 mm electrolytic (+0.5 lead standoff)
 plug_w = 18.3; plug_h = 11.1;        // Degson 15EDGK-3.5-05P: (N-1)*3.5+4.3 wide, 11.1 high, 15.6 deep
 plug_y0 = 40.45; plug_y1 = 56.05;    // board-y extent of the mated plug (wire entry at y0, toward the hole)
-plug_pocket = 0;                     // rev10: no pocket (deeper standoffs instead)
+plug_pocket = 0;                     // no plug pocket; the standoffs clear the plug on a flat plate
 term = [70,58];                      // rear RA header J1 pin row centre (pins along x, mating face toward -y)
 panel = [29.46,26.24,108.46,62.94];  // GDEY029T94 outline (x0,y0,x1,y1)
 aa    = [32.46,30.06,99.36,59.12];   // active area (3.0/3.82 mm margins, FPC end on right)
@@ -50,12 +50,12 @@ inlay_d = 0.6;                       // 3 layers @0.2 mm, flush inlays on the fa
 include <cat_logo.scad>
 cat_xy = [18.5,35]; cat_s = 0.8;     // orange cat inlay left of the window
 include <swirls.scad>
-show_title = false;                  // front title text removed (swirls use the space)
+show_title = false;                  // no front title; the swirls use that space
 swirl_style = "bold";                // "subtle" | "bold" | "none"
 swirl_w = swirl_style=="bold" ? 1.8 : 1.2;   // line width (>=3 extrusion widths at 0.4 nozzle)
 swirl_margin = 2.0;                  // clearance to window/buttons/holes/lettering/cat
 
-// ---- rev11 airflow zones ----
+// ---- airflow zones ----
 // Front-face clearances include JLCPCB's ±0.16 mm board thickness. The board sits on the
 // standoffs, so a thicker board raises the front face and a thinner one does not move the back.
 pcb_tol = 0.16;
@@ -63,8 +63,8 @@ part_clr = 0.5;
 vslot_w = 1.6; vslot_p = 3.2;        // edge-vent slot / web (1.6 = 4 lines at a 0.4 mm nozzle)
 vslot_z = [6.5, 23.8];               // above the 5.5 mm lip, 1.0 mm short of the front skin
 ribL_bx = [26.8, 28.4];              // rear divider, hot zone | middle
-// Rib S is the reviewer's "move" fix, 0.2 mm further right than 118.8 so the Ø0.65 J2 peg
-// at board x118.11 keeps >=0.5 mm. A notch over the peg would open the duct at the inlet.
+// Rib S is at board x 119.0 so the Ø0.65 J2 peg at board x 118.11 keeps >= 0.5 mm.
+// At 118.8 that clearance would be short. A notch over the peg would open the duct at the inlet.
 // The locating pins are Ø3.9 in Ø4.3 holes, so the board can still shift ±0.2 mm.
 // Rib S (board x119.0) does not line up with the front partition, which ends at board x117.8.
 // That 1.2 mm offset times the 1.1 mm board-edge gap is an ~1.3 mm² leak around the edge,
@@ -116,14 +116,14 @@ module zone_rib(bx0, bx1) {
 
 // ---------------- backplate ----------------
 pw = W-2*wall-2*clr; ph = H-2*wall-2*clr; po = wall+clr;
-lip_h = 5.5; lip_t = 2;     // rev10: 5.5 (was 6) so rear C43 clears the lip by >=2 mm without a notch
+lip_h = 5.5; lip_t = 2;     // 5.5 mm so rear C43 clears the lip by >= 2 mm with no notch
 module backplate(){
   difference(){
     union(){
-      // plate (flat; rev10 removed the plug pocket)
+      // plate (flat, no plug pocket)
       translate([po,po,0]) rbox(pw,ph,plate_t,3);
       // perimeter lip that the shell slides over
-      // (full height all round; rev10 removed the notch under C43)
+      // full height all round, no notch under C43
       translate([po,po,0]) difference(){ rbox(pw,ph,lip_h,3); translate([lip_t,lip_t,-1]) rbox(pw-2*lip_t,ph-2*lip_t,lip_h+2,1.5); }
       // snap bumps (45 deg both sides, print without supports). Base embeds 0.1 mm into the lip so the bumps fuse.
       for(s=[[W/2-35,po,0],[W/2+35,po,0],[W/2-35,H-po,180],[W/2+35,H-po,180]])
@@ -137,8 +137,8 @@ module backplate(){
     translate([W/2,H/2,-1]) linear_extrude(plate_t+2) offset(3) square([wire_open[0]-6,wire_open[1]-6],center=true);
     // 4 drywall anchor screw holes with pan-head recesses
     for(p=anchors) translate([p[0],p[1],-1]){ cylinder(d=anchor_d,h=plate_t+2); translate([0,0,plate_t+1-anchor_head_h]) cylinder(d=anchor_head_d,h=anchor_head_h+0.01); }
-    // rev11: the drywall-facing island slots are gone (they opened the sensor duct onto the wall)
-    // label recess, moved right so rib L does not cut it
+    // no drywall-facing island slots: slots there would open the sensor duct onto the wall
+    // label recess sits right of rib L so the rib does not cut it
     translate([W/2-26,H/2,plate_t-0.6]) linear_extrude(1) text("TOP ^  V3",size=3.5,halign="center",valign="center");
   }
 }
@@ -202,10 +202,10 @@ module shell(pk=true){   // pk=false: preview only, pockets left solid (inlays s
     // vents: front over island (outlet), right side wall, bottom wall below island
     for(i=[0:4]) translate([cx(island[0]+1.5+i*2.75),cy((island[1]+island[3])/2),Z_in-1]) linear_extrude(10) square([1.6,11],center=true);
     for(i=[0:3]) translate([W-wall-1, cy(island[1]+2+i*3.2)-0.8, Z_pcb_t+1]) cube([wall+2,1.6,Z_in-Z_pcb_t-2]);
-    // rev11 hot-zone chimney: bottom in, top out, left wall low in / high out. Top slots kept.
+    // hot-zone chimney: bottom in, top out, left wall low in / high out, including the top slots
     for (x = L_vx) for (y = [-1, H-wall-1]) translate([x-vslot_w/2, y, vslot_z[0]]) cube([vslot_w, wall+2, vslot_z[1]-vslot_z[0]]);
     for (y = L_sy) translate([-1, y-vslot_w/2, vslot_z[0]]) cube([wall+2, vslot_w, vslot_z[1]-vslot_z[0]]);
-    // rev11 sensor duct: bottom in, top out, plus right-wall rear slots at the island band
+    // sensor duct: bottom in, top out, plus right-wall rear slots at the island band
     for (x = S_vx) for (y = [-1, H-wall-1]) translate([x-vslot_w/2, y, vslot_z[0]]) cube([vslot_w, wall+2, vslot_z[1]-vslot_z[0]]);
     for (y = S_sy) translate([W-wall-1, y-vslot_w/2, vslot_z[0]]) cube([wall+2, vslot_w, Z_pcb_b-1-vslot_z[0]]);
     // snap windows matching backplate bumps
