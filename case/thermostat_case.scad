@@ -1,7 +1,7 @@
 // Connie's Super Awesome Thermostat V3 - parametric case (OpenSCAD)
 // Units mm. Board coords: origin top-left, x right, y down (same as KiCad, board-relative).
 // Case coords: origin outer bottom-left of backplate, X right, Y up, Z out of wall (wall surface Z=0).
-// Three air zones: hot, middle, and sensor duct. The front face is the window, the cat, the swirls, and the buttons.
+// Three air zones: hot, middle, and sensor duct.
 part = "assembly";   // backplate | shell | caps | assembly | exploded | section | section_airflow
 explode = 0;         // used by "exploded"
 $fn = 48;
@@ -13,7 +13,7 @@ clr = 0.3;                  // fit clearance
 plate_t = 3.0;              // backplate thickness
 standoff_h = 14.0;          // backplate face -> PCB back, so the 11.1 mm 15EDGK plug and 9.5 mm C43 clear a flat plate and lip
 pcb_t = 1.6;
-panel_gap = 5.0;            // PCB top -> panel back (allowed 4.6..5.2). L1 is not under the panel (FPC fold radius about 2.15 mm)
+panel_gap = 5.0;            // PCB top -> panel back (allowed 4.6..5.2). The FPC fold radius is about 2.15 mm, and L1 sits beside the panel
 panel_t = 1.2;
 front_t = 2.0;              // front face thickness
 BW = 140; BH = 64;          // PCB
@@ -64,7 +64,7 @@ vslot_w = 1.6; vslot_p = 3.2;        // edge-vent slot / web (1.6 = 4 lines at a
 vslot_z = [6.5, 23.8];               // above the 5.5 mm lip, 1.0 mm short of the front skin
 ribL_bx = [26.8, 28.4];              // rear divider, hot zone | middle
 // Rib S is at board x 119.0 so the Ø0.65 J2 peg at board x 118.11 keeps >= 0.5 mm.
-// At 118.8 that clearance would be short. A notch over the peg would open the duct at the inlet.
+// A notch over the peg would open the duct at the inlet.
 // The locating pins are Ø3.9 in Ø4.3 holes, so the board can still shift ±0.2 mm.
 // Rib S (board x119.0) does not line up with the front partition, which ends at board x117.8.
 // That 1.2 mm offset times the 1.1 mm board-edge gap is an ~1.3 mm² leak around the edge,
@@ -202,7 +202,7 @@ module shell(pk=true){   // pk=false: preview only, pockets left solid (inlays s
     // vents: front over island (outlet), right side wall, bottom wall below island
     for(i=[0:4]) translate([cx(island[0]+1.5+i*2.75),cy((island[1]+island[3])/2),Z_in-1]) linear_extrude(10) square([1.6,11],center=true);
     for(i=[0:3]) translate([W-wall-1, cy(island[1]+2+i*3.2)-0.8, Z_pcb_t+1]) cube([wall+2,1.6,Z_in-Z_pcb_t-2]);
-    // hot-zone chimney: bottom in, top out, left wall low in / high out, including the top slots
+    // hot-zone chimney: bottom in, top out, left wall low in / high out
     for (x = L_vx) for (y = [-1, H-wall-1]) translate([x-vslot_w/2, y, vslot_z[0]]) cube([vslot_w, wall+2, vslot_z[1]-vslot_z[0]]);
     for (y = L_sy) translate([-1, y-vslot_w/2, vslot_z[0]]) cube([wall+2, vslot_w, vslot_z[1]-vslot_z[0]]);
     // sensor duct: bottom in, top out, plus right-wall rear slots at the island band

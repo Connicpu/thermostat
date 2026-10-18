@@ -48,7 +48,7 @@ jobs:
         with:
           name: firmware
           if-no-files-found: error
-          # Root is firmware/build/, so *.bin stays at the top level as before.
+          # Root is firmware/build/, so *.bin is at the top level of the artifact.
           path: |
             firmware/build/*.bin
             firmware/build/*.elf

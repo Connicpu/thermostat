@@ -43,7 +43,7 @@ All of these live in `control.c`, and the tests in `test/host/test_control.c` co
 | Rule | Default |
 |---|---|
 | Temperature swing (hysteresis) | Configurable 0.1–1.0 °C, default ±0.5 °C, stored in NVS. Heat on at SP−swing, off at SP+swing; cooling is the mirror image. Minimum on/off times and changeover delays still apply on top. Set from HA (*Temperature swing* number, Zigbee 0xFC57/0x0010); shown on the e-paper as `+/-0.5°` next to the humidity (in °F when the display is in °F) |
-| Modes | Off / Heat / Cool. **There is no Auto (heat/cool changeover) mode.** The program schedule selects heat or cool. Heat and cool setpoints are independent (no deadband), because only one of them is ever active |
+| Modes | Off / Heat / Cool. **There is no Auto (heat/cool changeover) mode.** You choose Heat or Cool; the day/night program schedule sets the setpoint for that mode. Heat and cool setpoints are independent (no deadband), because only one of them is ever active |
 | Setpoint range | 10.0–32.0 °C |
 | **Compressor minimum off-time** | **5 min**, also applied from boot, so a power blip can't short-cycle the compressor |
 | Compressor minimum on-time | 3 min. Mode change or failsafe stops it immediately |
@@ -207,7 +207,7 @@ drop `esp_zb_sleep_enable` / `set_rx_on_when_idle(false)`, and re-measure the te
 |---|---|---|
 | Basic 0x0000 | server | manufacturer `Connie`, model `thermostat-v3`, power source mains, sw build |
 | Identify 0x0003 | server | identify time → LED blinks |
-| Thermostat 0x0201 | server | LocalTemperature, Occupied Heating/Cooling Setpoint (writable; = current program period, writes edit that period), SystemMode off/cool/heat (writable; Auto 0x01 is refused and the real mode re-published), ControlSequenceOfOperation = 4 (cool and heat), ThermostatRunningState (bit0 heat, bit1 cool, bit2 fan), Abs/Min/Max setpoint limits (no MinSetpointDeadBand any more), LocalTemperatureCalibration ±2.5 °C (writable, persisted) |
+| Thermostat 0x0201 | server | LocalTemperature, Occupied Heating/Cooling Setpoint (writable; = current program period, writes edit that period), SystemMode off/cool/heat (writable; Auto 0x01 is refused and the real mode re-published), ControlSequenceOfOperation = 4 (cool and heat), ThermostatRunningState (bit0 heat, bit1 cool, bit2 fan), Abs/Min/Max setpoint limits (MinSetpointDeadBand is not exposed), LocalTemperatureCalibration ±2.5 °C (writable, persisted) |
 | Fan Control 0x0202 | server | FanMode on/auto (writable, persisted; other values map to On, Off maps to Auto), FanModeSequence = 4 (On/Auto) |
 | Time 0x000A | client | Reads the coordinator's LocalTime for the program schedule |
 | Temperature Measurement 0x0402 | server | MeasuredValue (same calibrated value) |
@@ -609,9 +609,9 @@ The converter is written against the standard `fz.thermostat` / `tz.thermostat_*
 
 ## Firmware version
 
-The boot log line `App version` is the string in the image's app description (`PROJECT_VER` / `esp_app_desc.version`). ESP-IDF's own default is plain `git describe --always --tags --dirty`, which follows the nearest tag of any kind, including a Lovelace card tag such as `card-v1.1.1-20-g9511c9e`. `version.cmake` sets `PROJECT_VER` first so the app version does not follow those tags.
+The boot log line `App version` is the string in the image's app description (`PROJECT_VER` / `esp_app_desc.version`). ESP-IDF's own default is plain `git describe --always --tags --dirty`, which follows the nearest tag of any kind, including a Lovelace card tag such as `card-v1.1.1-20-g9511c9e`.
 
-`firmware/CMakeLists.txt` sets `PROJECT_VER` before `project()` (`version.cmake`). `-DPROJECT_VER=...` on the cmake or `idf.py` command is used as-is. That override is stored in the CMake cache, so later configures keep it. `idf.py` rejects `-UPROJECT_VER`. Clear it with `idf.py -DPROJECT_VER= reconfigure` (the empty value is not an override, so the automatic version comes back) or with `cmake -UPROJECT_VER build`.
+`firmware/CMakeLists.txt` includes `version.cmake`, which sets `PROJECT_VER` before `project()` so the app version does not follow those tags. `-DPROJECT_VER=...` on the cmake or `idf.py` command is used as-is. That override is stored in the CMake cache, so later configures keep it. `idf.py` rejects `-UPROJECT_VER`. Clear it with `idf.py -DPROJECT_VER= reconfigure` (the empty value is not an override, so the automatic version comes back) or with `cmake -UPROJECT_VER build`.
 
 1. `git describe --tags --match 'fw-v*' --dirty`, with the `fw-v` prefix removed, when the tag is `fw-vX.Y.Z` or `fw-vX.Y.Z-rcN` and that `X.Y.Z` matches `FW_VERSION_*`. A tag `fw-v0.3.0` on this commit is `0.3.0`. A tag `fw-v0.3.1-rc1` is `0.3.1-rc1`, and commits after it are `0.3.1-rc1-5-gabcdef1`. Commits after a matching release tag are `0.3.0-5-gabcdef1`, and a dirty tree gets a `-dirty` suffix. `-dirty` is decided at configure time, so it refreshes only when CMake runs again, not on an incremental ninja build. A tag of any other shape, such as `fw-v0.3.1b` or `fw-v0.3.1-beta`, is ignored with a CMake warning and the string falls back to `version.txt` plus the hash. You can bump `FW_VERSION_*` and `version.txt` to `0.3.1` and commit before tagging `fw-v0.3.1`: an older `fw-v0.3.0` is then ignored and the string comes from `version.txt` plus the hash. A commit that *is* `fw-v0.3.0` while the header already says `0.3.1` fails the build.
 2. If there is no usable `fw-v*` tag, or the checkout is too shallow to see one, `firmware/version.txt` plus `-g` and the short hash, for example `0.3.0-g9511c9e`. The same `-dirty` suffix applies, and it likewise refreshes only on reconfigure.
@@ -619,7 +619,7 @@ The boot log line `App version` is the string in the image's app description (`P
 
 `version.txt` is a single `X.Y.Z` line (IDF would read that file raw if `PROJECT_VER` were unset). It must equal `FW_VERSION_MAJOR.MINOR.PATCH` in `components/board/include/fw_version.h`. The build refuses a string that contains `card-`, is longer than 31 characters (the app-description field), or does not start with that semver.
 
-The production CI job checks out full history (which includes tags) and marks `$GITHUB_WORKSPACE` as a safe git directory. The IDF container otherwise reports "dubious ownership": checkout's own safe.directory entry does not survive into the build step, and CI fails the build instead of producing `-nogit`. A shallow clone still builds, using `version.txt` and the short hash. The card job and `card-release.yml` publish only the Lovelace card, and only on a `card-v*` tag.
+The production CI job checks out full history (which includes tags) and marks `$GITHUB_WORKSPACE` as a safe git directory. The IDF container otherwise reports "dubious ownership": checkout's own safe.directory entry does not survive into the build step, and CI fails the build instead of producing `-nogit`. A shallow clone still builds, using `version.txt` and the short hash. The firmware workflow's card job tests and builds the card, and renders the demo. A `card-v*` tag runs `card-release.yml`, which publishes the Lovelace card and nothing else.
 
 Zigbee and OTA numbers come from the `FW_VERSION_*` semver. `version.txt` and the leading `X.Y.Z` of the app version string match those numbers. The OTA file version does not come from `git describe`.
 
@@ -656,10 +656,12 @@ The OTA numeric scheme is `0xMMmmpppp` from `FW_VERSION_*`. The string inside th
    reset (scope or LED on DRV_*).
 3. Confirm that the STWD100 resets the chip when the loop is stalled (e.g. a debug build with a `while(1)`).
 4. Measure self-heating: compare against a reference thermometer with the board in its case after 2 h.
-   The case is modeled to cut the triac-induced rise by about 10–25% versus an open case (not yet measured).
+   The case is modeled to cut the triac-induced rise by about 10–25% versus the same case
+   with one undivided cavity (no ribs, partition, or curtain). That figure is not yet measured.
    Taping the edge slots removes only the vents, about 6% of the modeled sensor rise. The ribs,
-   the partition, and the curtain stay, so that comparison is not the open-case airflow and will
-   likely show little difference. Comparing against a print of the earlier case is what shows the walls.
+   the partition, and the curtain stay, so that comparison is not the airflow of that undivided
+   cavity and will likely show little difference. Measuring what the walls do needs a second
+   print without the ribs, partition, and curtain.
    The two offsets add, so use only one. `CONFIG_THERMO_SELF_HEAT_OFFSET_C100` is build-time
    (`menuconfig`, then a reflash) and defaults to 0. ZHA sets the thermostat's LocalTemperatureCalibration
    attribute, in 0.1 °C steps over ±2.5 °C, applied on top of that build-time offset. About −0.1 °C is

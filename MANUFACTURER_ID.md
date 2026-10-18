@@ -21,13 +21,11 @@ zigbee-herdsman's manufacturer-code list and the live Matter DCL vendor registry
 so a single uncertified home device is unlikely to collide. CSA could assign it to a member
 later. If this product is ever certified, switch to a CSA-assigned code.
 
-No device has been built or paired, so there is no field migration from another code.
-
 ## Why not the alternatives
 
 | Option | Why not (for this project) |
 |---|---|
-| Keep Espressif `0x131B` | Espressif's real CSA code; every esp-zigbee sample uses it → collisions with other DIY ESP32 devices on the same network. |
+| Use Espressif's `0x131B` | Espressif's real CSA code; every esp-zigbee sample uses it → collisions with other DIY ESP32 devices on the same network. |
 | Matter/Zigbee test vendors `0xFFF1`–`0xFFF4` | Shared by every developer; CSA/Google say not for field or OTA use. |
 | Reserved `0xFFF5`–`0xFFFF` | Reserved; `0xFFFF` is also the OTA "match any" wildcard. |
 | CSA Adopter membership (~US$7k–7.5k/yr) | Only needed to certify or sell under an official code. |

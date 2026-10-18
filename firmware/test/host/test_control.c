@@ -292,10 +292,10 @@ static void SanitizeSettings(void)
     CHECK_EQ(s.coolSp, s_p.maxSp);
 }
 
-/** Only Off, Heat and Cool are valid modes; 0x01 and 0x02 are rejected. */
+/** Only Off, Heat and Cool are valid modes. ZCL Auto (0x01) is not a supported mode, and 0x02 is rejected. */
 static void ModeValid(void)
 {
-    CHECK(!CtrlModeValid(0x01)); /* 0x01 is not a mode */
+    CHECK(!CtrlModeValid(0x01)); /* ZCL Auto (0x01) is not a supported mode */
     CHECK(!CtrlModeValid(0x02));
     CHECK(CtrlModeValid(kCtrlModeOff) && CtrlModeValid(kCtrlModeHeat) && CtrlModeValid(kCtrlModeCool));
 }

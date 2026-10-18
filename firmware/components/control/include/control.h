@@ -19,8 +19,9 @@ extern "C"
 #endif
 
     /* Values intentionally equal the ZCL Thermostat SystemMode enum (0x001C).
- * There is deliberately no AUTO (heat/cool changeover) mode: the day/night
- * program schedule (schedule.h) replaced it. */
+ * There is deliberately no AUTO (heat/cool changeover) mode. You choose Heat
+ * or Cool; the day/night program schedule (schedule.h) sets the setpoint for
+ * that mode. */
     typedef enum
     {
         kCtrlModeOff = 0x00,

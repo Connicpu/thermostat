@@ -96,7 +96,7 @@ static void SanitizeBadValues(void)
 {
     Persist p;
     SettingsDefaults(&p, false);
-    p.s.mode = 0x01; /* 0x01 is not a mode */
+    p.s.mode = 0x01; /* ZCL Auto (0x01) is not a supported mode */
     p.swing = 999;
     p.fahrenheit = 7;
     p.sched.boostMin = 999;

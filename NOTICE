@@ -94,9 +94,8 @@ which is gitignored). Apache License 2.0.
   https://github.com/espressif/esp-zigbee-sdk
 
 The Zigbee manufacturer code used in this project is 0x434E (see MANUFACTURER_ID.md).
-It is this project's DIY code (ASCII "CN"), chosen from the quiet 0x3000–0x5FFF band.
-It is not CSA-assigned and the device is not Zigbee-certified. Espressif's sample
-default 0x131B is no longer used.
+It is this project's DIY code (ASCII "CN"), in the quiet 0x3000–0x5FFF band.
+It is not CSA-assigned and the device is not Zigbee-certified.
 
 ---------------------------------------------------------------------------
 Good Display GDEY029T94 (SSD1680) init / partial-refresh sequences
