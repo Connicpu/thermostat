@@ -16,16 +16,27 @@ async function mount(config = {}, hassOpts = {}) {
 const $ = (el, sel) => el.shadowRoot.querySelector(sel);
 const $$ = (el, sel) => [...el.shadowRoot.querySelectorAll(sel)];
 const text = (el) => el.shadowRoot.textContent.replace(/\s+/g, ' ');
+const cardCss = () => [customElements.get('connie-thermostat-card').styles].flat().map((s) => s.cssText ?? String(s)).join('\n');
+const shadowCss = (el) => [...el.shadowRoot.adoptedStyleSheets].flatMap((sheet) => [...sheet.cssRules].map((rule) => rule.cssText)).join('\n');
+const sectionOpen = (el) => Object.fromEntries($$(el, 'section').map((s) => [s.querySelector('h3').textContent, !s.classList.contains('closed')]));
+const sectionHeader = (el, title) => $$(el, '.sec-h').find((b) => b.querySelector('h3').textContent === title);
+/** localStorage key for one card instance, namespaced and scoped by its climate entity. */
+const sectionStorageKey = (entityId) => `connie-thermostat-card:sections:${entityId}`;
 const flushAsync = async () => {
   for (let i = 0; i < 5; i++) await Promise.resolve();
 };
 const button = (el, label) => $$(el, 'button').find((b) => b.getAttribute('aria-label') === label || b.textContent.trim() === label);
 
 describe('card', () => {
-  beforeEach(() => vi.useFakeTimers());
+  beforeEach(() => {
+    vi.useFakeTimers();
+    localStorage.clear();
+  });
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
     document.body.innerHTML = '';
+    document.documentElement.className = '';
   });
 
   it('registers in the card picker and offers a stub config', () => {
@@ -537,6 +548,133 @@ describe('card', () => {
     document.body.appendChild(el);
     await el.updateComplete;
     expect(text(el)).toContain('No Connie thermostat V3 found');
+  });
+
+  it('remembers each section on its own for the climate entity', async () => {
+    const key = sectionStorageKey(`climate.${PREFIX}`);
+    const el = await mount();
+    expect(sectionOpen(el)).toEqual({ Boost: true, 'Morning heating boost': true, 'Program schedule': true, 'Tuning & status': false });
+    sectionHeader(el, 'Boost').click();
+    sectionHeader(el, 'Tuning & status').click();
+    await el.updateComplete;
+    expect(sectionOpen(el)).toEqual({ Boost: false, 'Morning heating boost': true, 'Program schedule': true, 'Tuning & status': true });
+    // A hass refresh re-renders the card; it must not snap back to the defaults.
+    el.hass = makeHass();
+    await el.updateComplete;
+    expect(sectionOpen(el)).toEqual({ Boost: false, 'Morning heating boost': true, 'Program schedule': true, 'Tuning & status': true });
+    const saved = JSON.parse(localStorage.getItem(key));
+    expect(saved.boost).toBe(false);
+    expect(saved.status).toBe(true);
+    expect(saved.morning).not.toBe(false);
+    expect(saved.schedule).not.toBe(false);
+    el.remove();
+
+    const again = await mount({ collapsed: ['morning'] });
+    // Remembered boost/status win over defaults and over collapsed; morning was never stored.
+    expect(sectionOpen(again)).toEqual({ Boost: false, 'Morning heating boost': false, 'Program schedule': true, 'Tuning & status': true });
+  });
+
+  it('keeps section state per climate entity so two cards do not share it', async () => {
+    const otherId = 'climate.other_room';
+    const el = await mount();
+    sectionHeader(el, 'Boost').click();
+    await el.updateComplete;
+
+    const hass = makeHass();
+    hass.states[otherId] = { ...hass.states[`climate.${PREFIX}`], entity_id: otherId };
+    hass.entities[otherId] = { entity_id: otherId, device_id: DEVICE_ID, platform: 'zha' };
+    const other = document.createElement('connie-thermostat-card');
+    other.setConfig({ type: 'custom:connie-thermostat-card', entities: { climate: otherId } });
+    other.hass = hass;
+    other.nowMinutes = 10 * 60;
+    document.body.appendChild(other);
+    await other.updateComplete;
+    expect(sectionOpen(other).Boost).toBe(true);
+    sectionHeader(other, 'Morning heating boost').click();
+    await other.updateComplete;
+
+    expect(sectionOpen(el)).toMatchObject({ Boost: false, 'Morning heating boost': true });
+    expect(sectionOpen(other)).toMatchObject({ Boost: true, 'Morning heating boost': false });
+    expect(JSON.parse(localStorage.getItem(sectionStorageKey(`climate.${PREFIX}`))).boost).toBe(false);
+    const otherSaved = JSON.parse(localStorage.getItem(sectionStorageKey(otherId)));
+    expect(otherSaved.morning).toBe(false);
+    expect(otherSaved.boost).not.toBe(false);
+  });
+
+  it('uses the default sections when storage is missing, unreadable, or throws', async () => {
+    localStorage.setItem(sectionStorageKey(`climate.${PREFIX}`), '{');
+    let el = await mount({ collapsed: ['boost'] });
+    expect(sectionOpen(el)).toEqual({ Boost: false, 'Morning heating boost': true, 'Program schedule': true, 'Tuning & status': false });
+    el.remove();
+    localStorage.clear();
+
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    el = await mount({ collapsed: ['schedule'] });
+    expect(sectionOpen(el)).toEqual({ Boost: true, 'Morning heating boost': true, 'Program schedule': false, 'Tuning & status': false });
+    sectionHeader(el, 'Boost').click();
+    sectionHeader(el, 'Tuning & status').click();
+    await el.updateComplete;
+    expect(sectionOpen(el)).toEqual({ Boost: false, 'Morning heating boost': true, 'Program schedule': false, 'Tuning & status': true });
+    el.hass = makeHass();
+    await el.updateComplete;
+    expect(sectionOpen(el)).toEqual({ Boost: false, 'Morning heating boost': true, 'Program schedule': false, 'Tuning & status': true });
+  });
+
+  it('does not let a later update wipe sections the demo opened by assigning _open', async () => {
+    const el = document.createElement('connie-thermostat-card');
+    el.setConfig({ type: 'custom:connie-thermostat-card' });
+    el.hass = makeHass();
+    el._open = { boost: false, morning: false, schedule: true, status: true };
+    el.nowMinutes = 10 * 60;
+    document.body.appendChild(el);
+    await el.updateComplete;
+    expect(sectionOpen(el)).toEqual({ Boost: false, 'Morning heating boost': false, 'Program schedule': true, 'Tuning & status': true });
+  });
+
+  it('lets text in the shadow root be selected in light and dark themes', async () => {
+    const css = cardCss();
+    // hui-root's user-select: none inherits into the shadow tree; the host resets it.
+    expect(css).toMatch(/:host\s*\{[^}]*user-select:\s*text/);
+    // One rule for press targets (buttons include section headers, steppers, segments, toggles) and their contents.
+    expect(css).toMatch(/button[^{]*\{[^}]*user-select:\s*none/);
+
+    for (const theme of ['light', 'dark']) {
+      localStorage.clear();
+      document.documentElement.className = theme;
+      const wrap = document.createElement('div');
+      wrap.style.userSelect = 'none';
+      document.body.appendChild(wrap);
+      const el = document.createElement('connie-thermostat-card');
+      el.setConfig({ type: 'custom:connie-thermostat-card' });
+      el.hass = makeHass({ patch: { [`sensor.${PREFIX}_schedule_period`]: { state: 'No_clock_holding_day' } } });
+      el.nowMinutes = 10 * 60;
+      wrap.appendChild(el);
+      await el.updateComplete;
+      $(el, '.info-b[data-tip="setpoint"] button.info').click();
+      sectionHeader(el, 'Tuning & status').click();
+      await el.updateComplete;
+
+      const shadow = shadowCss(el);
+      expect(shadow).toMatch(/:host\s*\{[^}]*user-select:\s*text/);
+      expect(shadow).toMatch(/button[^{]*\{[^}]*user-select:\s*none/);
+      expect(getComputedStyle(el).userSelect).toBe('text');
+
+      const selectable = ['.room .t', '.room .h', '.sub', '.sp-val', '.period', '.tip', '.banner span', '.stepper .v', '.tile-h span', '.legend', '.row .r'];
+      for (const sel of selectable) {
+        const node = $(el, sel);
+        expect(node, sel).not.toBeNull();
+        expect(getComputedStyle(node).userSelect, `${theme} ${sel}`).not.toBe('none');
+      }
+      for (const sel of ['.sec-h', '.round', '.seg button', '.fanbtn', '.mini', '.go', '.info', 'button svg']) {
+        expect(getComputedStyle($(el, sel)).userSelect, `${theme} ${sel}`).toBe('none');
+      }
+      el.remove();
+    }
   });
 });
 

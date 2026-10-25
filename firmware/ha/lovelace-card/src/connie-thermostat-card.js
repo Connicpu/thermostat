@@ -26,6 +26,53 @@ const WRITE_DELAY_MS = 500;
 
 const icon = (path, cls = '') => html`<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true">${svg`<path d=${path}></path>`}</svg>`;
 
+/** Collapsible sections, in the order they appear, and how they start with nothing remembered. */
+const SECTION_IDS = ['boost', 'morning', 'schedule', 'status'];
+const SECTION_DEFAULTS = { boost: true, morning: true, schedule: true, status: false };
+/** Per climate entity, so two cards on the dashboard don't write over each other. */
+const SECTION_STORAGE_PREFIX = 'connie-thermostat-card:sections:';
+
+const sectionStorageKey = (entityId) => `${SECTION_STORAGE_PREFIX}${entityId}`;
+
+/** Open flags this browser remembered for `entityId`, or {} if storage is missing or unusable. */
+function readSectionState(entityId) {
+  if (!entityId) return {};
+  try {
+    const raw = localStorage.getItem(sectionStorageKey(entityId));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out = {};
+    for (const id of SECTION_IDS) if (typeof parsed[id] === 'boolean') out[id] = parsed[id];
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/** Remember one section. A throw (private mode, quota) leaves the in-memory toggle as it is. */
+function writeSectionState(entityId, id, open) {
+  if (!entityId || !SECTION_IDS.includes(id)) return;
+  let cur = {};
+  try {
+    const raw = localStorage.getItem(sectionStorageKey(entityId));
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) cur = parsed;
+    }
+  } catch {
+    // Unreadable storage: still try to write this section on its own.
+  }
+  const next = {};
+  for (const k of SECTION_IDS) if (typeof cur[k] === 'boolean') next[k] = cur[k];
+  next[id] = open;
+  try {
+    localStorage.setItem(sectionStorageKey(entityId), JSON.stringify(next));
+  } catch {
+    // Private mode, quota, or storage disabled.
+  }
+}
+
 const num = (s) => {
   const v = Number.parseFloat(s?.state);
   return Number.isFinite(v) ? v : null;
@@ -43,6 +90,18 @@ export class ConnieThermostatCard extends LitElement {
 
   static styles = cardStyles;
 
+  // Own accessor so a remembered section state is applied before the setter returns.
+  // Lit wraps this and calls requestUpdate. The demo assigns _open on the next line
+  // (screenshot scenarios); a restore during willUpdate would run later and wipe it.
+  get hass() {
+    return this._hass;
+  }
+
+  set hass(value) {
+    this._hass = value;
+    if (value) this._noteSections();
+  }
+
   static getConfigElement() {
     return document.createElement('connie-thermostat-card-editor');
   }
@@ -54,7 +113,9 @@ export class ConnieThermostatCard extends LitElement {
 
   constructor() {
     super();
-    this._open = { boost: true, morning: true, schedule: true, status: false };
+    this._open = { ...SECTION_DEFAULTS };
+    /** Climate entity id the open flags were last restored for. A later hass update for the same id does not reload storage. */
+    this._sectionsFor = undefined;
     /** Open tooltip: { id, pinned } (pinned = opened by click/tap, survives mouseleave/blur). */
     this._tip = null;
     this._onDocClick = (ev) => {
@@ -84,7 +145,28 @@ export class ConnieThermostatCard extends LitElement {
       show_status: true,
       ...config,
     };
-    if (config.collapsed) this._open = { ...this._open, ...Object.fromEntries(config.collapsed.map((k) => [k, false])) };
+    if (this.hass) this._e = this._ents;
+    // collapsed is a default. A flag this browser already stored for that section wins.
+    this._applySections();
+    this._sectionsFor = this._e?.climate || null;
+  }
+
+  /** Restore when the climate entity changes. Same entity keeps the in-memory toggle. */
+  _noteSections() {
+    this._e = this._ents;
+    const id = this._e?.climate || null;
+    if (id === this._sectionsFor) return;
+    this._sectionsFor = id;
+    this._applySections();
+  }
+
+  _applySections() {
+    const open = { ...SECTION_DEFAULTS };
+    const collapsed = this._config?.collapsed;
+    if (Array.isArray(collapsed)) {
+      for (const k of collapsed) if (Object.prototype.hasOwnProperty.call(open, k)) open[k] = false;
+    }
+    this._open = { ...open, ...readSectionState(this._e?.climate) };
   }
 
   getCardSize() {
@@ -306,7 +388,9 @@ export class ConnieThermostatCard extends LitElement {
   }
 
   _toggle(sec) {
-    this._open = { ...this._open, [sec]: !this._open[sec] };
+    const open = !this._open[sec];
+    this._open = { ...this._open, [sec]: open };
+    writeSectionState(this._e?.climate, sec, open);
   }
 
   // ---------- render helpers ----------

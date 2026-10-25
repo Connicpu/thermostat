@@ -19,7 +19,7 @@ number tiles with a single card that covers everything the quirk exposes.
   with a dotted underline, and screen readers hear "sending…". The value is a keyboard slider: arrows ±1 step,
   PageUp/PageDown ±5, Home/End min/max.
 * **Mode:** Off / Heat / Cool only (any Auto / heat_cool is filtered out), plus a **Fan On / Auto** toggle.
-* **Boost** (first, open by default): a Direction switch (Auto / Heat / Cool), then one tile per boost.
+* **Boost** (first, starts open): a Direction switch (Auto / Heat / Cool), then one tile per boost.
   *Boost to target* holds the target stepper and its Start button on one line; *Timed boost* does the same with the
   length. A running boost outlines its tile, shows the time left there, and its button turns into Stop.
   The other tile's button reads *Switch*, because the firmware replaces a running boost with a new one
@@ -29,7 +29,13 @@ number tiles with a single card that covers everything the quirk exposes.
 * **Program schedule:** a 24 h timeline for heating and cooling (day solid, night light, morning boost
   hatched, a marker for now). Below it, Day and Night tiles for each mode with the start time and target;
   the tile in use is outlined and tagged NOW.
-* **Tuning & status:** temperature swing, program period, last boost result.
+* **Tuning & status:** temperature swing, program period, last boost result. Starts closed.
+
+Boost, Morning heating boost, Program schedule and Tuning & status collapse. The browser remembers
+each section on its own for this card's climate entity and restores it when the dashboard is opened
+again. Cards for different thermostats remember separately. `collapsed` adds sections that start
+closed when nothing is remembered for them; a remembered choice wins. If storage is unavailable, the
+choice lasts for this visit and the next visit uses the defaults.
 * **Help text** sits behind small (i) buttons, so the card stays quiet. Each opens on hover, focus or tap,
   closes on Esc (consumed only when a tooltip was open) or a click elsewhere, opens above its row (the setpoint one opens in place, on click/tap only, and pushes the value down), and is linked with `aria-describedby`.
 * **Warnings** always stay visible: device unavailable, no clock yet (holding the day program), and failed boosts (rejected, failsafe, limit).
@@ -75,7 +81,7 @@ YAML options are in [`example.yaml`](example.yaml):
 | `device_id` | first Connie thermostat-v3 | Device to show |
 | `name` | device name | Card title |
 | `show_schedule`, `show_morning_boost`, `show_manual_boost`, `show_status` | `true` | Show or hide a section |
-| `collapsed` | `[status]` | Sections that start closed (`schedule`, `morning`, `boost`, `status`); they can still be opened by tapping. Listing a section here only adds to the defaults |
+| `collapsed` | `[status]` | Sections that start closed (`schedule`, `morning`, `boost`, `status`) when this browser has no remembered choice for them. They can still be opened by tapping, and that choice is what the next visit restores. Listing a section here only adds to the defaults |
 | `entities` | auto | Override any discovered entity (keys as in `src/model.js` `ENTITY_KEYS`) |
 
 ## Releasing

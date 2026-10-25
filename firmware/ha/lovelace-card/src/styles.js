@@ -11,6 +11,19 @@ export const cardStyles = css`
     --ct-tile: var(--secondary-background-color, rgba(127, 127, 127, 0.08));
     --ct-divider: var(--divider-color, rgba(127, 127, 127, 0.2));
     display: block;
+    /* Lovelace hui-root sets user-select: none. The property inherits into this
+       shadow tree (and through ha-card's slot), in both themes, so text would
+       otherwise not be selectable. text is the used value; auto would still
+       compute to none while an ancestor is none. */
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  /* Buttons are the press targets (section headers, steppers, segments, toggles,
+     info and dismiss). none covers the control and its icon/label so a drag
+     doesn't fight the click. Values next to a stepper are not inside the button. */
+  button, button * {
+    -webkit-user-select: none;
+    user-select: none;
   }
   :host([mode='heat']) { --ct-accent: var(--ct-heat); }
   :host([mode='cool']) { --ct-accent: var(--ct-cool); }
@@ -104,7 +117,7 @@ export const cardStyles = css`
 
   /* sections */
   section { border-top: 1px solid var(--ct-divider); padding-top: 12px; }
-  .sec-h { display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; background: none; border: none; width: 100%; padding: 0; color: inherit; font: inherit; }
+  .sec-h { display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: none; border: none; width: 100%; padding: 0; color: inherit; font: inherit; }
   .sec-h h3 { margin: 0; font-size: 15px; font-weight: 500; color: var(--primary-text-color); }
   .sec-h .meta { font-size: 13px; color: var(--secondary-text-color); display: flex; align-items: center; gap: 4px; }
   .sec-h svg.chev { transition: transform 0.2s; color: var(--secondary-text-color); }
