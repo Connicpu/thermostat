@@ -34,6 +34,7 @@ describe('card', () => {
   });
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
     document.body.innerHTML = '';
     document.documentElement.className = '';
@@ -608,21 +609,66 @@ describe('card', () => {
     el.remove();
     localStorage.clear();
 
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
-      throw new Error('blocked');
+    // happy-dom ignores spies on Storage.prototype once localStorage has been used, so the global is stubbed.
+    vi.stubGlobal('localStorage', {
+      getItem() { throw new Error('x'); },
+      setItem() { throw new Error('x'); },
     });
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-      throw new Error('blocked');
+    try {
+      el = await mount({ collapsed: ['schedule'] });
+      expect(sectionOpen(el)).toEqual({ Boost: true, 'Morning heating boost': true, 'Program schedule': false, 'Tuning & status': false });
+      sectionHeader(el, 'Boost').click();
+      sectionHeader(el, 'Tuning & status').click();
+      await el.updateComplete;
+      expect(sectionOpen(el)).toEqual({ Boost: false, 'Morning heating boost': true, 'Program schedule': false, 'Tuning & status': true });
+      // Same climate entity: a later hass update keeps the in-memory toggles.
+      el.hass = makeHass();
+      await el.updateComplete;
+      expect(sectionOpen(el)).toEqual({ Boost: false, 'Morning heating boost': true, 'Program schedule': false, 'Tuning & status': true });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('uses the defaults when the localStorage getter throws a SecurityError', async () => {
+    const previous = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      get() { throw new DOMException('denied', 'SecurityError'); },
     });
-    el = await mount({ collapsed: ['schedule'] });
-    expect(sectionOpen(el)).toEqual({ Boost: true, 'Morning heating boost': true, 'Program schedule': false, 'Tuning & status': false });
-    sectionHeader(el, 'Boost').click();
-    sectionHeader(el, 'Tuning & status').click();
-    await el.updateComplete;
-    expect(sectionOpen(el)).toEqual({ Boost: false, 'Morning heating boost': true, 'Program schedule': false, 'Tuning & status': true });
-    el.hass = makeHass();
-    await el.updateComplete;
-    expect(sectionOpen(el)).toEqual({ Boost: false, 'Morning heating boost': true, 'Program schedule': false, 'Tuning & status': true });
+    try {
+      const el = await mount();
+      expect(sectionOpen(el)).toEqual({ Boost: true, 'Morning heating boost': true, 'Program schedule': true, 'Tuning & status': false });
+      sectionHeader(el, 'Boost').click();
+      await el.updateComplete;
+      expect(sectionOpen(el).Boost).toBe(false);
+    } finally {
+      Object.defineProperty(globalThis, 'localStorage', previous);
+    }
+  });
+
+  it('keeps a remembered section and the in-memory toggle when saving throws', async () => {
+    const real = globalThis.localStorage;
+    real.setItem(sectionStorageKey(`climate.${PREFIX}`), JSON.stringify({ status: true }));
+    vi.stubGlobal('localStorage', {
+      getItem: (k) => real.getItem(k),
+      setItem() { throw new DOMException('quota', 'QuotaExceededError'); },
+    });
+    try {
+      const el = await mount();
+      expect(sectionOpen(el)['Tuning & status']).toBe(true);
+      sectionHeader(el, 'Boost').click();
+      await el.updateComplete;
+      expect(sectionOpen(el).Boost).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps a remembered open section open when collapsed lists that section', async () => {
+    localStorage.setItem(sectionStorageKey(`climate.${PREFIX}`), JSON.stringify({ schedule: true, boost: true }));
+    const el = await mount({ collapsed: ['schedule', 'boost', 'bogus', 'status'] });
+    expect(sectionOpen(el)).toEqual({ Boost: true, 'Morning heating boost': true, 'Program schedule': true, 'Tuning & status': false });
   });
 
   it('does not let a later update wipe sections the demo opened by assigning _open', async () => {

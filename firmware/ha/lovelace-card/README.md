@@ -30,18 +30,20 @@ number tiles with a single card that covers everything the quirk exposes.
   hatched, a marker for now). Below it, Day and Night tiles for each mode with the start time and target;
   the tile in use is outlined and tagged NOW.
 * **Tuning & status:** temperature swing, program period, last boost result. Starts closed.
-
-Boost, Morning heating boost, Program schedule and Tuning & status collapse. The browser remembers
-each section on its own for this card's climate entity and restores it when the dashboard is opened
-again. Cards for different thermostats remember separately. `collapsed` adds sections that start
-closed when nothing is remembered for them; a remembered choice wins. If storage is unavailable, the
-choice lasts for this visit and the next visit uses the defaults.
 * **Help text** sits behind small (i) buttons, so the card stays quiet. Each opens on hover, focus or tap,
   closes on Esc (consumed only when a tooltip was open) or a click elsewhere, opens above its row (the setpoint one opens in place, on click/tap only, and pushes the value down), and is linked with `aria-describedby`.
 * **Warnings** always stay visible: device unavailable, no clock yet (holding the day program), and failed boosts (rejected, failsafe, limit).
 * **Failed writes:** if Home Assistant rejects a change, or doesn't answer within 10 s, the card drops the
   unsent value, doesn't start a boost that depended on it, and shows an error banner. The banner closes
   by itself after 10 s or with its × (Dismiss error) button.
+
+Boost, Morning heating boost, Program schedule and Tuning & status collapse. The browser remembers
+each section on its own for this card's climate entity and restores it when the dashboard is opened
+again. Cards for different thermostats remember separately. Two cards or tabs on the same climate
+entity each keep their own in-memory open and closed sections until a reload, which restores the
+remembered state. `collapsed` adds sections that start closed when nothing is remembered for them;
+a remembered choice wins. If storage is unavailable, the choice lasts for this visit and the next
+visit uses the defaults.
 
 While the thermostat is actively heating or cooling (its `hvac_action`), the top of the card
 gets a soft orange or blue tint, like HA's own thermostat card. Idle, off and fan-only show no tint.
