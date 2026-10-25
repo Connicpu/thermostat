@@ -26,9 +26,12 @@
 #define MENU_BOOST_MIN_STEP   15
 #define MENU_BOOST_MIN_MIN    15
 #define MENU_BOOST_MIN_MAX    120
-#define MENU_SCHED_TIME_STEP  15 /* schedule start times: 15 min steps, wrap at midnight */
-#define MENU_SCHED_BOOST_STEP 15 /* morning boost duration: 0..240 min */
-#define MENU_SCHED_OFS_STEP   10 /* morning boost offset: 0.1 °C steps, 0..3.0 °C */
+#define MENU_SCHED_TIME_STEP  15                      /* schedule start times: 15 min steps, wrap at midnight */
+#define MENU_SCHED_BOOST_STEP 15                      /* morning boost duration: 0..240 min */
+#define MENU_SCHED_OFS_STEP   10                      /* morning boost offset: 0.1 °C steps, 0..3.0 °C */
+#define MENU_CALIB_STEP       10                      /* temperature offset: 0.1 °C, edited in 0.01 °C */
+#define MENU_CALIB_MIN        (-25 * MENU_CALIB_STEP) /* -2.5 °C */
+#define MENU_CALIB_MAX        (25 * MENU_CALIB_STEP)  /* +2.5 °C */
 
 typedef enum
 {
@@ -52,6 +55,7 @@ typedef enum
     kMsSched,
     kMsEditSched,
     kMsEditSwing,
+    kMsEditOffset,
     kMsEditUnits,
     kMsZigbee,
     kMsInfo,
@@ -65,6 +69,7 @@ typedef enum
     kMiBoost,
     kMiSched,
     kMiSwing,
+    kMiOffset,
     kMiUnits,
     kMiZigbee,
     kMiInfo,
@@ -92,6 +97,7 @@ typedef struct
     I16 boostSp; /* c°C */
     U16 boostMinutes;
     I16 swing;      /* c°C */
+    I16 calib;      /* c°C, LocalTemperatureCalibration (persisted in 0.1 °C) */
     SchedCfg sched; /* program schedule (Schedule submenu) */
     bool fahrenheit;
     LinkState link;
@@ -111,9 +117,10 @@ typedef enum
     kMaBoostTarget, /* value = c°C */
     kMaBoostTimed,  /* value = minutes */
     kMaBoostCancel,
-    kMaSetSwing, /* value = c°C */
-    kMaSetSched, /* item = SchedItem, value = new raw value (already clamped) */
-    kMaSetUnits, /* value = 1 for °F */
+    kMaSetSwing,  /* value = c°C */
+    kMaSetOffset, /* value = 0.1 °C, clamped to ±25 */
+    kMaSetSched,  /* item = SchedItem, value = new raw value (already clamped) */
+    kMaSetUnits,  /* value = 1 for °F */
     kMaPair,
     kMaFactoryReset,
 } MenuActionKind;

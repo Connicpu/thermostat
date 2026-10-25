@@ -112,6 +112,15 @@ static void OpenItem(Menu *pM, const MenuCtx *pC)
         pM->st = kMsEditSwing;
         pM->edit = Clamp32(pC->swing, CTRL_SWING_MIN, CTRL_SWING_MAX);
         break;
+    case kMiOffset:
+        pM->st = kMsEditOffset;
+        /* snap onto the 0.1 °C grid (half away from zero) before clamping */
+        pM->edit = Clamp32(
+            pC->calib >= 0 ? (pC->calib + MENU_CALIB_STEP / 2) / MENU_CALIB_STEP * MENU_CALIB_STEP
+                           : (pC->calib - MENU_CALIB_STEP / 2) / MENU_CALIB_STEP * MENU_CALIB_STEP,
+            MENU_CALIB_MIN,
+            MENU_CALIB_MAX);
+        break;
     case kMiUnits:
         pM->st = kMsEditUnits;
         pM->edit = pC->fahrenheit;
@@ -406,6 +415,18 @@ MenuAction MenuOnKey(Menu *pM, const MenuCtx *pC, MenuKey k, BtnEvent ev, U64 no
             return Act(kMaSetSwing, pM->edit);
         }
         break;
+    case kMsEditOffset:
+        if (updown)
+        {
+            pM->edit = Clamp32(pM->edit + dir * MENU_CALIB_STEP, MENU_CALIB_MIN, MENU_CALIB_MAX);
+            return Redraw();
+        }
+        if (sel)
+        {
+            pM->st = kMsList;
+            return Act(kMaSetOffset, pM->edit / MENU_CALIB_STEP);
+        }
+        break;
     case kMsEditUnits:
         if (updown)
         {
@@ -508,13 +529,18 @@ MenuAction MenuTick(Menu *pM, U64 now)
 /* ---------------- view ---------------- */
 
 /**
- * Format a temperature *difference* (swing, boost offset; 0.01 °C) in tenths of the display unit,
- * "0.5". °F = °C x 1.8 with no 32° offset.
+ * Format a temperature difference (swing, boost offset, calibration; 0.01 °C) in tenths of the
+ * display unit, "0.5" or "-1.2". °F is °C × 1.8 with no 32° offset, rounded to the nearest tenth,
+ * half away from zero, so a negative offset mirrors the positive one. The big font has a minus
+ * and no plus, so a positive value has no sign character.
  */
 static void FmtSwing(char *pO, int n, I32 sw, bool f)
 {
-    int d = f ? (int)((sw * 18 + 50) / 100) : (int)((sw + 5) / 10); /* tenths of the display unit */
-    snprintf(pO, n, "%d.%d", d / 10, d % 10);
+    I32 num = f ? sw * 18 : sw;
+    int den = f ? 100 : 10;
+    int d = (int)(num >= 0 ? (num + den / 2) / den : (num - den / 2) / den);
+    int a = d < 0 ? -d : d;
+    snprintf(pO, n, "%s%d.%d", d < 0 ? "-" : "", a / 10, a % 10);
 }
 
 /** Returns the mode name used in the menu ("Heat", "Cool", "Off"). */
@@ -597,6 +623,9 @@ void MenuGetView(const Menu *pM, const MenuCtx *pC, MenuView *pV)
             char s2[32];
             snprintf(s2, sizeof s2, "+/-%s%s", b, pU);
             Row(pV, "Swing", s2);
+            FmtSwing(b, sizeof b, pC->calib, f);
+            snprintf(s2, sizeof s2, "%s%s%s", pC->calib > 0 ? "+" : "", b, pU);
+            Row(pV, "Offset", s2);
         }
         Row(pV, "Units", pU);
         Row(pV, "Zigbee", LinkName(pC->link));
@@ -682,6 +711,12 @@ void MenuGetView(const Menu *pM, const MenuCtx *pC, MenuView *pV)
     case kMsEditSwing:
         pV->kind = kViewValue;
         snprintf(pV->title, sizeof pV->title, "Swing (+/-)");
+        FmtSwing(pV->big, sizeof pV->big, pM->edit, f);
+        snprintf(pV->bigUnit, sizeof pV->bigUnit, "%s", pU);
+        break;
+    case kMsEditOffset:
+        pV->kind = kViewValue;
+        snprintf(pV->title, sizeof pV->title, "Offset");
         FmtSwing(pV->big, sizeof pV->big, pM->edit, f);
         snprintf(pV->bigUnit, sizeof pV->bigUnit, "%s", pU);
         break;

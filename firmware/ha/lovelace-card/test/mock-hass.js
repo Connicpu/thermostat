@@ -29,6 +29,7 @@ export function baseEntities() {
     [`number.${P}_morning_heating_boost_offset`, 'morning_boost_offset', { state: '1.0', attributes: { unit_of_measurement: '°C', min: 0, max: 3, step: 0.1 } }],
     [`sensor.${P}_schedule_period`, 'schedule_state', { state: 'Day', attributes: { device_class: 'enum', options: ['No_clock_holding_day', 'Day', 'Night', 'Day_morning_boost'] } }],
     [`number.${P}_temperature_swing`, 'temperature_swing', { state: '0.5', attributes: { unit_of_measurement: '°C', min: 0.1, max: 1, step: 0.1, mode: 'slider' } }],
+    [`number.${P}_local_temperature_calibration`, 'local_temperature_calibration', { state: '0.0', attributes: { unit_of_measurement: '°C', min: -2.5, max: 2.5, step: 0.1, mode: 'box' } }],
     [`number.${P}_boost_target_temperature`, 'boost_setpoint', tempNum(72)],
     [`number.${P}_boost_duration`, 'boost_duration', { state: '30', attributes: { unit_of_measurement: 'min', device_class: 'duration', min: 1, max: 120, step: 1 } }],
     [`select.${P}_boost_mode`, 'boost_mode', { state: 'Auto', attributes: { options: ['Auto', 'Heat', 'Cool'] } }],

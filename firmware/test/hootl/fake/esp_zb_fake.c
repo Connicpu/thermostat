@@ -465,6 +465,12 @@ static bool IsU8Attr(U16 cl, U16 id)
            (cl == ESP_ZB_ZCL_CLUSTER_ID_FAN_CONTROL && id == ESP_ZB_ZCL_ATTR_FAN_CONTROL_FAN_MODE_ID);
 }
 
+/** LocalTemperatureCalibration is a signed byte (0.1 °C). The other 1-byte attributes are unsigned. */
+static bool IsS8Attr(U16 cl, U16 id)
+{
+    return cl == ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT && id == ESP_ZB_ZCL_ATTR_THERMOSTAT_LOCAL_TEMPERATURE_CALIBRATION_ID;
+}
+
 /** Attributes whose 2-byte value is signed (temperature measurement, and thermostat except RunningState). */
 static bool IsSigned(U16 cl, U16 id)
 {
@@ -481,11 +487,11 @@ static esp_zb_zcl_status_t Store(U16 cl, U16 id, const void *pV)
     if (!SimMutexHeld(s_lock))
         SimEmit("ZB WARN attribute 0x%04x/0x%04x set without the stack lock", cl, id);
     int i = AttrIdx(cl, id);
-    if (IsU8Attr(cl, id))
+    if (IsU8Attr(cl, id) || IsS8Attr(cl, id))
         s_attr[i].size = 1;
     I64 val;
     if (s_attr[i].size == 1)
-        val = *(const U8 *)pV;
+        val = IsS8Attr(cl, id) ? *(const I8 *)pV : *(const U8 *)pV;
     else
         val = IsSigned(cl, id) ? *(const I16 *)pV : *(const U16 *)pV;
     if (!s_attr[i].set || s_attr[i].v != val)

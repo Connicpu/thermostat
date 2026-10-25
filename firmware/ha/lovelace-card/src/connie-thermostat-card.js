@@ -6,6 +6,7 @@ import { cardStyles } from './styles.js';
 import {
   boostResultIsBad,
   decimalsOf,
+  calibrationWire,
   deltaFactor,
   discoverEntities,
   editsDay,
@@ -19,7 +20,7 @@ import {
 } from './model.js';
 import './editor.js';
 
-export const CARD_VERSION = '1.2.0';
+export const CARD_VERSION = '1.3.0';
 /** A service call with no answer after this long counts as failed. */
 export const CALL_TIMEOUT_MS = 10000;
 const WRITE_DELAY_MS = 500;
@@ -338,8 +339,8 @@ export class ConnieThermostatCard extends LitElement {
     this._error = null;
   }
 
-  _setNumber(key, value) {
-    this._queue(key, value, (v) => this._call('number', 'set_value', { entity_id: this._e[key], value: v }));
+  _setNumber(key, value, wire = value) {
+    this._queue(key, value, () => this._call('number', 'set_value', { entity_id: this._e[key], value: wire }));
   }
 
   _press(key) {
@@ -424,7 +425,12 @@ export class ConnieThermostatCard extends LitElement {
     const f = delta ? deltaFactor(a.unit_of_measurement, this._haUnit) : 1;
     const unit = delta && f !== 1 ? this._haUnit : (a.unit_of_measurement ?? '');
     const shown = v === null ? '—' : this._fmtNum(v * f, f !== 1 ? 1 : decimalsOf(step), unit);
-    const go = (dir) => this._setNumber(key, snap((v ?? 0) + dir * step, Number(a.min), Number(a.max), step));
+    const go = (dir) => {
+      const next = snap((v ?? 0) + dir * step, Number(a.min), Number(a.max), step);
+      // Calibration is the one number whose ZHA multiplier truncates some tenths. See calibrationWire.
+      const wire = key === 'temperature_offset' ? calibrationWire(next) : next;
+      this._setNumber(key, next, wire);
+    };
     return html`<span class="stepper">
       <button class="mini" aria-label="Decrease ${label}" ?disabled=${unavailable || v <= Number(a.min)} @click=${() => go(-1)}>${icon(I.mdiMinus)}</button>
       <span class="v ${key in this._pending ? 'pending' : ''}" aria-label="${label}: ${shown}${key in this._pending ? ', sending…' : ''}">${shown}</span>
@@ -758,8 +764,10 @@ export class ConnieThermostatCard extends LitElement {
     const res = this._st('boost_last_result')?.state;
     const sched = this._st('schedule_state')?.state;
     const sw = this._st('temperature_swing');
+    const off = this._st('temperature_offset');
     return this._section('status', 'Tuning & status', '', () => html`<div class="rows">
       <div class="row"><span class="l">Temperature swing${this._info('swing', 'How far (±) the room may drift from the setpoint before heating or cooling switches.', { label: 'About temperature swing' })}</span>${sw ? this._numStepper('temperature_swing', { delta: true, label: 'temperature swing' }) : html`<span class="missing">n/a</span>`}</div>
+      <div class="row"><span class="l">Temperature offset${this._info('offset', 'Added to the measured room temperature. ±2.5 °C in 0.1 °C steps. A °F display shows that difference ×1.8.', { label: 'About temperature offset' })}</span>${off ? this._numStepper('temperature_offset', { delta: true, label: 'temperature offset' }) : html`<span class="missing">n/a</span>`}</div>
       <div class="row"><span>Program period</span><span class="r">${sched ? humanize(sched) : '—'}</span></div>
       <div class="row"><span>Last boost result</span><span class="r ${boostResultIsBad(res) ? 'bad' : ''}">${res ? humanize(res) : '—'}</span></div>
     </div>`);

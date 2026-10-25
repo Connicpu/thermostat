@@ -83,6 +83,7 @@ typedef struct
     I16 boostSp;
     U16 boostMinutes;
     I16 swing;
+    I8 calib; /* LocalTemperatureCalibration, 0.1 °C */
     SchedCfg sched;
     U8 schedState; /* SchedState */
 } ZbThermostatState;
@@ -101,14 +102,15 @@ typedef struct
 esp_err_t ZbThermostatStart(const ZbThermostatCbs *pCbs, const ZbThermostatInit *pInit);
 
 /**
- * Push local state to the stack and report boost/schedule attribute changes to the coordinator.
+ * Push local state to the stack and report attribute changes to the coordinator.
  *
  * No-op before the stack runs, or when *pSt equals the previous call (unless a rejected remote
  * write must be undone). Takes the stack lock for at most 100 ms and skips the update if it
- * can't get it, so the control loop never blocks for long. Locally changed writable
- * manufacturer attributes (boost setpoint/duration, swing, schedule) only update the stack when
- * they differ from both the last published value and the current attribute, so a stale snapshot
- * can't undo a write that just came in from HA. Call from the app task.
+ * can't get it, so the control loop never blocks for long. Locally changed writable attributes
+ * (boost setpoint/duration, swing, schedule, LocalTemperatureCalibration) only update the stack
+ * when they differ from both the last published value and the current attribute, so a stale
+ * snapshot can't undo a write that just came in from HA. Calibration is reported explicitly:
+ * ZHA does not configure reporting for that attribute. Call from the app task.
  */
 void ZbThermostatPublish(const ZbThermostatState *pSt);
 

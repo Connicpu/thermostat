@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ENTITY_KEYS, boostResultIsBad, deltaFactor, discoverEntities, findDevice, fmtTime, hoursToMin, periodOf, snap, timeToHours } from '../src/model.js';
+import { ENTITY_KEYS, boostResultIsBad, calibrationWire, deltaFactor, discoverEntities, findDevice, fmtTime, hoursToMin, periodOf, snap, timeToHours } from '../src/model.js';
 import { DEVICE_ID, PREFIX, makeHass } from './mock-hass.js';
 
 describe('discovery', () => {
@@ -54,6 +54,15 @@ describe('helpers', () => {
     expect(deltaFactor('°C', '°F')).toBe(1.8);
     expect(deltaFactor('°C', '°C')).toBe(1);
     expect(deltaFactor('°F', '°F')).toBe(1);
+  });
+
+  it('biases calibration writes onto the tenth ZHA will store', () => {
+    for (let i = -25; i <= 25; i++) {
+      const v = Number((i * 0.1).toFixed(1));
+      expect(Math.trunc(calibrationWire(v) / 0.1)).toBe(i);
+      expect(Math.abs(calibrationWire(v) - v)).toBeLessThan(1e-6);
+    }
+    expect(calibrationWire(0)).toBe(0);
   });
 
   it('snaps and clamps', () => {

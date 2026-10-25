@@ -451,6 +451,7 @@ static MenuCtx BuildMenuCtx(const Persist *pP, U64 now)
         .boostSp = pP->boostSp,
         .boostMinutes = pP->boostMinutes,
         .swing = pP->swing,
+        .calib = (I16)pP->calibTenths * 10,
         .sched = pP->sched,
         .fahrenheit = pP->fahrenheit,
         .link = ZbThermostatLink(),
@@ -498,6 +499,9 @@ static bool ApplyMenuAction(const MenuAction *pA)
         break;
     case kMaSetSwing:
         PersistEdit(SetSwing, pA->value);
+        break;
+    case kMaSetOffset: /* same store as a Zigbee LocalTemperatureCalibration write */
+        ZbOnCalib((I8)pA->value);
         break;
     case kMaSetSched:
     { /* persisted like any setting; ZbThermostatPublish() reports the change to HA */
@@ -755,6 +759,7 @@ static void AppTask(void *pArg)
             .boostSp = p.boostSp,
             .boostMinutes = p.boostMinutes,
             .swing = p.swing,
+            .calib = p.calibTenths,
             .sched = p.sched,
             .schedState = (U8)sst,
         };

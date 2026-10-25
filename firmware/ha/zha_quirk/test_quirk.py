@@ -129,6 +129,47 @@ def test_auto_write_refused_other_writes_pass():
     th.request.assert_called()
 
 
+def test_offset_is_zha_standard_number_not_a_quirk_duplicate():
+    """ZHA already exposes LocalTemperatureCalibration. The quirk must not add a second one."""
+    from zha.application.platforms.number import ThermostatLocalTempCalibration
+
+    md = q.QUIRK_ENTRY.zha_device_factory
+    entities = None
+    for attr in ("definition", "quirk_definition", "_definition"):
+        d = getattr(md, attr, None)
+        if d is not None:
+            entities = d.entity_metadata
+    if entities is None:
+        entities = next(v.entity_metadata for v in vars(md).values() if hasattr(v, "entity_metadata"))
+    assert all(getattr(e, "attribute_name", None) != "local_temperature_calibration" for e in entities)
+
+    ent = ThermostatLocalTempCalibration
+    assert ent._unique_id_suffix == "local_temperature_calibration"
+    assert ent._attribute_name == "local_temperature_calibration"
+    assert ent._attr_translation_key == "local_temperature_calibration"
+    assert ent._cluster_id == Thermostat.cluster_id
+    assert ent._attr_native_min_value == -2.5
+    assert ent._attr_native_max_value == 2.5
+    assert ent._attr_native_step == 0.1
+    assert ent._multiplier == 0.1
+    assert ent._attr_native_unit_of_measurement == "°C"
+    # A temperature device class would add 32 °F. This is a difference, so ZHA leaves it in °C.
+    assert "_attr_device_class" not in ent.__dict__
+    assert ent._attr_entity_category.name == "CONFIG"
+
+    attr = Thermostat.AttributeDefs.local_temperature_calibration
+    assert attr.id == 0x0010
+    assert attr.type == t.int8s
+
+    dev = apply(make_device())
+    th = dev.endpoints[1].in_clusters[Thermostat.cluster_id]
+    found = th.find_attribute(attr.id)
+    assert found.id == 0x0010
+    # The replaced cluster still answers the real attribute (only the control sequence is overridden).
+    th.update_attribute(attr.id, 4)
+    assert th.get("local_temperature_calibration") == 4
+
+
 def test_zha_climate_entity_modes():
     """End to end through ZHA's real climate entity class (zha library)."""
     from zha.application.platforms.climate import Thermostat as ZhaThermostat

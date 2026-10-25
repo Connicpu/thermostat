@@ -24,6 +24,8 @@ export const ENTITY_KEYS = {
   morning_boost_offset: { domain: 'number', tk: 'morning_boost_offset', suffix: 'morning_heating_boost_offset' },
   schedule_state: { domain: 'sensor', tk: 'schedule_state', suffix: 'schedule_period' },
   temperature_swing: { domain: 'number', tk: 'temperature_swing', suffix: 'temperature_swing' },
+  // ZHA's own Thermostat number (not a quirk entity): translation_key and entity_id suffix.
+  temperature_offset: { domain: 'number', tk: 'local_temperature_calibration', suffix: 'local_temperature_calibration' },
   boost_setpoint: { domain: 'number', tk: 'boost_setpoint', suffix: 'boost_target_temperature' },
   boost_duration: { domain: 'number', tk: 'boost_duration', suffix: 'boost_duration' },
   boost_mode: { domain: 'select', tk: 'boost_mode', suffix: 'boost_mode' },
@@ -113,11 +115,23 @@ export function timeToHours(str, step = 0.25) {
 }
 
 /**
- * Temperature differences (swing, morning-boost offset) have no device_class, so HA leaves
- * them in °C. Returns a display factor: 1.8 when the entity is °C and HA shows °F.
+ * Temperature differences (swing, morning-boost offset, temperature offset) have no
+ * device_class, so HA leaves them in °C. Returns a display factor: 1.8 when the entity is °C
+ * and HA shows °F.
  */
 export function deltaFactor(entityUnit, haUnit) {
   return entityUnit === '°C' && haUnit === '°F' ? 1.8 : 1;
+}
+
+/**
+ * Number sent for Local temperature calibration. ZHA stores int(celsius / 0.1), and several
+ * tenths (0.3, 0.6, 1.2, ...) sit just under the next integer, so the raw value would be one
+ * step low. A 1e-8 bias away from zero lands on the tenth that was pressed. The card still
+ * shows and remembers the unbiased 0.1 °C grid.
+ */
+export function calibrationWire(v) {
+  if (!Number.isFinite(v) || v === 0) return v;
+  return v + Math.sign(v) * 1e-8;
 }
 
 /** Round to the precision implied by `step` (0.5 -> 1 decimal, 1 -> 0). */

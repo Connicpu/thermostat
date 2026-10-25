@@ -124,6 +124,24 @@ def menu_nav(s):
     return check
 
 
+@scenario("menu_temperature_offset", until=1 * MIN)
+def menu_offset(s):
+    """Menu Offset, next to Swing: UP adds 0.1 °C, M saves. NVS and attribute 0x0010 follow."""
+    s.temp(0, 2100)
+    t = 10 * SEC
+    s.press(t, "mode", 200)  # open the menu
+    for i in range(5):       # Mode, Fan, Boost, Schedule, Swing -> Offset
+        s.press(t + (i + 1) * SEC, "down", 200)
+    s.press(t + 6 * SEC, "mode", 200)  # edit
+    s.press(t + 7 * SEC, "up", 200)    # 0 -> +0.1 °C
+    s.press(t + 8 * SEC, "mode", 200)  # save, back to the list
+    def check(r):
+        r.expect(r"ZB attr 0x0201/0x0010 = 1", after=t + 8 * SEC, msg="calibration republished")
+        r.expect(r"ZB report 0x0201/0x0010", after=t + 8 * SEC, msg="ZHA does not poll this attribute")
+        r.expect(r"NVS set tstat/cfg3", after=t + 8 * SEC, msg="saved")
+    return check
+
+
 @scenario("home_up_down_setpoint", until=2 * MIN)
 def home_updown(s):
     """Main screen in HEAT: UP raises, DOWN lowers the heat setpoint one step each."""

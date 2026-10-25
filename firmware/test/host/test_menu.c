@@ -338,6 +338,134 @@ static void ScheduleActionRoundtrip(void)
     }
 }
 
+/** Parse a difference shown as "0.5" or "-1.2" into tenths. Returns false if that isn't the shape. */
+static bool ParseTenths(const char *pS, int *pOut)
+{
+    int sign = 1;
+    if (*pS == '-')
+    {
+        sign = -1;
+        pS++;
+    }
+    if (pS[0] < '0' || pS[0] > '9' || pS[1] != '.' || pS[2] < '0' || pS[2] > '9' || pS[3] != '\0')
+        return false;
+    *pOut = sign * ((pS[0] - '0') * 10 + (pS[2] - '0'));
+    return true;
+}
+
+/**
+ * The offset editor steps 0.1 °C, clamps to ±2.5 °C, saves tenths, and discards on timeout.
+ * °F rounds each step to the nearest 0.1 °F (half away from zero) and every step changes the number.
+ */
+static void EditOffsetStepsAndRounds(void)
+{
+    MenuView v;
+    Reset();
+    s_c.calib = 15; /* 0.15 °C snaps to 0.2 °C on the way in */
+    GotoItem(kMiOffset);
+    Sel();
+    CHECK_EQ(s_m.st, kMsEditOffset);
+    CHECK_EQ(s_m.edit, 20);
+    Sel(); /* save and return to the list, then reopen on a negative off-grid value */
+    s_c.calib = -15;
+    Sel();
+    CHECK_EQ(s_m.edit, -20);
+    Sel();
+    s_c.calib = -40;
+    Sel();
+    CHECK_EQ(s_m.edit, -40);
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK(strcmp(v.big, "-0.4") == 0);
+    Up();
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK(strcmp(v.big, "-0.3") == 0);
+    MenuAction a = Sel();
+    CHECK_EQ(a.kind, kMaSetOffset);
+    CHECK_EQ(a.value, -3);
+    CHECK_EQ(s_m.st, kMsList);
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK(
+        strcmp(
+            v.value[kMiOffset],
+            "-0.4\x7f"
+            "C") == 0); /* live context, not the unsaved edit */
+    s_c.calib = -30;
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK(
+        strcmp(
+            v.value[kMiOffset],
+            "-0.3\x7f"
+            "C") == 0);
+
+    s_c.calib = 0;
+    Sel();
+    for (int i = 0; i < 40; i++)
+        Up();
+    CHECK_EQ(s_m.edit, MENU_CALIB_MAX);
+    CHECK_EQ(Sel().value, 25);
+    s_c.calib = MENU_CALIB_MAX;
+    Sel();
+    for (int i = 0; i < 60; i++)
+        Down();
+    CHECK_EQ(s_m.edit, MENU_CALIB_MIN);
+    CHECK_EQ(Sel().value, -25);
+
+    s_c.calib = 0;
+    Sel();
+    Up();
+    CHECK_EQ(s_m.edit, MENU_CALIB_STEP);
+    a = MenuTick(&s_m, s_t + MENU_TIMEOUT_MS);
+    CHECK(MenuIsHome(&s_m));
+    CHECK_EQ(a.kind, kMaNone);
+    CHECK(a.fullRefresh);
+
+    Reset();
+    s_c.fahrenheit = true;
+    s_c.calib = MENU_CALIB_MIN;
+    GotoItem(kMiOffset);
+    Sel();
+    int prev = -1000;
+    for (;;)
+    {
+        MenuGetView(&s_m, &s_c, &v);
+        int shown = 0;
+        CHECK(ParseTenths(v.big, &shown));
+        CHECK(shown > prev);
+        prev = shown;
+        if (s_m.edit == MENU_CALIB_MAX)
+            break;
+        Up();
+    }
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK(strcmp(v.big, "4.5") == 0);
+    s_m.edit = 10;
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK(strcmp(v.big, "0.2") == 0); /* 0.18 °F rounds to 0.2 */
+    s_m.edit = -10;
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK(strcmp(v.big, "-0.2") == 0);
+    s_m.edit = 30;
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK(strcmp(v.big, "0.5") == 0); /* 0.54 °F rounds to 0.5 */
+    s_m.edit = -30;
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK(strcmp(v.big, "-0.5") == 0);
+    s_c.fahrenheit = false;
+    s_m.edit = -10;
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK(strcmp(v.big, "-0.1") == 0);
+
+    Reset();
+    s_c.calib = 100;
+    Sel();
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK(
+        strcmp(
+            v.value[kMiOffset],
+            "+1.0\x7f"
+            "C") == 0);
+}
+
 /** The swing editor clamps to CTRL_SWING_MIN..MAX in 0.1 °C steps and saves. */
 static void EditSwingClamps(void)
 {
@@ -664,6 +792,11 @@ static void RenderMenuPreviews(void)
     Sel();
     Shot("menu_swing_f.pbm");
     PreviewReset();
+    s_c.calib = -120; /* -1.2 °C, which rounds to -2.2 °F */
+    GotoItem(kMiOffset);
+    Sel();
+    Shot("menu_offset_f.pbm");
+    PreviewReset();
     GotoItem(kMiUnits);
     Sel();
     Shot("menu_units.pbm");
@@ -723,6 +856,7 @@ int main(void)
     RUN(ScheduleEditTimeoutDiscards);
     RUN(ScheduleActionRoundtrip);
     RUN(EditSwingClamps);
+    RUN(EditOffsetStepsAndRounds);
     RUN(EditUnits);
     RUN(BoostTargetAndTimed);
     RUN(BoostCancelOnlyWhenActive);

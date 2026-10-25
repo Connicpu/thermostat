@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '../src/connie-thermostat-card.js';
 import { editorSchema } from '../src/editor.js';
+import { calibrationWire } from '../src/model.js';
 import { DEVICE_ID, PREFIX, makeHass } from './mock-hass.js';
 
 async function mount(config = {}, hassOpts = {}) {
@@ -265,6 +266,85 @@ describe('card', () => {
       { domain: 'number', service: 'set_value', data: { entity_id: `number.${PREFIX}_day_heating_start`, value: 7.25 } },
       { domain: 'number', service: 'set_value', data: { entity_id: `number.${PREFIX}_night_heating_temperature`, value: 65.5 } },
     ]));
+  });
+
+  it('sets the temperature offset beside its own stepper, in the remembered status section', async () => {
+    localStorage.setItem(sectionStorageKey(`climate.${PREFIX}`), JSON.stringify({ status: true }));
+    const el = await mount();
+    expect(sectionOpen(el)['Tuning & status']).toBe(true);
+    const row = $$(el, '.row').find((r) => r.textContent.includes('Temperature offset'));
+    expect(row.closest('section').querySelector('h3').textContent).toBe('Tuning & status');
+    const stepper = row.querySelector('.stepper');
+    expect([...stepper.children].map((n) => n.tagName)).toEqual(['BUTTON', 'SPAN', 'BUTTON']);
+    const value = stepper.querySelector('.v');
+    expect(value.textContent).toBe('0°F');
+    expect(value.closest('button')).toBeNull();
+    expect(value.getAttribute('aria-label')).toBe('temperature offset: 0°F');
+    button(el, 'Increase temperature offset').click();
+    await el.updateComplete;
+    expect(value.textContent).toBe('0.2°F'); // 0.1 °C × 1.8, shown while the write is pending
+    vi.advanceTimersByTime(1000);
+    expect(el.hass.calls.at(-1)).toEqual({
+      domain: 'number', service: 'set_value',
+      data: { entity_id: `number.${PREFIX}_local_temperature_calibration`, value: calibrationWire(0.1) },
+    });
+    // 0.3 °C is one of the tenths int(v/0.1) would store as 0.2 without the bias.
+    const third = await mount({}, { patch: { [`number.${PREFIX}_local_temperature_calibration`]: { state: '0.2' } } });
+    if (!sectionOpen(third)['Tuning & status']) {
+      sectionHeader(third, 'Tuning & status').click();
+      await third.updateComplete;
+    }
+    button(third, 'Increase temperature offset').click();
+    vi.advanceTimersByTime(1000);
+    expect(third.hass.calls.at(-1).data.value).toBe(calibrationWire(0.3));
+    expect(Math.trunc(third.hass.calls.at(-1).data.value / 0.1)).toBe(3);
+
+    const showStatus = async (el) => {
+      if (sectionOpen(el)['Tuning & status']) return;
+      sectionHeader(el, 'Tuning & status').click();
+      await el.updateComplete;
+    };
+    const neg = await mount({}, { patch: { [`number.${PREFIX}_local_temperature_calibration`]: { state: '-0.4' } } });
+    await showStatus(neg);
+    expect(button(neg, 'Decrease temperature offset').nextElementSibling.textContent).toBe('-0.7°F');
+    const atMin = await mount({}, { patch: { [`number.${PREFIX}_local_temperature_calibration`]: { state: '-2.5' } } });
+    await showStatus(atMin);
+    expect(button(atMin, 'Decrease temperature offset').disabled).toBe(true);
+
+    const bare = makeHass();
+    delete bare.states[`number.${PREFIX}_local_temperature_calibration`];
+    delete bare.entities[`number.${PREFIX}_local_temperature_calibration`];
+    const missing = await mount();
+    missing.hass = bare;
+    await missing.updateComplete;
+    if (!sectionOpen(missing)['Tuning & status']) {
+      sectionHeader(missing, 'Tuning & status').click();
+      await missing.updateComplete;
+    }
+    const missingRow = $$(missing, '.row').find((r) => r.textContent.includes('Temperature offset'));
+    expect(missingRow.querySelector('.missing').textContent).toBe('n/a');
+  });
+
+  it('a temperature-offset write with no answer in 10 s drops the pending value', async () => {
+    const el = await mount();
+    sectionHeader(el, 'Tuning & status').click();
+    await el.updateComplete;
+    el.hass.callService = () => new Promise(() => {});
+    button(el, 'Increase temperature offset').click();
+    await el.updateComplete;
+    vi.advanceTimersByTime(500);
+    await flushAsync();
+    vi.advanceTimersByTime(9900);
+    await flushAsync();
+    await el.updateComplete;
+    expect($(el, '.banner.error[role="alert"]')).toBeNull();
+    vi.advanceTimersByTime(200);
+    await flushAsync();
+    await el.updateComplete;
+    expect($(el, '.banner.error[role="alert"]').textContent).toContain("Couldn't save the change");
+    expect($(el, '.banner.error[role="alert"]').textContent).toContain('no answer from Home Assistant after 10 s');
+    const row = $$(el, '.row').find((r) => r.textContent.includes('Temperature offset'));
+    expect(row.querySelector('.stepper .v').textContent).toBe('0°F');
   });
 
   it('shows °C differences as °F and writes °C back', async () => {
@@ -737,7 +817,7 @@ describe('editor', () => {
     ed.setConfig({ type: 'custom:connie-thermostat-card' });
     document.body.appendChild(ed);
     await ed.updateComplete;
-    expect(ed.shadowRoot.textContent).toContain('Found 24 of 24 entities');
+    expect(ed.shadowRoot.textContent).toContain('Found 25 of 25 entities');
     const got = [];
     ed.addEventListener('config-changed', (e) => got.push(e.detail.config));
     ed._changed({ device_id: DEVICE_ID, show_status: false, show_schedule: true, entities: { humidity: '', climate: 'climate.x' } });

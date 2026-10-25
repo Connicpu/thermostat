@@ -29,7 +29,7 @@ number tiles with a single card that covers everything the quirk exposes.
 * **Program schedule:** a 24 h timeline for heating and cooling (day solid, night light, morning boost
   hatched, a marker for now). Below it, Day and Night tiles for each mode with the start time and target;
   the tile in use is outlined and tagged NOW.
-* **Tuning & status:** temperature swing, program period, last boost result. Starts closed.
+* **Tuning & status:** temperature swing, temperature offset, program period, last boost result. Starts closed.
 * **Help text** sits behind small (i) buttons, so the card stays quiet. Each opens on hover, focus or tap,
   closes on Esc (consumed only when a tooltip was open) or a click elsewhere, opens above its row (the setpoint one opens in place, on click/tap only, and pushes the value down), and is linked with `aria-describedby`.
 * **Warnings** always stay visible: device unavailable, no clock yet (holding the day program), and failed boosts (rejected, failsafe, limit).
@@ -50,9 +50,13 @@ gets a soft orange or blue tint, like HA's own thermostat card. Idle, off and fa
 
 ### Units
 Temperatures follow Home Assistant's unit system. HA already converts the climate entity and the
-temperature-class number entities, e.g. to °F. The swing and the morning-boost offset are temperature
-*differences*, so the quirk gives them no temperature device class and HA leaves them in °C. For a °F
-user the card shows them ×1.8 (0.5 °C → 0.9 °F) and still writes °C values in the entity's own step.
+temperature-class number entities, e.g. to °F. The swing, the morning-boost offset and the temperature
+offset are temperature *differences*, so they have no temperature device class and HA leaves them in °C.
+For a °F user the card shows them ×1.8 (0.5 °C → 0.9 °F, 0.1 °C → 0.2 °F) and still writes °C values
+in the entity's own step. The offset entity is ZHA's standard *Local temperature calibration* number
+(±2.5 °C, step 0.1), not a quirk entity. ZHA turns that number into the raw int8 with `int(°C / 0.1)`,
+which is one tenth low for some steps (0.3 °C would be stored as 0.2). The card adds 1e-8 °C away
+from zero on the write only, so the tenth on screen is the tenth stored. The shown value stays on the 0.1 °C grid.
 
 ## Install
 
@@ -75,7 +79,7 @@ makes no network requests.
 The visual editor has a device picker, filtered to manufacturer `Connie` / model `thermostat-v3`, a name,
 section toggles, and an *Entity overrides* panel. With no device set, the card uses the first Connie
 thermostat it finds. Entities are matched on the device by the quirk's `translation_key`, then by
-entity_id suffix (e.g. `_day_heating_start`). The editor reports how many of the 24 entities it found.
+entity_id suffix (e.g. `_day_heating_start`). The editor reports how many of the 25 entities it found.
 YAML options are in [`example.yaml`](example.yaml):
 
 | Option | Default | Meaning |
@@ -129,6 +133,7 @@ MIT (repo root). Bundled Lit (BSD-3) and @mdi/js (Apache-2.0 / Pictogrammers) no
 
 ## Changelog
 
+* **1.3.0**: Tuning & status has a temperature offset control. It writes ZHA's Local temperature calibration number, ±2.5 °C in 0.1 °C steps, and shows that difference in the display unit.
 * **1.2.0**: text on the card can be selected. Each collapsible section remembers whether it is open or closed, stored in the browser per climate entity, and falls back to the defaults when storage is unavailable.
 * **1.1.1**: a running boost tile (and its run chip) uses the heat or cool colour of the boost, with "Heating"/"Cooling" in the chip text; unknown direction keeps the theme accent. Morning boost tiles use the heat colour while running. New heat-boost demo scenario. Run chip and Start/Switch/Stop text meet 4.5:1 contrast in both themes (checked by the screenshot script).
 * **1.1.0**: boost redesign (each value sits on the control that sets it; Start/Switch/Stop on the same

@@ -49,6 +49,7 @@ static I16 s_boostSp;
 static U16 s_boostMin;
 static U8 s_boostDir;
 static U16 s_swing = CTRL_SWING_DEFAULT; /* kZbAttrSwing backing store */
+static I8 s_calib;                       /* LocalTemperatureCalibration, 0.1 °C */
 static CtrlSettings s_settings;          /* last value known to the stack */
 static volatile LinkState s_link = kLinkOffline;
 static bool s_started;
@@ -486,8 +487,28 @@ static esp_err_t OnSetAttr(const esp_zb_zcl_set_attr_value_message_t *pM)
             break;
         }
         case ESP_ZB_ZCL_ATTR_THERMOSTAT_LOCAL_TEMPERATURE_CALIBRATION_ID:
-            s_cbs.onCalibration(*(const I8 *)pV);
+        {
+            I8 c = *(const I8 *)pV;
+            if (c > 25)
+                c = 25;
+            if (c < -25)
+                c = -25;
+            if (c != *(const I8 *)pV)
+            { /* store the clamped value so a read-back shows reality */
+                s_calib = c;
+                esp_zb_zcl_set_attribute_val(
+                    EP,
+                    ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT,
+                    SERVER,
+                    ESP_ZB_ZCL_ATTR_THERMOSTAT_LOCAL_TEMPERATURE_CALIBRATION_ID,
+                    &s_calib,
+                    false);
+            }
+            else
+                s_calib = c;
+            s_cbs.onCalibration(c);
             break;
+        }
         }
         break;
     case ESP_ZB_ZCL_CLUSTER_ID_FAN_CONTROL:
@@ -974,7 +995,7 @@ esp_err_t ZbThermostatStart(const ZbThermostatCbs *pCbs, const ZbThermostatInit 
     assert(pCbs->onSched);
     s_cbs = *pCbs;
     s_settings = s_init = pInit->s;
-    s_initCalib = pInit->calib;
+    s_initCalib = s_calib = pInit->calib;
     s_boostSp = pInit->boostSp;
     s_boostMin = pInit->boostMinutes;
     s_boostDir = pInit->boostDir;
@@ -1005,6 +1026,26 @@ static void SetAttr(U16 cluster, U16 attr, void *pV)
     esp_zb_zcl_status_t st = esp_zb_zcl_set_attribute_val(EP, cluster, SERVER, attr, pV, false);
     if (st != ESP_ZB_ZCL_STATUS_SUCCESS)
         ESP_LOGW(kTag, "set 0x%04x/0x%04x: %d", cluster, attr, st);
+}
+
+/**
+ * Send an explicit attribute report for a standard Thermostat attribute to the coordinator.
+ * ZHA configures reporting for the measured temperature and the setpoints, not for
+ * LocalTemperatureCalibration, so a change made on the device has to be pushed.
+ */
+static void ReportThermostatAttr(U16 attr)
+{
+    esp_zb_zcl_report_attr_cmd_t r = {0};
+    r.zcl_basic_cmd.dst_addr_u.addr_short = 0x0000; /* coordinator (ZHA) */
+    r.zcl_basic_cmd.dst_endpoint = 1;
+    r.zcl_basic_cmd.src_endpoint = EP;
+    r.address_mode = ESP_ZB_APS_ADDR_MODE_16_ENDP_PRESENT;
+    r.clusterID = ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT;
+    r.direction = ESP_ZB_ZCL_CMD_DIRECTION_TO_CLI;
+    r.attributeID = attr;
+    esp_err_t e = esp_zb_zcl_report_attr_cmd_req(&r);
+    if (e != ESP_OK)
+        ESP_LOGW(kTag, "report 0x%04x/0x%04x: %s", r.clusterID, attr, esp_err_to_name(e));
 }
 
 /**
@@ -1081,12 +1122,23 @@ void ZbThermostatPublish(const ZbThermostatState *pSt)
     bool spCh = s_haveLast && pSt->boostSp != s_last.boostSp && pSt->boostSp != s_boostSp;
     bool minCh = s_haveLast && pSt->boostMinutes != s_last.boostMinutes && pSt->boostMinutes != s_boostMin;
     bool swCh = s_haveLast && pSt->swing != s_last.swing && (U16)pSt->swing != s_swing;
+    bool calCh = s_haveLast && pSt->calib != s_last.calib && pSt->calib != s_calib;
     if (spCh)
         s_boostSp = pSt->boostSp;
     if (minCh)
         s_boostMin = pSt->boostMinutes;
     if (swCh)
         s_swing = (U16)pSt->swing;
+    if (calCh)
+    {
+        s_calib = pSt->calib;
+        SetAttr(
+            ESP_ZB_ZCL_CLUSTER_ID_THERMOSTAT,
+            ESP_ZB_ZCL_ATTR_THERMOSTAT_LOCAL_TEMPERATURE_CALIBRATION_ID,
+            &s_calib);
+        if (s_link == kLinkJoined)
+            ReportThermostatAttr(ESP_ZB_ZCL_ATTR_THERMOSTAT_LOCAL_TEMPERATURE_CALIBRATION_ID);
+    }
     struct
     {
         U16 id;

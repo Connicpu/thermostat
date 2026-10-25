@@ -43,6 +43,7 @@ All of these live in `control.c`, and the tests in `test/host/test_control.c` co
 | Rule | Default |
 |---|---|
 | Temperature swing (hysteresis) | Configurable 0.1–1.0 °C, default ±0.5 °C, stored in NVS. Heat on at SP−swing, off at SP+swing; cooling is the mirror image. Minimum on/off times and changeover delays still apply on top. Set from HA (*Temperature swing* number, Zigbee 0xFC57/0x0010); shown on the e-paper as `+/-0.5°` next to the humidity (in °F when the display is in °F) |
+| Temperature offset | ±2.5 °C in 0.1 °C steps, stored in NVS as `calibTenths` and added on top of `CONFIG_THERMO_SELF_HEAT_OFFSET_C100` when the sensor is read. Set from the menu (*Offset*), from ZHA's standard *Local temperature calibration* number (config; Thermostat 0x0201 attribute 0x0010, raw int8 in 0.1 °C), or from the Lovelace card. Shown as a temperature difference: °F is ×1.8 with no 32° offset, rounded to the nearest 0.1 °F |
 | Modes | Off / Heat / Cool. **There is no Auto (heat/cool changeover) mode.** You choose Heat or Cool; the day/night program schedule sets the setpoint for that mode. Heat and cool setpoints are independent (no deadband), because only one of them is ever active |
 | Setpoint range | 10.0–32.0 °C |
 | **Compressor minimum off-time** | **5 min**, also applied from boot, so a power blip can't short-cycle the compressor |
@@ -214,7 +215,7 @@ drop `esp_zb_sleep_enable` / `set_rx_on_when_idle(false)`, and re-measure the te
 | Relative Humidity 0x0405 | server | MeasuredValue |
 | OTA Upgrade 0x0019 | client | manufacturer 0x434E, image type 0x0301, file version `FW_OTA_FILE_VERSION` (0xMMmmpppp, derived from `FW_VERSION`) |
 
-Changes made on the device (buttons) are written into the local attributes, so configured reports pick them up.
+Changes made on the device (buttons) are written into the local attributes, so configured reports pick them up. LocalTemperatureCalibration is the exception: ZHA does not configure reporting for it, so a change from the menu is reported to the coordinator explicitly.
 
 ## Local UI
 
@@ -256,6 +257,7 @@ still forces a full refresh.
 | Schedule → Morning boost time | 0–240 min in 15-min steps, 0 = off |
 | Schedule → Morning boost + | 0–3.0 °C in 0.1 °C steps (shown as a °F difference in °F) |
 | Swing | ±0.1–1.0 °C in 0.1 °C steps (shown converted when the units are °F) |
+| Offset | ±2.5 °C in 0.1 °C steps, kept in 0.1 °C. Shown in tenths of the display unit (°F is ×1.8, no 32° offset, half away from zero). Each press changes the number on screen; in °F that step is 0.1 or 0.2 because 0.1 °C is 0.18 °F. M saves and returns to the list; the 10 s timeout discards the edit |
 | Units | °C / °F for the display (persisted; Kconfig sets the factory default; display only, HA keeps its own units) |
 | Zigbee | Link status; **hold M (1.5 s)** to start pairing |
 | Device info | Firmware version, raw (uncalibrated) temperature and RH, uptime |
@@ -263,6 +265,8 @@ still forces a full refresh.
 
 Changes go through the same paths as the buttons and HA: mode via the Thermostat cluster, boost
 target/duration and swing via the 0xFC57 attributes (written locally and reported, so HA sees them),
+the temperature offset through the same `ZbOnCalib` store as a LocalTemperatureCalibration write (NVS,
+then the attribute is updated and reported on 0x0201/0x0010),
 boosts through the same command queue as HA's Start/Cancel buttons; schedule edits go to NVS and are
 reported on 0xFC57/0x0020–0x0029 like the HA-side edits (same clamps as the Zigbee writes). The logic is a pure state
 machine in `components/ui/menu.c`, unit-tested on the host (`test/host/test_menu.c`, including the
@@ -272,10 +276,11 @@ hold timings fed through the real debouncer).
 |---|---|---|
 | ![menu](docs/display_menu_main.png) | ![menu scrolled](docs/display_menu_main_scrolled.png) | ![mode](docs/display_menu_mode.png) |
 | ![boost](docs/display_menu_boost.png) | ![boost to](docs/display_menu_boost_target.png) | ![boost for](docs/display_menu_boost_minutes.png) |
-| ![swing °F](docs/display_menu_swing_f.png) | ![units](docs/display_menu_units.png) | ![zigbee](docs/display_menu_zigbee.png) |
-| ![schedule](docs/display_menu_schedule.png) | ![schedule scrolled](docs/display_menu_schedule_scrolled.png) | ![start time](docs/display_menu_schedule_time.png) |
-| ![night temp](docs/display_menu_schedule_temp.png) | ![boost time](docs/display_menu_schedule_boost.png) | ![boost offset](docs/display_menu_schedule_offset.png) |
-| ![info](docs/display_menu_info.png) | ![hold 5 s](docs/display_menu_hold_pair.png) | ![reset warning](docs/display_menu_reset_warning.png) |
+| ![swing °F](docs/display_menu_swing_f.png) | ![offset °F](docs/display_menu_offset_f.png) | ![units](docs/display_menu_units.png) |
+| ![zigbee](docs/display_menu_zigbee.png) | ![schedule](docs/display_menu_schedule.png) | ![schedule scrolled](docs/display_menu_schedule_scrolled.png) |
+| ![start time](docs/display_menu_schedule_time.png) | ![night temp](docs/display_menu_schedule_temp.png) | ![boost time](docs/display_menu_schedule_boost.png) |
+| ![boost offset](docs/display_menu_schedule_offset.png) | ![info](docs/display_menu_info.png) | ![hold 5 s](docs/display_menu_hold_pair.png) |
+| ![reset warning](docs/display_menu_reset_warning.png) | | |
 Display refreshes: a partial refresh ~0.4 s after a button change. Background changes (temperature,
 humidity, running state, link, and the clock) share **one** slot. While the Zigbee clock is unknown
 that slot is at most every 3 min. Once the clock is known it is the next local-minute rollover (about
@@ -662,8 +667,9 @@ The OTA numeric scheme is `0xMMmmpppp` from `FW_VERSION_*`. The string inside th
    partition, and curtain stay, so expect little difference. Measuring what the walls do needs
    a second print without the ribs, partition, and curtain.
    The two offsets add, so use only one. `CONFIG_THERMO_SELF_HEAT_OFFSET_C100` is build-time
-   (`menuconfig`, then a reflash) and defaults to 0. ZHA sets the thermostat's LocalTemperatureCalibration
-   attribute, in 0.1 °C steps over ±2.5 °C, applied on top of that build-time offset. About −0.1 °C is
+   (`menuconfig`, then a reflash) and defaults to 0. The adjustable offset is LocalTemperatureCalibration,
+   ±2.5 °C in 0.1 °C steps, set from the on-device *Offset* item, from ZHA's standard calibration number,
+   or from the Lovelace card, and applied on top of that build-time offset. About −0.1 °C is
    an unmeasured guess until that reference-thermometer log exists.
 5. Only then connect R/C/W/Y/G. Do the first heat and cool calls while you're watching the equipment.
 

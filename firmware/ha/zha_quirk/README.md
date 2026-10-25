@@ -15,6 +15,13 @@ cluster (0xFC57, manufacturer code 0x434E) to the device and creates these entit
 | Last boost result (diagnostic) | sensor, e.g. *Target reached*, *Rejected already at target* | 0x0006 |
 | Temperature swing (config) | number slider, 0.1–1.0 °C, step 0.1 (raw uint16 in 0.01 °C) | 0x0010 |
 
+The temperature offset is **not** one of those entities. ZHA already creates it from the standard
+Thermostat cluster, and a second quirk entity would show up twice:
+
+| Entity | Platform | Attribute |
+|---|---|---|
+| Local temperature calibration (config) | ZHA's `ThermostatLocalTempCalibration` number, −2.5–2.5 °C, step 0.1, unit °C, no temperature device class | Thermostat 0x0201 / 0x0010, int8, 0.1 °C |
+
 **Why swing isn't on the thermostat card itself:** HA's climate entity has no hysteresis
 property (its "swing mode" means air-louver swing, and `target_temp_step` is only the setpoint
 button increment), and ZHA doesn't map any Thermostat-cluster attribute to one. ZCL also has no
@@ -58,5 +65,7 @@ python -m venv .venv && .venv/bin/pip install zha zha-quirks pytest
 ```
 
 The test checks that the quirk matches the device, adds the cluster without touching the
-standard ones, declares all eleven entities, sends writes with manufacturer code 0x434E, and that
-every attribute ID and enum value matches the firmware header `zb_boost.h`.
+standard ones, declares the quirk entities (and does not declare a second calibration number),
+sends writes with manufacturer code 0x434E, and that
+every attribute ID and enum value matches the firmware header `zb_boost.h`. It also checks that
+ZHA's standard calibration number is the ±2.5 °C, step 0.1, config entity on attribute 0x0010.
