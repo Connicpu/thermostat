@@ -129,6 +129,7 @@ MIT (repo root). Bundled Lit (BSD-3) and @mdi/js (Apache-2.0 / Pictogrammers) no
 
 ## Changelog
 
+* **1.2.0**: text on the card can be selected. Each collapsible section remembers whether it is open or closed, stored in the browser per climate entity, and falls back to the defaults when storage is unavailable.
 * **1.1.1**: a running boost tile (and its run chip) uses the heat or cool colour of the boost, with "Heating"/"Cooling" in the chip text; unknown direction keeps the theme accent. Morning boost tiles use the heat colour while running. New heat-boost demo scenario. Run chip and Start/Switch/Stop text meet 4.5:1 contrast in both themes (checked by the screenshot script).
 * **1.1.0**: boost redesign (each value sits on the control that sets it; Start/Switch/Stop on the same
   tile); boosts above the schedule; explainers moved into info tooltips; accessible setpoint slider;

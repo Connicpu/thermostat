@@ -19,7 +19,7 @@ import {
 } from './model.js';
 import './editor.js';
 
-export const CARD_VERSION = '1.1.1';
+export const CARD_VERSION = '1.2.0';
 /** A service call with no answer after this long counts as failed. */
 export const CALL_TIMEOUT_MS = 10000;
 const WRITE_DELAY_MS = 500;
