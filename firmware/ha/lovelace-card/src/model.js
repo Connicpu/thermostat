@@ -126,12 +126,16 @@ export function deltaFactor(entityUnit, haUnit) {
 /**
  * Number sent for Local temperature calibration. ZHA stores int(celsius / 0.1), and several
  * tenths (0.3, 0.6, 1.2, ...) sit just under the next integer, so the raw value would be one
- * step low. A 1e-8 bias away from zero lands on the tenth that was pressed. The card still
- * shows and remembers the unbiased 0.1 °C grid.
+ * step low. A 1e-8 bias away from zero lands on the tenth that was pressed. The bias is then
+ * clamped to the entity limits: ±2.5 °C already truncates to ±25, and a value past the limit
+ * is rejected. The card still shows and remembers the unbiased 0.1 °C grid.
  */
-export function calibrationWire(v) {
+export function calibrationWire(v, min = -2.5, max = 2.5) {
   if (!Number.isFinite(v) || v === 0) return v;
-  return v + Math.sign(v) * 1e-8;
+  let w = v + Math.sign(v) * 1e-8;
+  if (Number.isFinite(min)) w = Math.max(min, w);
+  if (Number.isFinite(max)) w = Math.min(max, w);
+  return w;
 }
 
 /** Round to the precision implied by `step` (0.5 -> 1 decimal, 1 -> 0). */

@@ -325,6 +325,40 @@ describe('card', () => {
     expect(missingRow.querySelector('.missing').textContent).toBe('n/a');
   });
 
+  it('accepts every temperature-offset tenth from -2.5 °C to +2.5 °C', async () => {
+    const id = `number.${PREFIX}_local_temperature_calibration`;
+    const el = await mount({}, { patch: { [id]: { state: '-2.4' } } });
+    sectionHeader(el, 'Tuning & status').click();
+    await el.updateComplete;
+    const shownFor = (tenth) => {
+      const f = tenth * 0.18; // 0.1 °C × 1.8, the °F difference on screen
+      const n = Number(f.toFixed(1));
+      return `${Number.isInteger(n) ? String(Math.round(n)) : n.toFixed(1)}°F`;
+    };
+    const stored = [];
+    // One step down writes -2.5, then fifty steps up write -2.4 through +2.5.
+    for (let n = 0; n < 51; n++) {
+      const down = n === 0;
+      button(el, down ? 'Decrease temperature offset' : 'Increase temperature offset').click();
+      await el.updateComplete;
+      vi.advanceTimersByTime(500);
+      await flushAsync();
+      await el.updateComplete;
+      expect($(el, '.banner.error')).toBeNull();
+      const tenth = -25 + n;
+      const call = el.hass.calls.at(-1);
+      expect(call.service).toBe('set_value');
+      expect(call.data.entity_id).toBe(id);
+      expect(Math.trunc(call.data.value / 0.1)).toBe(tenth);
+      expect(Math.abs(call.data.value)).toBeLessThanOrEqual(2.5);
+      const value = button(el, 'Increase temperature offset').previousElementSibling;
+      expect(value.textContent).toBe(shownFor(tenth));
+      stored.push(tenth);
+    }
+    expect(stored).toEqual([...Array(51)].map((_, i) => i - 25));
+    expect(button(el, 'Increase temperature offset').disabled).toBe(true);
+  });
+
   it('a temperature-offset write with no answer in 10 s drops the pending value', async () => {
     const el = await mount();
     sectionHeader(el, 'Tuning & status').click();

@@ -428,7 +428,7 @@ export class ConnieThermostatCard extends LitElement {
     const go = (dir) => {
       const next = snap((v ?? 0) + dir * step, Number(a.min), Number(a.max), step);
       // Calibration is the one number whose ZHA multiplier truncates some tenths. See calibrationWire.
-      const wire = key === 'temperature_offset' ? calibrationWire(next) : next;
+      const wire = key === 'temperature_offset' ? calibrationWire(next, Number(a.min), Number(a.max)) : next;
       this._setNumber(key, next, wire);
     };
     return html`<span class="stepper">

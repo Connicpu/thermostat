@@ -59,10 +59,14 @@ describe('helpers', () => {
   it('biases calibration writes onto the tenth ZHA will store', () => {
     for (let i = -25; i <= 25; i++) {
       const v = Number((i * 0.1).toFixed(1));
-      expect(Math.trunc(calibrationWire(v) / 0.1)).toBe(i);
-      expect(Math.abs(calibrationWire(v) - v)).toBeLessThan(1e-6);
+      const w = calibrationWire(v);
+      expect(Math.trunc(w / 0.1)).toBe(i);
+      expect(Math.abs(w - v)).toBeLessThan(1e-6);
+      expect(Math.abs(w)).toBeLessThanOrEqual(2.5);
     }
     expect(calibrationWire(0)).toBe(0);
+    expect(calibrationWire(2.5)).toBe(2.5);
+    expect(calibrationWire(-2.5)).toBe(-2.5);
   });
 
   it('snaps and clamps', () => {

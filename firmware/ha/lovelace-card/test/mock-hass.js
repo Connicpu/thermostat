@@ -74,6 +74,15 @@ export function makeHass(opts = {}) {
     locale: { language: 'en' },
     callService(domain, service, data) {
       calls.push({ domain, service, data });
+      if (domain === 'number' && service === 'set_value') {
+        const st = states[data?.entity_id];
+        const min = Number(st?.attributes?.min);
+        const max = Number(st?.attributes?.max);
+        const v = Number(data?.value);
+        // Home Assistant rejects a number past the entity's min or max (out_of_range).
+        if ((Number.isFinite(min) && v < min) || (Number.isFinite(max) && v > max))
+          return Promise.reject(new Error(`out_of_range: ${v} is outside ${min}..${max}`));
+      }
       return Promise.resolve();
     },
   };

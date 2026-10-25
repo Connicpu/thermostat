@@ -668,6 +668,11 @@ static void AppTask(void *pArg)
             MenuAction ma = MenuTick(&s_menu, now);
             urgent |= ApplyMenuAction(&ma);
         } /* 10 s idle */
+        /* Device info shows the reading with calibration taken back off. */
+        static bool s_sawInfo;
+        if (s_menu.st == kMsInfo && !s_sawInfo && s_raw.valid)
+            EVT("EVT raw temp=%d", (int)s_raw.tempC100);
+        s_sawInfo = s_menu.st == kMsInfo;
         p = SettingsGet();
         U8 bcmd;
         while (xQueueReceive(s_boostQ, &bcmd, 0) == pdTRUE)

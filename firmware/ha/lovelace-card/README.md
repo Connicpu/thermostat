@@ -56,7 +56,9 @@ For a °F user the card shows them ×1.8 (0.5 °C → 0.9 °F, 0.1 °C → 0.2 �
 in the entity's own step. The offset entity is ZHA's standard *Local temperature calibration* number
 (±2.5 °C, step 0.1), not a quirk entity. ZHA turns that number into the raw int8 with `int(°C / 0.1)`,
 which is one tenth low for some steps (0.3 °C would be stored as 0.2). The card adds 1e-8 °C away
-from zero on the write only, so the tenth on screen is the tenth stored. The shown value stays on the 0.1 °C grid.
+from zero on the write only, then clamps that number to the entity's −2.5 to 2.5 °C limits. The two
+end steps already land on ±25, so they are sent unchanged. The tenth on screen is the tenth stored,
+and the shown value stays on the 0.1 °C grid.
 
 ## Install
 

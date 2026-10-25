@@ -126,8 +126,13 @@ def menu_nav(s):
 
 @scenario("menu_temperature_offset", until=1 * MIN)
 def menu_offset(s):
-    """Menu Offset, next to Swing: UP adds 0.1 °C, M saves. NVS and attribute 0x0010 follow."""
+    """Menu Offset, next to Swing. Each UP adds 0.1 °C; M saves it.
+
+    The reported room temperature rises by that same 0.1 °C, and Device info's raw
+    reading does not. A second step saves 2.
+    """
     s.temp(0, 2100)
+    s.set(0, "sht.noise", 0)  # the 0.1 °C step has to be exact, not buried in sensor noise
     t = 10 * SEC
     s.press(t, "mode", 200)  # open the menu
     for i in range(5):       # Mode, Fan, Boost, Schedule, Swing -> Offset
@@ -135,10 +140,26 @@ def menu_offset(s):
     s.press(t + 6 * SEC, "mode", 200)  # edit
     s.press(t + 7 * SEC, "up", 200)    # 0 -> +0.1 °C
     s.press(t + 8 * SEC, "mode", 200)  # save, back to the list
+    s.press(t + 9 * SEC, "mode", 200)  # edit again from the saved offset
+    s.press(t + 10 * SEC, "up", 200)   # +0.2 °C
+    s.press(t + 11 * SEC, "mode", 200) # save
+    for i in range(3):                 # Units, Zigbee, Device info
+        s.press(t + (12 + i) * SEC, "down", 200)
+    s.press(t + 15 * SEC, "mode", 200) # open Device info
     def check(r):
-        r.expect(r"ZB attr 0x0201/0x0010 = 1", after=t + 8 * SEC, msg="calibration republished")
+        r.expect(r"ZB attr 0x0201/0x0010 = 1", after=t + 8 * SEC, msg="first tenth republished")
+        r.expect(r"ZB attr 0x0201/0x0010 = 2", after=t + 11 * SEC, msg="second tenth republished")
         r.expect(r"ZB report 0x0201/0x0010", after=t + 8 * SEC, msg="ZHA does not poll this attribute")
         r.expect(r"NVS set tstat/cfg3", after=t + 8 * SEC, msg="saved")
+        temps = [int(x.split("= ")[1]) for _, x in r.find_all(r"ZB attr 0x0201/0x0000 = ")]
+        temps = [v for v in temps if v != -32768]  # invalid until the first reading
+        r.check(len(temps) >= 3, f"local temperature published ({temps})")
+        base = temps[0]
+        r.check(all(v == base for v in temps[:-2]), f"steady before the offset changes ({temps})")
+        r.check(temps[-2] == base + 10, f"+0.1 °C raises the reported temperature by 0.1 °C ({temps})")
+        r.check(temps[-1] == base + 20, f"the next 0.1 °C does it again ({temps})")
+        raws = [int(x.split("=")[1]) for _, x in r.find_all(r"EVT raw temp=", after=t + 15 * SEC)]
+        r.check(raws == [base], f"raw temperature stays {base} with calibration removed ({raws})")
     return check
 
 
