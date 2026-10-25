@@ -26,6 +26,7 @@
 #include "hvac_outputs.h"
 #include "hw_watchdog.h"
 #include "nvs_flash.h"
+#include "board.h"
 #include "sdkconfig.h"
 #include "sensor.h"
 #include "sensor_stuck.h"
@@ -42,6 +43,7 @@ static const char *kTag = "app";
 #define SAVE_DELAY_MS       5000             /* coalesce NVS writes */
 #define HWDT_ARM_AFTER_MS   10000            /* arm STWD100 once the loop is proven healthy */
 #define OTA_VALID_AFTER_MS  60000            /* min healthy uptime before confirming a new image */
+#define PM_GRACE_MS         60000            /* no light sleep until the USB host can attach */
 #define OTA_JOIN_TIMEOUT_MS (10 * 60 * 1000) /* roll back if never rejoined Zigbee by then */
 #define BANNER_MS           4000
 #define BOOT_LOOP_LIMIT     5 /* this many resets without BOOT_STABLE_MS uptime -> safe mode */
@@ -550,12 +552,16 @@ static bool HandleButton(const BtnMsg *pM)
 /* ---------------- LED ---------------- */
 
 /**
- * Drive the status LED: 2 Hz while identifying, fast blink on a control fault, a short blip while pairing, otherwise off (no heat near the sensor).
+ * Drive the status LED. For the first 30 s it blinks so a bench bring-up is
+ * visible without the USB console. After that: 2 Hz while identifying, fast
+ * blink on a control fault, a short blip while pairing, otherwise off.
  */
 static void LedUpdate(U64 now, const CtrlOutput *pO, LinkState link)
 {
     bool on;
-    if (s_identifyS)
+    if (now < 30000)
+        on = ((now / 400) & 1) == 0;
+    else if (s_identifyS)
         on = (now / 250) & 1; /* identify: 2 Hz */
     else if (pO->fault != kCtrlFaultNone)
         on = (now / 125) & 1; /* fault: fast */
@@ -620,10 +626,11 @@ static void AppTask(void *pArg)
     esp_task_wdt_add(NULL);
 
     SensorReading rd = {0};
-    U64 nextSensor = 0, boot = NowMs(), lastIdentTick = boot;
+    U64 nextSensor = 0, boot = NowMs(), lastIdentTick = boot, lastBeat = 0;
     bool otaMarked = false, bootStable = false;
     HvacState evtOut = {0};
     bool evtOutInit = false, evtDispFault = false, evtOutFault = false, evtTime = false;
+    bool pmOn = false;
     int evtLink = -1, evtFault = -1;
     CtrlSettings evtS = {0};
     bool evtSInit = false;
@@ -632,6 +639,29 @@ static void AppTask(void *pArg)
     {
         TickType_t wake = xTaskGetTickCount();
         U64 now = NowMs();
+        /* USB-Serial-JTAG dies in light sleep and does not recover, so stay awake
+         * long enough for a bench console to attach. A 1 Hz line during that window
+         * is still there if the port opens late. */
+        if (now - boot < PM_GRACE_MS && now - lastBeat >= 1000)
+        {
+            lastBeat = now;
+            EVT("EVT alive %u s", (unsigned)((now - boot) / 1000));
+        }
+#if CONFIG_PM_ENABLE
+        if (!pmOn && now - boot >= PM_GRACE_MS)
+        {
+            esp_pm_config_t pm = {
+                .max_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ,
+                .min_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ,
+                .light_sleep_enable = true,
+            };
+            pmOn = true; /* one attempt; a failure must not retry every loop */
+            if (esp_pm_configure(&pm) != ESP_OK)
+                ESP_LOGW(kTag, "power management not configured");
+            else
+                ESP_LOGI(kTag, "light sleep enabled");
+        }
+#endif
         Persist p = SettingsGet();
         bool urgent = false;
 
@@ -945,16 +975,32 @@ static void AppTask(void *pArg)
 }
 
 /**
- * ESP-IDF entry point: outputs off and the external watchdog configured (disarmed) first, then NVS,
- * power management, boot-loop accounting, settings, sensor, display and buttons. Then the app task,
- * and finally Zigbee, so local control never waits for the radio. No failure here aborts or
- * reboot-loops; faults are logged and shown instead.
+ * Hold the status LED on for 2 s (active-low IO8). IO8 is a strap and must be
+ * high at reset, so the pin is left high. The bootloader already held it on once.
+ */
+static void BootBeacon(void)
+{
+    gpio_config_t led = {.pin_bit_mask = 1ULL << BOARD_GPIO_LED, .mode = GPIO_MODE_OUTPUT};
+    gpio_config(&led);
+    gpio_set_level(BOARD_GPIO_LED, 0);
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    gpio_set_level(BOARD_GPIO_LED, 1);
+}
+
+/**
+ * ESP-IDF entry point: outputs off and the external watchdog configured (disarmed) first, then a
+ * short LED beacon, NVS, boot-loop accounting, settings, sensor, display and buttons. Light sleep
+ * stays off until PM_GRACE_MS (the app task arms it); the C6 USB console does not survive it.
+ * Then the app task, and finally Zigbee, so local control never waits for the radio. No failure
+ * here aborts or reboot-loops; faults are logged and shown instead.
  */
 void app_main(void)
 {
     /* Outputs first: guarantee a known-off state before anything else. */
     s_outputsOk = HvacOutputsInit() == ESP_OK; /* failure latches an output fault (all off) */
     HwWatchdogInit();                          /* disarmed until the main loop proves itself */
+    BootBeacon();
+    EVT("EVT beacon");
 
     /* Nothing below may abort: a fault here must not turn into a reboot loop. */
     esp_err_t err = nvs_flash_init();
@@ -966,16 +1012,6 @@ void app_main(void)
     s_nvsOk = err == ESP_OK;
     if (!s_nvsOk)
         EVT("EVT fault nvs init %s: running on defaults, nothing is saved", esp_err_to_name(err));
-
-#if CONFIG_PM_ENABLE
-    esp_pm_config_t pm = {
-        .max_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ,
-        .min_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ,
-        .light_sleep_enable = true,
-    };
-    if (esp_pm_configure(&pm) != ESP_OK)
-        ESP_LOGW(kTag, "power management not configured");
-#endif
 
     esp_reset_reason_t rr = esp_reset_reason();
     U8 boots = BootCountRw(rr == ESP_RST_SW ? -1 : 1);

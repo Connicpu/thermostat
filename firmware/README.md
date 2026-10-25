@@ -198,6 +198,10 @@ well under a parent's ~7.7 s indirect-transmit timeout. The other cost is that t
 extend your mesh, which mains-powered plugs and bulbs handle better anyway. The LED stays off unless
 something needs attention, for the same self-heating reason.
 
+The C6 USB-Serial-JTAG console does not survive light sleep and does not come back after a wake, so
+sleep stays off for the first minute and, after that, while a host has the USB port open. On the wall,
+with no USB host, sleep still runs.
+
 `CONFIG_ZB_ZED=y`. To build a router later, switch to `CONFIG_ZB_ZCZR`, set `ESP_ZB_DEVICE_TYPE_ROUTER`,
 drop `esp_zb_sleep_enable` / `set_rx_on_when_idle(false)`, and re-measure the temperature offset.
 

@@ -21,6 +21,10 @@ CONFIG_FREERTOS_HZ=1000
 # Console on the native USB-Serial-JTAG (GPIO12/13); UART0 pins are NC.
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 
+# C6 USB-Serial-JTAG does not survive light sleep, and it does not come back after
+# a wake. Hold sleep off while the host has the port open so the console stays up
+# on the bench. Unplugged (on the wall) the lock is released and sleep still runs.
+CONFIG_USJ_NO_AUTO_LS_ON_CONNECTION=y
 # Rollback: a new OTA image must mark itself valid after a healthy start.
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 
