@@ -43,7 +43,7 @@ typedef struct
     char hint[40]; /* bottom line */
     U8 nRows, sel;
     char label[VIEW_MAX_ROWS][28];
-    char value[VIEW_MAX_ROWS][33]; /* right column; three full U32 counters fit */
+    char value[VIEW_MAX_ROWS][18]; /* right column; "99999/99999/99999" is the longest row */
     char big[12];                  /* kViewValue: value text */
     char bigUnit[8];
     bool bigIsText; /* letters: medium font instead of the digit-only big font */

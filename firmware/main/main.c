@@ -823,10 +823,27 @@ static void AppTask(void *pArg)
 
         /* 5. display */
         static char s_otaBanner[24];
+        static int s_paintFault = -1, s_paintStarting = -1;
+        int starting = DisplaySensorStarting(o.fault, now, boot) ? 1 : 0;
+        /* The glass otherwise waits for the clock minute or the 3 min slot. Either edge paints
+         * on the button path: the starting line falling off at 10 s (fault unchanged), a fault
+         * that appears after that window (starting line already gone), or both together when a
+         * healthy sensor clears. The first sample is the boot frame, not an edge. */
+        if (s_paintFault < 0)
+        {
+            s_paintFault = (int)o.fault;
+            s_paintStarting = starting;
+        }
+        else if (s_paintFault != (int)o.fault || s_paintStarting != starting)
+        {
+            urgent = true;
+            s_paintFault = (int)o.fault;
+            s_paintStarting = starting;
+        }
         DisplayModel dm;
         memset(&dm, 0, sizeof dm);
         dm.tempValid = zs.tempValid;
-        dm.sensorStarting = DisplaySensorStarting(o.fault, now, boot);
+        dm.sensorStarting = starting != 0;
         /* quantise so sensor noise does not cause refreshes */
         dm.temp = (I16)((rd.tempC100 + (rd.tempC100 >= 0 ? 5 : -5)) / 10 * 10);
         dm.rhValid = rd.valid;
@@ -1068,8 +1085,11 @@ void app_main(void)
     if (UiInit(OnButton) != ESP_OK)
         ESP_LOGE(kTag, "EVT fault buttons init (Zigbee control only)");
 
-    /* Local control first: it never waits for Zigbee. */
-    if (xTaskCreate(AppTask, "app", 4096, NULL, 6, NULL) != pdPASS)
+    /* Local control first: it never waits for Zigbee.
+     * 5248 B. AppTask and FactoryReset each hold a DisplayModel; main's 4096 B frame had 52 B
+     * free at factory reset, and the wide counter column overflowed it. esp32sim high-water
+     * mark with the sensor absent: boot 1668 B free, Device info 1668 B, factory reset 1092 B. */
+    if (xTaskCreate(AppTask, "app", 5248, NULL, 6, NULL) != pdPASS)
     {
         ESP_LOGE(kTag, "app task: out of memory");
         esp_restart();

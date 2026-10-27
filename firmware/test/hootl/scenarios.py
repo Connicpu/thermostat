@@ -409,6 +409,69 @@ def sht_absent(s):
     return check
 
 
+@scenario("sensor_starting_clears_without_clock", until=20 * SEC)
+def sensor_starting_clear(s):
+    """No Zigbee clock, sensor healthy. The glass leaves 'Starting sensor...' within a couple of
+    seconds of the fault clearing, instead of waiting out the 3 min background slot."""
+    s.temp(0, 2100)
+    def check(r):
+        ok = r.expect(r"EVT ctrl fault=OK", before=12 * SEC)
+        r.expect(r"EVT panel Idle", after=ok, before=ok + 3 * SEC)
+        r.never(r"EVT panel Starting sensor", after=ok + 3 * SEC, before=20 * SEC)
+    return check
+
+
+@scenario("sensor_starting_absent_paints_fail", until=20 * SEC)
+def sensor_starting_absent(s):
+    """No clock, sensor never answers. SENSOR FAIL is on the glass just after 10 s, not at the
+    next minute and not at the 3 min slot."""
+    s.temp(0, 2100)
+    s.set(0, "sht.mode", 6)
+    def check(r):
+        r.expect(r"EVT panel Starting sensor\.\.\.", before=5 * SEC)
+        r.never(r"EVT panel SENSOR FAIL", before=10 * SEC)
+        r.expect(r"EVT panel SENSOR FAIL", after=10 * SEC, before=13 * SEC)
+    return check
+
+
+@scenario("sensor_fault_after_start_repaints", until=50 * SEC)
+def sensor_fault_after_start(s):
+    """No clock. A sensor that dies after the starting window paints SENSOR FAIL within a couple
+    of seconds of the fault, which is the edge the starting-line check does not see."""
+    s.temp(0, 2100)
+    s.set(20 * SEC, "sht.mode", 1)
+    def check(r):
+        r.expect(r"EVT panel Idle", before=15 * SEC)
+        fault = r.expect(r"EVT ctrl fault=SENSOR FAIL", after=20 * SEC, before=40 * SEC)
+        r.expect(r"EVT panel SENSOR FAIL", after=fault, before=fault + 3 * SEC)
+    return check
+
+
+@scenario("sensor_log_heartbeat_not_every_edge_window", until=70 * SEC)
+def sensor_log_heartbeat(s):
+    """EVT sensor is the first sample and the minute heartbeat. A healthy sensor does not log
+    again when the 10 s edge window expires."""
+    s.temp(0, 2100)
+    def check(r):
+        first = r.expect(r"EVT sensor ", before=2 * SEC)
+        r.never(r"EVT sensor ", after=first + 1, before=first + 59 * SEC)
+        r.expect(r"EVT sensor ", after=first + 59 * SEC, before=first + 61 * SEC)
+    return check
+
+
+@scenario("sensor_log_keeps_a_suppressed_fail", until=70 * SEC)
+def sensor_log_suppressed(s):
+    """A failure inside the 10 s quiet window is stored, so it is not logged as a new edge the
+    moment that window ends. The next line is still the minute heartbeat."""
+    s.temp(0, 2100)
+    s.set(3 * SEC, "sht.mode", 1)
+    def check(r):
+        first = r.expect(r"EVT sensor ", before=2 * SEC)
+        r.never(r"EVT sensor ", after=first + 1, before=first + 59 * SEC)
+        r.expect(r"EVT sensor ", after=first + 59 * SEC, before=first + 61 * SEC)
+    return check
+
+
 @scenario("sht40_bus_init_fails", until=5 * MIN)
 def sht_bus_init(s):
     """I2C driver init fails: failsafe forever, rest of the system runs."""

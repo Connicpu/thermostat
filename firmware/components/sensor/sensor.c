@@ -17,28 +17,24 @@ static SensorStats s_stats;
 /** Transmit one buffer to the SHT40. Returns 0 on success. */
 static int Tx(void *pCtx, const U8 *pBuf, size_t n)
 {
-    (void)pCtx;
     return i2c_master_transmit(s_dev, pBuf, n, SENSOR_I2C_TIMEOUT_MS) == ESP_OK ? 0 : -1;
 }
 
 /** Receive one buffer from the SHT40. Returns 0 on success. */
 static int Rx(void *pCtx, U8 *pBuf, size_t n)
 {
-    (void)pCtx;
     return i2c_master_receive(s_dev, pBuf, n, SENSOR_I2C_TIMEOUT_MS) == ESP_OK ? 0 : -1;
 }
 
 /** Reset the I2C master. Returns 0 when the driver accepts the reset. */
 static int BusReset(void *pCtx)
 {
-    (void)pCtx;
     return i2c_master_bus_reset(s_bus) == ESP_OK ? 0 : -1;
 }
 
 /** Wait `ms` milliseconds. The cycle only asks for the short measure and retry gaps. */
 static void Delay(void *pCtx, U32 ms)
 {
-    (void)pCtx;
     vTaskDelay(pdMS_TO_TICKS(ms));
 }
 
