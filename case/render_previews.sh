@@ -15,7 +15,7 @@ render section          case-section.png         73.5,12,13,90,0,0,340
 render section_hooks    case-section-hooks.png   73.5,20,16,90,0,0,340
 render section_release     case-section-release.png     53.5,41.0,22.8,0,90,0,26
 render section_release_out case-section-release-out.png 53.5,40.9,22.8,0,90,0,26
-render section_j4          case-section-j4.png          114,23.5,21.4,90,0,0,46
+render section_j4          case-section-j4.png          120,16,22,0,0,0,55 ortho 1500,1000
 render section_j1       case-back-section.png    73.5,4,13,90,0,0,240
 render section_airflow  case-section-airflow.png 73.5,18,13,90,0,0,320
 render exploded         case-exploded.png        78,28,48,60,0,28,560      p
