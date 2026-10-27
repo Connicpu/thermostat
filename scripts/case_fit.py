@@ -64,8 +64,12 @@ print('nominal gap %.2f leg 0.50 inserted %.2f (drawing minimum %.2f)'%(P['panel
 front_exit=fpc_inserted(P['panel_gap']+1.2, 0.50)
 print('if the tail left the display panel front face instead, inserted %.2f mm at this gap'%(front_exit))
 opto_h=4.0
-print('opto clearance nominal %.2f mm, if the carrier prints short %.2f mm'%(P['panel_gap']-opto_h, P['panel_gap']-PRINT_Z-opto_h))
-if P['panel_gap']-PRINT_Z-opto_h < 0.40:
+opto_floor=0.30
+# The 0.20 mm lip on a tall print needs this gap. A short print then leaves
+# 0.35 mm over the 4.0 mm optos. The old 0.40 mm floor does not fit that lip.
+print('opto clearance short %.2f mm, nominal %.2f mm, tall %.2f mm (floor %.2f)'%(
+    P['panel_gap']-PRINT_Z-opto_h, P['panel_gap']-opto_h, P['panel_gap']+PRINT_Z-opto_h, opto_floor))
+if P['panel_gap']-PRINT_Z-opto_h < opto_floor-1e-9:
     fpc_ok=False
     print('OPTO CLEARANCE FAIL')
 if not fpc_ok:
@@ -262,7 +266,7 @@ tall=[
  box('U7 opto x4.0',28.8,21.3,40.2,29.1,Zt,Zt+4.0),
  box('U8 opto x4.0',28.8,36.3,40.2,44.1,Zt,Zt+4.0),
  box('L1 SWPA6045 x4.5',21.1,53.5,27.1,59.5,Zt,Zt+4.5),
- box('J4 body H2.0',98.5,34.8,103.9,53.0,Zt,Zt+2.0),
+ box('J2 USB-C body',116.58,56.7,125.52,64.0,Zt,Zt+3.26),
  box('U3 ESP32 module',66.05,0,84.05,25.5,Zt,Zt+3.15),
  box('SW3',108.5,27.3,115.5,32.7,Zt,Zt+1.5),
  box('SW4',108.5,37.3,115.5,42.7,Zt,Zt+1.5),
@@ -300,12 +304,20 @@ if in_bulge.any():
     carrier_fail=True
 else:
     print('carrier stays clear of the FPC bulge')
-# Display panel seat. No hooks and no release. The pads carry the panel.
-# A lip on the face, inboard of a long edge and above the panel front, is a hook.
+# Display panel seat. The pads carry the panel. The carrier lip stands lip_air
+# above the panel front and does not touch it. The shell does not hold it.
 wall=scad_num('wall'); clr=scad_num('clr')
 snap_bump=scad_num('snap_bump'); snap_z=scad_num('snap_z'); snap_w=scad_num('snap_w')
 petg_eps=scad_num('petg_eps'); fence_air=scad_num('fence_air'); fence_t=scad_num('fence_t')
 xstop_bite=scad_num('xstop_bite'); face_recess=scad_num('face_recess')
+lip_air=scad_num('lip_air'); lip_t=scad_num('shelf_t'); lip_in=scad_num('lip_in')
+push_t=scad_num('push_t'); push_h=scad_num('push_h'); push_L=scad_num('push_L')
+push_defl=scad_num('push_defl'); push_face_x=scad_num('push_face_x')
+push_face_y0=scad_num('push_face_y0'); push_face_y1=scad_num('push_face_y1')
+push_z0=scad_num('push_z0'); push_z1=scad_num('push_z1'); push_root_y=scad_num('push_root_y')
+ear_rear_x=scad_num('ear_rear_x'); shoe_x0=scad_num('shoe_x0'); shoe_x1=scad_num('shoe_x1')
+shoe_y0=scad_num('shoe_y0'); shoe_y1=scad_num('shoe_y1')
+shoe_z0=scad_num('shoe_z0'); shoe_z1=scad_num('shoe_z1')
 panel_lo=scad_num('panel_lo'); panel_hi=scad_num('panel_hi'); panel_h=scad_num('panel_h')
 j4_front=scad_num('j4_front'); j4_depth=scad_num('j4_depth'); j4_h=scad_num('j4_h')
 j4_y0=scad_num('j4_y0'); j4_y1=scad_num('j4_y1'); mouth_x=scad_num('mouth_x')
@@ -375,12 +387,13 @@ print('clip window %+.2f (want <0)  filled window %+.2f (want >0)'%(d_apex, d_bl
 if d_apex>-0.05 or d_blocked<0.05:
     seat_fail=True
     print('CLIP NEGATIVE DID NOT FAIL' if d_blocked<0.05 else 'CLIP WINDOW IS SOLID')
-# A lip inboard of a long edge, on the panel face, would be a hook. That volume is air.
+# The shelf starts lip_air above the panel. The gap under it stays air.
+# Filling that gap is a lip that touches the panel, and the gate rejects it.
 qcar=trimesh.proximity.ProximityQuery(carrier)
 hooks_old=((47.0,53.0,26.24,1),(84.6,90.6,26.24,1),(49.6,55.6,62.94,-1),(76.0,82.0,62.94,-1))
 def _lip_box(x0, x1, edge, dire):
-    y0, y1 = (edge, edge+0.32) if dire>0 else (edge-0.32, edge)
-    return box('lip', x0, y0, x1, y1, Zin, Zin+0.25)[1]
+    y0, y1 = (edge, edge+0.25) if dire>0 else (edge-0.25, edge)
+    return box('lip', x0, y0, x1, y1, Zin+0.02, Zin+lip_air-0.04)[1]
 for x0,x1,edge,dire in hooks_old:
     lip=_lip_box(x0, x1, edge, dire)
     sd=float(trimesh.proximity.ProximityQuery(carrier).signed_distance(np.vstack([lip.vertices, _sample(lip, 400)])).max())
@@ -481,7 +494,17 @@ print('J4 housing y %.2f–%.2f, face x %.3f, mouth x %.2f, block in front of th
 if abs((j4_y1-j4_y0)-16.0)>1e-6 or abs((mouth_x-j4_front)-step_mouth)>0.02 or abs(j4_h-2.0)>1e-6:
     seat_fail=True
     print('J4 HOUSING FAIL')
-housing=box('j4 body', j4_front-j4_depth, j4_y0, j4_front, j4_y1, Zt, Zt+j4_h)[1]
+# The WRL housing is empty in the high-ear window (shape 2 has no vertices at
+# board x 99.8–100.7, y 50.2–52, z 0.70–1.35 above the PCB). The shoe sits there.
+# The rest of the body stays a solid obstacle.
+_j4x0=j4_front-j4_depth
+housing=trimesh.util.concatenate([
+    box('j4 lo', _j4x0, j4_y0, j4_front, j4_y1, Zt, Zt+0.70)[1],
+    box('j4 hi', _j4x0, j4_y0, j4_front, j4_y1, Zt+1.35, Zt+j4_h)[1],
+    box('j4 mid rear', _j4x0, j4_y0, 99.70, j4_y1, Zt+0.70, Zt+1.35)[1],
+    box('j4 mid front', 101.05, j4_y0, j4_front, j4_y1, Zt+0.70, Zt+1.35)[1],
+    box('j4 mid below', _j4x0, j4_y0, j4_front, 50.20, Zt+0.70, Zt+1.35)[1],
+])
 # Closing the slider. The display panel is seated on the pads, tail fully inserted.
 # The contact face is the high ear's +x face on the WRL slider (shape 1): board
 # x = 103.77, y 52.70–52.80, z 0–1.85 above the PCB. Shut is a push toward -x.
@@ -551,23 +574,55 @@ if gap_at_90>=11.0:
 fpc_R=(P['panel_gap']-0.50)/2.0
 fpc_eps=0.30/(2.0*fpc_R)
 print('seated fold R %.2f mm, tail 0.30 mm, outer-fiber strain %.1f%%. The close pose adds no bend.'%(fpc_R, 100*fpc_eps))
-# Opening. The only -x faces are the ear rears at board x 100.767.
-# Low rear y 36.13–37.75 (1.62 mm) and z 0.80–1.20 (0.40 mm tall).
-# The low post ends at y 34.30 and the ear starts at y 35.20, so 0.90 mm beside it.
+# The ear rear is not a finger face. Low rear y 36.13–37.75 (1.62 mm) and
+# z 0.80–1.20 (0.40 mm tall). The low post ends at y 34.30 and the ear starts
+# at y 35.20, so 0.90 mm beside it. The printed push is the finger face.
 rear_w=37.75-36.13
 rear_h=1.20-0.80
 side_gap=35.20-34.30
-print('open face: ear rear x 100.77, %.2f mm wide, %.2f mm tall, %.2f mm from the carrier post'%(rear_w, rear_h, side_gap))
-print('opening by fingers is not achievable. A nail cannot hook that rear, and no other -x face is exposed.')
+print('ear rear x %.3f, %.2f mm wide, %.2f mm tall, %.2f mm from the carrier post. The push shoe faces it.'%(
+    ear_rear_x, rear_w, rear_h, side_gap))
 if side_gap>=2.0 or rear_h>=1.0 or rear_w>=3.0:
     seat_fail=True
-    print('OPENING FACE LOOKS REACHABLE — name it in the pose gate')
-# The seated carrier does not occupy the slider. The housing stays clear of the carrier.
-c_j4=mesh_clearance(carrier, housing, n=2000)
-print('carrier vs J4 housing %6.2f (want >0.40)'%c_j4)
+    print('EAR REAR LOOKS LIKE A FINGER FACE')
+vcar=carrier.vertices
+# Carrier outside the shoe and its link stays 0.40 mm off the housing.
+# The shoe lives in the window, so its own air is a separate check.
+_shoe_link=(
+    (vcar[:,0]>=OX+shoe_x0-0.15)&(vcar[:,0]<=OX+shoe_x1+0.15)&
+    (vcar[:,1]<=H-OYT-shoe_y0+0.15)&(vcar[:,1]>=H-OYT-55.80)&
+    (vcar[:,2]>=Zt+shoe_z0-0.15)&(vcar[:,2]<=Zt+1.70))
+_rod=(
+    (vcar[:,0]>=OX+shoe_x0)&(vcar[:,0]<=OX+push_face_x+push_t+0.2)&
+    (vcar[:,1]<=H-OYT-54.60)&(vcar[:,1]>=H-OYT-55.80)&
+    (vcar[:,2]>=Zt+0.70)&(vcar[:,2]<=Zt+1.70))
+_near_j4=_shoe_link|_rod
+_rest=vcar[~_near_j4]
+c_j4=-float(trimesh.proximity.ProximityQuery(housing).signed_distance(_rest).max()) if len(_rest) else 99.0
+print('carrier outside the shoe vs J4 housing %6.2f (want >0.40)'%c_j4)
 if c_j4<0.40:
     seat_fail=True
     print('CARRIER COVERS J4')
+_shoe_pts=vcar[_shoe_link]
+if len(_shoe_pts)==0:
+    seat_fail=True
+    print('SHOE MISSING')
+    c_shoe=-1.0
+else:
+    c_shoe=-float(trimesh.proximity.ProximityQuery(housing).signed_distance(_shoe_pts).max())
+print('shoe and link vs J4 housing window %6.2f (want >0.05)'%c_shoe)
+if c_shoe<0.05:
+    seat_fail=True
+    print('SHOE HITS J4')
+_shoe_x=vcar[(vcar[:,1]<=H-OYT-(shoe_y0-0.05))&(vcar[:,1]>=H-OYT-(shoe_y1+0.05))&(vcar[:,2]>=Zt+shoe_z0-0.05)&(vcar[:,2]<=Zt+shoe_z1+0.05)&(vcar[:,0]>OX+99.5)&(vcar[:,0]<OX+101.2), 0]
+if len(_shoe_x)==0:
+    shoe_gap=-1.0
+else:
+    shoe_gap=ear_rear_x-(float(_shoe_x.max())-OX)
+print('shoe to high-ear rear %.3f mm (want 0.10–0.35)'%shoe_gap)
+if shoe_gap<0.10 or shoe_gap>0.35:
+    seat_fail=True
+    print('SHOE GAP FAIL')
 # +x stop. Pull-out along x is 1 mm of tail per mm of slide.
 vcar=carrier.vertices
 right=(vcar[:,0]>OX+108.2)&(vcar[:,0]<OX+109.6)&(vcar[:,2]>Zpb+0.3)&(vcar[:,2]<Zin)
@@ -642,41 +697,43 @@ stack_face=0.16+0.10+0.10+0.15
 pull=math.pi/2.0
 ins_nom=fpc_inserted(P['panel_gap'], 0.50)
 ins_tall=fpc_inserted(P['panel_gap']+PRINT_Z, 0.50)
-# How far the panel can rise before the skin. Loose stack adds the 0.51 mm.
-float_lo=face_recess-stack_face
-float_hi=face_recess+stack_face
-# Tall-print insertion is the smaller budget. Rise pulls pull mm of tail per mm.
-lift_budget=(ins_tall-FPC_MIN)/pull
-ins_at_float=ins_tall-pull*float_hi
 ins_short=fpc_inserted(P['panel_gap']-PRINT_Z, 0.50)
-left_nom=ins_nom-pull*face_recess
-left_tight=ins_tall-pull*max(0.0, float_lo)
-left_loose=ins_short-pull*float_hi
-print('face recess %.2f mm, stack %.2f mm, float %.2f mm nominal, range %.2f–%.2f mm'%(
-    face_recess, stack_face, face_recess, float_lo, float_hi))
-print('tall-print insertion %.2f mm allows %.3f mm of rise.'%(ins_tall, lift_budget))
-print('nominal rise leaves %.2f mm inserted. Tight rise on a tall print leaves %.2f mm. Loose rise on a short print leaves %.2f mm.'%(
-    left_nom, left_tight, left_loose))
-print('fence tops are 0.40 mm under the face, so %.2f mm of rise lets the panel ride over them.'%(1.2-0.40))
-def _float_ok(recess):
-    # The skin has to clear the stack. The nominal rise, and the tight rise on a
-    # tall print, both have to leave 3.0 mm of tail inserted.
-    if recess<stack_face+0.10:
-        return False
-    if ins_nom-pull*recess<FPC_MIN-1e-9:
-        return False
-    if ins_tall-pull*max(0.0, recess-stack_face)<FPC_MIN-1e-9:
-        return False
-    return True
-if not _float_ok(face_recess):
+# The lip, not the shell recess, bounds the rise. A tall print opens the fold.
+# The panel can then rise lip_air off the pads. That rise has to leave 3.0 mm in.
+def _lip_ok(air):
+    return ins_tall-pull*air>=FPC_MIN-1e-9
+left_tall=ins_tall-pull*lip_air
+print('panel gap %.2f mm. inserted short %.2f, nominal %.2f, tall %.2f.'%(
+    P['panel_gap'], ins_short, ins_nom, ins_tall))
+print('lip air %.2f mm on a tall print leaves %.2f mm inserted (minimum %.2f).'%(
+    lip_air, left_tall, FPC_MIN))
+print('opto over 4.0 mm: short %.2f, nominal %.2f, tall %.2f.'%(
+    P['panel_gap']-PRINT_Z-4.0, P['panel_gap']-4.0, P['panel_gap']+PRINT_Z-4.0))
+if not _lip_ok(lip_air):
     print('PANEL FLOAT FAIL')
     seat_fail=True
-if _float_ok(1.0):
-    print('FACE RECESS 1.0 DID NOT FAIL')
+if _lip_ok(0.40):
+    print('LIP AIR 0.40 DID NOT FAIL')
     seat_fail=True
-# The recess is a mesh fact, not only the constant. Over the middle of the panel the
-# shell's inner skin is face_recess behind Z_in.
-# Border of the panel, outside the window. The recess is air; the skin past it is solid.
+# The lip is a mesh fact. Air in the 0.20 mm gap, solid inside the shelf.
+# A missing lip fails the solid probe. The shell pocket over the lip is air.
+def _lip_probes(bx, by):
+    X,Y=T(bx, by)
+    z_air=Zin+0.08
+    z_solid=Zin+lip_air+lip_t/2.0
+    d_air=float(qcar.signed_distance([[X, Y, z_air]])[0])
+    d_solid=float(qcar.signed_distance([[X, Y, z_solid]])[0])
+    d_shell=float(qshell.signed_distance([[X, Y, z_solid]])[0])
+    return d_air, d_solid, d_shell
+for bx, by, name in ((47.5, 26.24+0.10, 'top'), (52.6, 62.94-0.10, 'bottom')):
+    d_air, d_solid, d_shell=_lip_probes(bx, by)
+    print('lip %-6s air %+.2f (want <0)  shelf %+.2f (want >0)  shell %+.2f (want <0)'%(
+        name, d_air, d_solid, d_shell))
+    if d_air>-0.02 or d_solid<0.05 or d_shell>-0.05:
+        seat_fail=True
+        print('LIP MESH FAIL')
+# The shell recess stays a clearance over the border. It is not the float.
+# Air at +0.30 over the border, solid past the recess.
 mid=T(31.0, 27.5)
 d_face=float(qshell.signed_distance([[mid[0], mid[1], Zin+0.30]])[0])
 d_skin=float(qshell.signed_distance([[mid[0], mid[1], Zin+face_recess+0.08]])[0])
@@ -684,6 +741,87 @@ print('face over the panel border at +0.30 mm %+.2f (want <0)  past the recess %
 if d_face>-0.02 or d_skin<0.02:
     seat_fail=True
     print('FACE RECESS MESH FAIL')
+# Finger on the push. Pad is 11 mm wide (also checked at 16 mm), 5.30 mm deep,
+# 8.0 mm thick. The bay beside the seated panel, inboard of the airflow
+# partition, is what sets the depth. The shell is off for this press.
+PAD_W=11.0
+PAD_WIDE=16.0
+PAD_DEEP=5.30
+PAD_THICK=8.0
+FINGER_X0=109.50
+if abs((push_face_x-FINGER_X0)-PAD_DEEP)>0.05:
+    seat_fail=True
+    print('PAD DEPTH DOES NOT MATCH THE FACE')
+if abs((push_root_y-push_face_y0)-push_L)>0.01:
+    seat_fail=True
+    print('PUSH LENGTH DOES NOT MATCH THE BEAM')
+FACE_PUSH=(push_face_x, push_face_y0, Zt+push_z0, push_face_x+0.02, push_face_y1, Zt+push_z1)
+usb_box=(116.58, 56.7, Zt, 125.52, 64.0, Zt+3.26)
+sw5_box=(108.5, 47.3, Zt, 115.5, 52.7, Zt+1.5)
+def _finger_bounds(width, x_end):
+    extra=width-(push_face_y1-push_face_y0)
+    y0=push_face_y0-extra/2.0
+    y1=push_face_y1+extra/2.0
+    z0=Zt+push_z0
+    return (x_end-PAD_DEEP, y0, z0, x_end, y1, z0+PAD_THICK)
+def _press_ok(bounds):
+    """True when the pad meets the contact face and hits only that skin."""
+    if not _box_overlap(bounds, FACE_PUSH):
+        return False
+    finger=box('finger', bounds[0], bounds[1], bounds[3], bounds[4], bounds[2], bounds[5])[1]
+    pts=np.vstack([finger.vertices, _sample(finger, 1200)])
+    if float(qpanel.signed_distance(pts).max())>-0.02:
+        return False
+    for obst in (usb_box, sw5_box):
+        ob=box('obst', obst[0], obst[1], obst[3], obst[4], obst[2], obst[5])[1]
+        if float(trimesh.proximity.ProximityQuery(ob).signed_distance(pts).max())>-0.02:
+            return False
+    d=qcar.signed_distance(pts)
+    inside=pts[d>-0.02]
+    if len(inside)==0:
+        return False
+    bx=inside[:,0]-OX
+    if float(bx.min())<push_face_x-0.05 or float(bx.max())>push_face_x+0.45:
+        return False
+    return True
+# Face width from the mesh. A 10 mm span fails the same predicate.
+_ys=np.arange(push_face_y0-0.50, push_face_y1+0.50, 0.05)
+_solid=[]
+_zmid=Zt+0.5*(push_z0+push_z1)
+for _y in _ys:
+    _X,_Y=T(push_face_x+0.20, float(_y))
+    if float(qcar.signed_distance([[_X, _Y, _zmid]])[0])>0.05:
+        _solid.append(float(_y))
+face_span=(_solid[-1]-_solid[0]) if len(_solid)>=2 else 0.0
+_Xair,_Yair=T(push_face_x-0.20, 0.5*(push_face_y0+push_face_y1))
+d_face_air=float(qcar.signed_distance([[_Xair, _Yair, _zmid]])[0])
+def _span_ok(span):
+    # 11 mm on the real face. 10 mm fails. Edge samples can sit 0.15 mm in.
+    return span>=PAD_W-0.30
+print('push face span %.2f mm (want >= %.0f), air in front %+.2f (want <0)'%(face_span, PAD_W, d_face_air))
+if not _span_ok(face_span) or d_face_air>-0.02:
+    seat_fail=True
+    print('PUSH FACE MESH FAIL')
+if _span_ok(10.0):
+    seat_fail=True
+    print('NARROW FACE DID NOT FAIL')
+press_11=_press_ok(_finger_bounds(PAD_W, push_face_x+0.20))
+press_16=_press_ok(_finger_bounds(PAD_WIDE, push_face_x+0.20))
+press_short=_press_ok(_finger_bounds(PAD_W, push_face_x-1.10))
+print('fingertip %g x %.2f x %.0f mm reaches the face: %s'% (PAD_W, PAD_DEEP, PAD_THICK, 'yes' if press_11 else 'NO'))
+print('fingertip %g mm wide, same pad, reaches the face: %s'% (PAD_WIDE, 'yes' if press_16 else 'NO'))
+print('pad 1.10 mm short of the face reaches it: %s (want no)'%('yes' if press_short else 'no'))
+if not press_11 or not press_16 or press_short:
+    seat_fail=True
+    print('PUSH REACH FAIL')
+push_I=push_h*push_t**3/12.0
+push_eps=1.5*push_t*push_defl/(push_L*push_L)
+push_F=3*1800.0*push_I*push_defl/(push_L**3)
+print('push L %.2f mm, t %.2f mm, h %.2f mm, travel %.2f mm, strain %.2f%%, force %.2f N'%(
+    push_L, push_t, push_h, push_defl, 100*push_eps, push_F))
+if push_eps>=petg_eps-1e-12 or push_F>=8.0:
+    seat_fail=True
+    print('PUSH STRAIN OR FORCE FAIL')
 if board_shell<0.05 or (have_board and pcb_shell<0.05):
     seat_fail=True
     print('SHELL TOUCHES THE BOARD')
