@@ -13,7 +13,10 @@
  * Menu: UP/DOWN move, M selects; editors: UP/DOWN change, M saves; 10 s with
  * no key anywhere in the menu returns to the main screen without saving.
  * Zigbee screen: hold M (1.5 s, kBtnEvHold) to pair. After any hold action
- * the rest of that M hold is swallowed until release. */
+ * the rest of that M hold is swallowed until release.
+ * Clear safe mode is listed only while safe mode is on, just before Back.
+ * M opens a confirm screen: M again clears the boot-loop counter and restarts,
+ * any other key returns to the list, and the 10 s timeout leaves the menu. */
 #pragma once
 #include "core.h"
 #include <stdbool.h>
@@ -59,6 +62,7 @@ typedef enum
     kMsEditUnits,
     kMsZigbee,
     kMsInfo,
+    kMsClearSafe,
 } MenuState;
 
 /* Main-list items (in order). */
@@ -73,6 +77,7 @@ typedef enum
     kMiUnits,
     kMiZigbee,
     kMiInfo,
+    kMiClearSafe, /* listed only while MenuCtx.safeMode is set */
     kMiBack,
     kMiCount
 } MenuItem;
@@ -106,6 +111,7 @@ typedef struct
     I16 rawTemp; /* c°C, uncalibrated sensor reading */
     U16 rawRh;   /* c%RH */
     U32 uptimeS;
+    bool safeMode; /* boot-loop safe mode: outputs held off, banner on screen */
 } MenuCtx;
 
 typedef enum
@@ -123,6 +129,7 @@ typedef enum
     kMaSetUnits,  /* value = 1 for °F */
     kMaPair,
     kMaFactoryReset,
+    kMaClearSafeMode, /* clear the boot-loop counter and restart */
 } MenuActionKind;
 
 /**
