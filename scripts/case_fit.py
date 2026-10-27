@@ -12,6 +12,12 @@
 # Run this script in the directory that contains back.stl, shell.stl, carrier.stl, and the two cap meshes.
 # The fold and the carrier checks run without board.stl. The mesh sampling does not.
 import trimesh,numpy as np,sys,os,re,math
+# trimesh samples from OS entropy when seed is omitted, so the same mesh
+# reads a different clearance on the next run. Every sample below takes a counted seed.
+_sample_seed=[10000]
+def _sample(mesh, n):
+    _sample_seed[0]+=1
+    return mesh.sample(int(n), seed=_sample_seed[0])
 _root0=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _scad=open(os.path.join(_root0,'case','thermostat_case.scad')).read()
 def scad_num(name):
@@ -175,7 +181,7 @@ pcbm=brd
 obst={'backplate':back,'shell':shell,'e-paper panel':panel}
 res=[]
 for n,m in parts:
-  pts=np.asarray(m.vertices) if isinstance(m,trimesh.points.PointCloud) else np.vstack([m.vertices,m.sample(4000)])
+  pts=np.asarray(m.vertices) if isinstance(m,trimesh.points.PointCloud) else np.vstack([m.vertices,_sample(m,4000)])
   if len(pts)==0: continue
   front=float(np.max(pts[:,2]))>Zt+0.05
   for on,o in obst.items():
@@ -200,10 +206,10 @@ if j2:
 # -0.05 mm of slack is allowed here only. Part rows above still fail on any c<0.
 pcb_shell=0.0; pcb_back=0.0
 if have_board:
-    d=trimesh.proximity.ProximityQuery(shell).signed_distance(np.vstack([pcbm.vertices,pcbm.sample(20000)]))
+    d=trimesh.proximity.ProximityQuery(shell).signed_distance(np.vstack([pcbm.vertices,_sample(pcbm,20000)]))
     pcb_shell=-float(d.max())
     print('PCB outline vs shell',round(pcb_shell,2))
-    d=trimesh.proximity.ProximityQuery(back).signed_distance(np.vstack([pcbm.vertices,pcbm.sample(20000)]))
+    d=trimesh.proximity.ProximityQuery(back).signed_distance(np.vstack([pcbm.vertices,_sample(pcbm,20000)]))
     pcb_back=-float(d.max())
     print('PCB vs backplate (standoff seat expected 0)',round(pcb_back,2))
 else:
@@ -211,7 +217,7 @@ else:
 
 def mesh_clearance(part, obst, dz=0.0, n=6000):
     """Positive means air between the solids. dz lifts a second copy of the samples."""
-    pts=np.vstack([part.vertices, part.sample(n)])
+    pts=np.vstack([part.vertices, _sample(part, n)])
     if dz:
         pts=np.vstack([pts, pts+np.array([0,0,dz])])
     return -float(trimesh.proximity.ProximityQuery(obst).signed_distance(pts).max())
@@ -229,7 +235,7 @@ if len(bodies)>1:
     for i in range(len(bodies)):
         qi=trimesh.proximity.ProximityQuery(bodies[i])
         for j in range(i+1, len(bodies)):
-            if qi.signed_distance(bodies[j].sample(400)).max() < -0.05:
+            if qi.signed_distance(_sample(bodies[j], 400)).max() < -0.05:
                 continue
             parent[find(j)]=find(i)
     if len({find(i) for i in range(len(bodies))})>1:
@@ -338,7 +344,7 @@ for x0,x1,edge,dire in ((47.0,53.0,26.24,1),(84.6,90.6,26.24,1),(49.6,55.6,62.94
     slot_blocked=False
     worst_air=-9
     for dz in (0.0, 0.6, 1.2, 1.8, 2.4):
-        pts=np.vstack([blade.vertices, blade.sample(800)])+np.array([0, 0, dz])
+        pts=np.vstack([blade.vertices, _sample(blade, 800)])+np.array([0, 0, dz])
         sd=qcar.signed_distance(pts)
         worst_air=max(worst_air, float(sd.max()))
         if float(sd.max())>-0.02:
@@ -404,6 +410,8 @@ print('print-error lip +%.2f mm: hold-out %.3f mm  strain %.2f%%  force %.2f N  
     lip_err, hold_err, 100*eps_err, F_err, 'PASSES' if eps_err<petg_eps else 'OVER', 100*petg_eps))
 print('service strain %.2f%% is %.0f MPa at E %.0f N/mm^2. Ultimaker PETG tensile-Z is 19 ± 6.4 MPa at 1.8%% strain, flexural strength 50 MPa at 3.6%%. The gate is 3.6/1.5 = %.1f%%.'%(
     100*rel_eps, cl_E*rel_eps, cl_E, 100*petg_eps))
+print('the beam bends about the board x axis; the outer fiber is in tension along z, across the layers. The %.1f%% gate is above the interlayer elongation at break, 1.8 ± 0.8%%. The %.2f%% hold and the %.2f%% long-lip hold are under that 1.8%% mean and above 1.0%%.'%(
+    100*petg_eps, 100*rel_eps, 100*eps_err))
 # Guide play is the drawing width minus the tail width. The tail width is fpc_wide.
 # Jushuo ±0.10 on guide column B and the GDEY ±0.10 on the tail are both printed.
 # A negative play means that pair does not enter. It is not a slide failure.
@@ -416,6 +424,7 @@ play_hi=(fpc_guide+guide_tol)-(fpc_wide-tail_tol)
 play_lo=(fpc_guide-guide_tol)-(fpc_wide+tail_tol)
 print('J4 guide %.2f±%.2f mm, tail %.2f±%.2f mm, play nominal %.2f  narrow-tail %.2f  wide-tail %.2f  extremes %.2f and %.2f'%(
     fpc_guide, guide_tol, fpc_wide, tail_tol, play_nom, play_narrow, play_wide, play_hi, play_lo))
+print('the %.2f mm tight stack is printed and is not a gate: a wide tail in a narrow guide does not assemble'%play_lo)
 if fpc_wide>fpc_guide+1e-9:
     hook_fail=True
     print('J4 TAIL DOES NOT FIT THE GUIDE')
@@ -425,18 +434,23 @@ print('release sideways slide %.3f mm, smallest non-negative guide play %.2f mm'
 if rel_slide>slide_cap+1e-9:
     hook_fail=True
     print('J4 GUIDE PLAY FAIL')
-# J4 hook. The lip's -x face sits on the slider pull face (the mouth plane) and the
-# pull is +x by slider_travel. Insertion holds the hook pick_lift high and rotates it
-# about the elbow from pick_swing to the seated lean, then lowers it onto the face.
-# The shell is off for that, so shell distance is printed and is not a gate.
-# A straight +x translation of the seated hook is the control: it has to hit the fold.
+# J4 hook. The tongue's +x face bears on the upper ear's -x face and the pull is +x.
+# Insertion holds the hook pick_lift high and rotates it about the elbow from pick_swing
+# to the seated lean, then lowers the tongue into the slot. The shell is off for that,
+# so shell distance is printed and is not a gate. A straight +x translation of the seated
+# hook is the control: this ear hook does not cross the fold, and the pull runs into J2.
 pick_ang=scad_num('pick_ang'); pick_ytip=scad_num('pick_ytip'); pick_L=scad_num('pick_L')
 pick_w=scad_num('pick_w'); pick_hand=scad_num('pick_hand'); pick_inset=scad_num('pick_inset')
 pick_z0=scad_num('pick_z0'); pick_z1=scad_num('pick_z1')
-pick_lip_z0=scad_num('pick_lip_z0'); pick_lip_z1=scad_num('pick_lip_z1')
-pick_lip_dx=scad_num('pick_lip_dx'); pick_lip_hy=scad_num('pick_lip_hy')
-pick_swing=scad_num('pick_swing'); pick_lift=scad_num('pick_lift'); slider_travel=scad_num('slider_travel')
+pick_tongue_dx=scad_num('pick_tongue_dx')
+pick_tongue_y0=scad_num('pick_tongue_y0'); pick_tongue_y1=scad_num('pick_tongue_y1')
+pick_tongue_z0=scad_num('pick_tongue_z0'); pick_tongue_z1=scad_num('pick_tongue_z1')
+pick_head_dx=scad_num('pick_head_dx'); pick_head_hy=scad_num('pick_head_hy')
+pick_head_z0=scad_num('pick_head_z0'); pick_head_z1=scad_num('pick_head_z1')
+pick_swing=scad_num('pick_swing'); pick_lift=scad_num('pick_lift')
+stroke_lo=scad_num('stroke_lo'); stroke_hi=scad_num('stroke_hi')
 mouth_x=scad_num('mouth_x'); j4_depth=scad_num('j4_depth'); j4_len=scad_num('j4_len'); j4_h=scad_num('j4_h')
+j4_front=scad_num('j4_front'); ear_x=scad_num('ear_x')
 fpc_R=(P['panel_gap']-0.50)/2.0
 ri=fpc_R-0.15; ro=fpc_R+0.15
 j4_y0=44.0-j4_len/2.0; j4_y1=44.0+j4_len/2.0
@@ -462,16 +476,18 @@ def _xform(pts, elb, psi, zlift, xshift):
     return out
 def _elbow(ang):
     a=math.radians(ang)
-    return np.array([mouth_x+pick_L*math.cos(a), pick_ytip+pick_L*math.sin(a)])
+    return np.array([ear_x+pick_L*math.cos(a), pick_ytip+pick_L*math.sin(a)])
 def _seated(ang):
     a=math.radians(ang)
-    tip=np.array([mouth_x, pick_ytip])
+    tip=np.array([ear_x, pick_ytip])
     elb=_elbow(ang)
     unit=np.array([math.cos(a), math.sin(a)])
     s0=tip+pick_inset*unit
     shank=_rod(s0, elb, pick_w, pick_z0, pick_z1)
     hand=_rod(elb, elb+np.array([pick_hand, 0.0]), pick_w, pick_z0, pick_z1)
-    lip=box('lip', mouth_x, pick_ytip-pick_lip_hy, mouth_x+pick_lip_dx, pick_ytip+pick_lip_hy, pick_lip_z0, pick_lip_z1)[1]
+    tongue=box('tongue', ear_x-pick_tongue_dx, pick_tongue_y0, ear_x, pick_tongue_y1, pick_tongue_z0, pick_tongue_z1)[1]
+    head=box('head', ear_x-pick_head_dx, pick_ytip-pick_head_hy, ear_x, pick_ytip+pick_head_hy, pick_head_z0, pick_head_z1)[1]
+    lip=trimesh.util.concatenate([tongue, head])
     return shank, hand, lip, elb
 # Half-annulus of the fold, bulging to +x. The y band is the tail width. Positive clearance is air.
 def _fold_clear(pts, wide):
@@ -487,9 +503,8 @@ def _fold_clear(pts, wide):
     dy=np.maximum(np.maximum(y0-by, by-y1), 0.0)
     return float(np.where(dy<=0, d2, np.where(d2<0, dy, np.hypot(d2, dy))).min())
 glass=box('glass', 29.46, 26.24, 108.46, 62.94, Zt+P['panel_gap'], Zt+P['panel_gap']+1.2)[1]
-# Body stops 0.02 mm behind the silk mouth, so a lip on the mouth plane is on the
-# pull face and not inside the housing.
-housing=box('j4 body', mouth_x-j4_depth, j4_y0, mouth_x-0.02, j4_y1, Zt, Zt+j4_h)[1]
+# The housing +x face is j4_front. The ear's -x face is 0.10 mm in front of it.
+housing=box('j4 body', j4_front-j4_depth, j4_y0, j4_front, j4_y1, Zt, Zt+j4_h)[1]
 j2m=box('j2', 121.05-4.47, 56.7, 121.05+4.47, 64.0, Zt, Zt+3.26)[1]
 qglass=trimesh.proximity.ProximityQuery(glass)
 qshell=trimesh.proximity.ProximityQuery(shell)
@@ -538,48 +553,52 @@ def _path(ang, wide, shifts):
         ymax=max(ymax, float((H-OYT-pts[:,1]).max()))
         lips.append((shift, lip))
     return acc, ymax, lips
-def _lip_on_face(lip, shift):
+def _bears_on_ear(lip, shift):
+    """The tool's +x face pulls on the ear's -x face. The lip stays on the -x side of that face."""
     bx=lip[:,0]-OX; by=H-OYT-lip[:,1]; bz=lip[:,2]
-    face=mouth_x+shift
-    return (abs(float(bx.min())-face)<=0.05 and float(bx.min())>=face-0.02
-            and float(by.min())<j4_y1 and float(by.max())>j4_y0
-            and float(bz.min())<Zt+j4_h and float(bz.max())>Zt)
-service_shifts=(0.0, slider_travel/2.0, slider_travel)
+    face=ear_x+shift
+    on=abs(float(bx.max())-face)<=0.05 and float(bx.max())<=face+0.02
+    behind=float(bx.min())<face-0.02
+    y_ok=float(by.min())<pick_tongue_y1 and float(by.max())>pick_tongue_y0
+    z_ok=float(bz.min())<Zt+j4_h and float(bz.max())>Zt
+    return on and behind and y_ok and z_ok
+service_shifts=(0.0, stroke_lo, 0.5*(stroke_lo+stroke_hi), stroke_hi)
 elb=_elbow(pick_ang)
-print('J4 hook lean %.0f deg, lip on the mouth at y %.2f, elbow (%.2f, %.2f), handle %.2f mm to x %.2f'%(
-    pick_ang, pick_ytip, elb[0], elb[1], pick_hand, elb[0]+pick_hand))
-print('J4 insertion rotates %.0f deg about that elbow at +%.2f mm, then lowers onto the pull face and pulls +x %.2f mm'%(
-    pick_swing, pick_lift, slider_travel))
+print('J4 hook lean %.0f deg, tongue on the ear at (%.3f, %.3f), elbow (%.2f, %.2f), handle %.2f mm to x %.2f'%(
+    pick_ang, ear_x, pick_ytip, elb[0], elb[1], pick_hand, elb[0]+pick_hand))
+print('J4 insertion rotates %.0f deg about that elbow at +%.2f mm, then lowers into the slot and pulls +x from %.2f mm to %.2f mm'%(
+    pick_swing, pick_lift, stroke_lo, stroke_hi))
 sweep, tool_ymax, lips=_path(pick_ang, fpc_wide, service_shifts)
 print('J4 service sweep  carrier %6.2f  fold %6.2f  glass %6.2f  J2 %6.2f  housing %6.2f  (min 0.20, housing min 0)'%(
     sweep['carrier'], sweep['fold'], sweep['glass'], sweep['j2'], sweep['housing']))
 print('J4 shell along that sweep %6.2f (shell is off in service; not a gate)'%sweep['shell'])
 neighbours_ok=min(sweep['carrier'], sweep['fold'], sweep['glass'], sweep['j2'])>=0.20 and sweep['housing']>=0.0
-contact_ok=all(_lip_on_face(lip, shift) for shift, lip in lips)
+contact_ok=all(_bears_on_ear(lip, shift) for shift, lip in lips)
 if not neighbours_ok or not contact_ok:
     hook_fail=True
     print('J4 PICK FAIL')
 if not contact_ok:
-    print('J4 LIP IS NOT ON THE PULL FACE')
+    print('J4 TONGUE DOES NOT BEAR ON THE EAR')
 # 55° and 90° are clearance failures. An angle-band check does not stand in for that.
 for ang in (55.0, 90.0):
-    alt, _, _=_path(ang, fpc_wide, (0.0, slider_travel))
+    alt, _, _=_path(ang, fpc_wide, (0.0, stroke_hi))
     alt_min=min(alt['carrier'], alt['fold'], alt['glass'], alt['j2'])
     print('J4 hook at %.0f deg  carrier %6.2f  fold %6.2f  glass %6.2f  J2 %6.2f  housing %6.2f'%(
         ang, alt['carrier'], alt['fold'], alt['glass'], alt['j2'], alt['housing']))
     if alt_min>=0.20 and alt['housing']>=0.0:
         hook_fail=True
         print('J4 ANGLE %.0f DID NOT HIT ANYTHING'%ang)
-# Straight +x of the seated hook, continued well past the stroke. The stroke itself is
-# inside the service sweep above. This longer translation has to intersect the fold.
-straight_fold=99.0
+# Straight +x of the seated hook, continued past the assumed stroke. The stroke itself is
+# inside the service sweep above. This ear hook stays clear of the fold. The longer pull
+# has to run into J2.
+straight_j2=99.0
 for shift in (0.0, 2.0, 3.0, 4.0, 5.0, 6.0):
     pts, _=_pose_pts(pick_ang, 0.0, 0.0, shift, n=500, seed=70)
-    straight_fold=min(straight_fold, _fold_clear(pts, fpc_wide))
-print('J4 straight +x of the seated hook, fold clearance %6.2f (want <0)'%straight_fold)
-if straight_fold>=0.0:
+    straight_j2=min(straight_j2, _clears(pts, fpc_wide)['j2'])
+print('J4 straight +x of the seated hook, J2 clearance %6.2f (want <0)'%straight_j2)
+if straight_j2>=0.0:
     hook_fail=True
-    print('J4 STRAIGHT PATH DID NOT HIT THE FOLD')
+    print('J4 STRAIGHT PATH DID NOT HIT J2')
 # Free +x run: the largest shift that keeps 0.20 mm off the carrier, the fold, the glass, and J2.
 lo_s, hi_s=0.0, 8.0
 for _ in range(14):
@@ -593,9 +612,9 @@ for _ in range(14):
 pts, _=_pose_pts(pick_ang, 0.0, 0.0, lo_s+0.40, n=700, seed=90)
 probe=_clears(pts, fpc_wide)
 probe_min=min(probe['carrier'], probe['fold'], probe['glass'], probe['j2'])
-print('J4 free pull %.2f mm before clearance drops under 0.20; slider travel %.2f mm; probe at +0.40 mm is %6.2f'%(
-    lo_s, slider_travel, probe_min))
-if slider_travel>lo_s+1e-6 or probe_min>=0.20:
+print('J4 free pull %.2f mm before clearance drops under 0.20; assumed stroke %.2f to %.2f mm; probe at +0.40 mm is %6.2f'%(
+    lo_s, stroke_lo, stroke_hi, probe_min))
+if stroke_hi>lo_s+1e-6 or probe_min>=0.20:
     hook_fail=True
     print('J4 TRAVEL FAIL')
 # Opening beside the fold. The tool's highest board-y in the sweep has to fit in it,
@@ -746,7 +765,7 @@ def face_clearance(mesh, c):
     return -float(trimesh.proximity.ProximityQuery(shell).signed_distance(face).max()), z0
 # Cone seat: vertices on the cone near r = 2.5, within 0.4 mm of the inner face.
 def cone_clearance(mesh, c):
-    v=np.vstack([mesh.vertices, mesh.sample(5000)])
+    v=np.vstack([mesh.vertices, _sample(mesh, 5000)])
     r=np.hypot(v[:,0]-c[0], v[:,1]-c[1])
     m=(r>2.45)&(r<2.58)&(np.abs(v[:,2]-Zin)<0.20)
     if not np.any(m):
@@ -780,7 +799,7 @@ for name,mesh in ('seated',seated_caps),('pressed',pressed_caps):
 sw_body=box('SW body',112-2.60,40-2.60,112+2.60,40+2.60,Zt,Zt+1.15)[1]
 sw_act=cyl('SW actuator',112,40,1.00,Zt+1.20,Zt+1.50)[1]
 def leaf_clearance(mesh, obst):
-    v=np.vstack([mesh.vertices, mesh.sample(3000)])
+    v=np.vstack([mesh.vertices, _sample(mesh, 3000)])
     c=T(112,40)
     r=np.hypot(v[:,0]-c[0], v[:,1]-c[1])
     pts=v[r>1.3]
