@@ -200,8 +200,8 @@ module shell(pk=true){   // pk=false: preview only, pockets left solid (inlays s
         translate([cx(part_bx[0])-1, cy(48.5), Z_pcb_t-1]) cube([5, 48.5-44.5, 1+part_d3_z]);
         translate([cx(part_bx[0])-1, cy(65), Z_pcb_t-1]) cube([5, 65-54.5, 1+part_j2_z]);
       }
-      // button guide tubes
-      for(b=btn) translate([cx(b[0]),cy(b[1]),Z_pcb_t+3.5]) cylinder(d=8.6,h=Z_in-Z_pcb_t-3.5);
+      // button guide tubes. OD 8.6 stays: it overlaps the partition and keeps the 10 mm pitch.
+      for(b=btn) translate([cx(b[0]),cy(b[1]),Z_pcb_t+3.5]) cylinder(d=btn_tube_od,h=Z_in-Z_pcb_t-3.5);
     }
     // e-paper window with 45deg outward chamfer
     translate([cx(aa[0])-win_m, cy(aa[3])-win_m, Z_in-0.5]) cube([aa[2]-aa[0]+2*win_m, aa[3]-aa[1]+2*win_m, 10]);
@@ -215,8 +215,7 @@ module shell(pk=true){   // pk=false: preview only, pockets left solid (inlays s
     // Stops at x 107.55: the button tubes (Ø8.6 at x 112) already occupy the last 0.9 mm of the outline.
     board_box(panel[0]-0.25, panel[1]-0.55, 107.55, panel[3]+0.55, Z_in-0.02, Z_in+face_recess);
     hook_relief();
-    // buttons
-    for(b=btn) translate([cx(b[0]),cy(b[1]),Z_pcb_t]) { cylinder(d=5.0,h=50); cylinder(d=7.9,h=Z_in-Z_pcb_t-0.01); }
+    button_void();
     // RESET pinhole, LED light pipe
     for(p=pin) translate([cx(p[0]),cy(p[1]),Z_in-1]) cylinder(d=1.6,h=10);
     // no USB opening: USB-C is only reachable with the board out of the case (ground-loop hazard)
@@ -267,9 +266,112 @@ module inlay_black(e=0){ translate([0,0,Z_out-inlay_d]) linear_extrude(inlay_d+e
 module inlay_orange(e=0){ translate([0,0,Z_out-inlay_d]) linear_extrude(inlay_d+e) offset(delta=e) cat_place2d(); }
 module light_pipe(){ translate([cx(led[0]),cy(led[1]),Z_pcb_t+1.0]) cylinder(d=1.95,h=Z_out-Z_pcb_t-1.0); }
 
-// ---------------- button caps (print 3, flange down) ----------------
-sw_top = Z_pcb_t + 1.5;   // TS-1187A H1.5 actuator
-module cap(){ cylinder(d=7.4,h=Z_in-0.3-sw_top); cylinder(d=4.6,h=Z_out+0.8-sw_top); }
+// ---------------- buttons ----------------
+// TS-1187A-B-A-B. Height code A is 1.5±0.05 mm. The drawing says TRAVEL 0.2±0.1 mm;
+// the spec table says 0.25 mm. Force code B is 160 gf. Actuator Ø2.0, body 5.1 square, cover 1.2.
+// The stem is Ø1.6 and meets the actuator only. A 45° cone seats in the Ø5 hole, so the cap cannot
+// leave through the face. Two leaves on the partition side carry barbs that click behind a lip,
+// so the cap stays in the shell when the shell is lifted. Print head-down: leaves are vertical
+// walls, and every overhang is 45° or a 0.30 mm flat. pull=0 is the print; pull=btn_flare is seated.
+sw_h = 1.50;
+sw_top = Z_pcb_t + sw_h;
+btn_proud = 0.80;
+btn_head_d = 4.70;
+btn_hole_d = 5.00;
+btn_gap = 0.25;                  // seated stem to the actuator on a nominal board
+btn_travel = 0.55;               // cone on the hole, to the barb on the lip
+btn_stem_d = 1.60;
+btn_cone_d = 6.00;               // 45° off the head
+btn_tube_od = 8.60;
+btn_bore_d = 7.70;               // r 3.85, 0.45 mm wall inside the Ø8.6 tube
+btn_lip_d = 6.30;                // r 3.15
+btn_flare = 0.30;                // print pose sits this far outside the seated barbs
+btn_tip_z = Z_out + btn_proud;
+btn_stem_z = sw_top + btn_gap;
+btn_shelf_z = 23.35;             // lip face the barb reaches after btn_travel
+echo(str("BTN gap=", btn_gap, " travel=", btn_travel, " stroke=", btn_travel - btn_gap));
+assert(btn_travel - btn_gap >= 0.30, "button stroke shorter than the switch travel");
+assert(btn_gap > pcb_tol + 0.05, "a thick board would hold the switch down");
+
+function zl(zw) = btn_tip_z - zw;
+
+// Ribbon in the local XZ plane (z=0 at the head, +z toward the switch). Wide in Y.
+// Hull of two boxes keeps a 45° run printable and joins the ends.
+module btn_ribbon(x0, z0, x1, z1, y, w, t=0.40) {
+  hull() {
+    translate([x0, y, z0]) cube([t, w, t], center=true);
+    translate([x1, y, z1]) cube([t, w, t], center=true);
+  }
+}
+
+module btn_leaf(y, pull) {
+  w = 0.90;
+  // Relaxed path, 45° in the print. pull moves the free end toward the axis when seated.
+  // Both leaves are on the partition side. The panel-side lip is cut away by the FPC pocket.
+  x0 = 1.50; z0 = zl(24.30);
+  x1 = 2.65; z1 = zl(23.15);
+  x2 = 1.50; z2 = zl(22.00);
+  x3 = 2.30; z3 = zl(21.20);
+  catch_z = zl(btn_shelf_z + btn_travel);
+  btn_ribbon(x0, z0, x1 - pull, z1, y, w);
+  translate([-pull, 0, 0]) {
+    btn_ribbon(x1, z1, x2, z2, y, w);
+    btn_ribbon(x2, z2, x3, z3, y, w);
+    // Arm stops short of the catch face so the hull does not cross into the travel.
+    btn_ribbon(x1, z1, 3.05, catch_z - 0.32, y, w);
+    // Board face of the catch is the hard stop. It sits 0.55 mm off the lip when seated.
+    translate([2.86, y - w/2, catch_z - 0.38]) cube([0.52, w, 0.32]);
+  }
+}
+
+module cap(pull=0, drop=0) {
+  cone0 = zl(Z_in + (btn_hole_d - btn_head_d)/2);
+  cone_h = (btn_cone_d - btn_head_d)/2;
+  cylinder(d=btn_head_d, h=cone0);
+  translate([0, 0, cone0]) cylinder(d1=btn_head_d, d2=btn_cone_d, h=cone_h);
+  translate([0, 0, cone0 + cone_h - 0.12]) cylinder(d=4.4, h=0.55);
+  translate([0, 0, cone0 + cone_h - 0.02]) cylinder(d=btn_stem_d, h=zl(btn_stem_z) - (cone0 + cone_h - 0.02));
+  for (s = [-1, 1]) btn_leaf(s*0.80, pull);
+  btn_spring(pull, drop);
+}
+
+// Print (pull=0) is a 45° wall. Installed, the tip stays on the lip corner while the cap travels,
+// so the leaf is the seating spring. drop is compensated because cap_placed also shifts the body.
+module btn_spring(pull, drop) {
+  w = 0.70; t = 0.40;
+  for (s = [-1, 1]) {
+    y = s*0.80;
+    z0 = zl(24.40);
+    if (pull == 0)
+      btn_ribbon(1.50, z0, 2.40, z0 + 0.90, y, w, t);
+    else
+      btn_ribbon(1.50, z0, 2.70, zl(btn_shelf_z + 0.25) - drop, y, w, t);
+  }
+}
+
+// drop>0 is a press: the body moves toward the board, the spring tip stays on the lip.
+module cap_placed(pull=0, drop=0) {
+  for (b = btn)
+    translate([cx(b[0]), cy(b[1]), btn_tip_z - drop])
+      rotate([180, 0, 0])
+        cap(pull, drop);
+}
+
+// Face hole, upper bore, lip, and the lead-in from the tube mouth. The FPC pocket
+// removes the panel side of this; the lip that remains is on the partition side, under the barbs.
+module button_void() {
+  neck_h = 0.40;
+  lead_h = (btn_bore_d - btn_lip_d)/2;
+  ramp_h = (btn_bore_d - (btn_lip_d + 0.60))/2;
+  for (b = btn) translate([cx(b[0]), cy(b[1]), 0]) {
+    translate([0, 0, Z_in - 0.01]) cylinder(d=btn_hole_d, h=Z_out - Z_in + 2);
+    translate([0, 0, btn_shelf_z + ramp_h]) cylinder(d=btn_bore_d, h=Z_in - btn_shelf_z - ramp_h + 0.02);
+    translate([0, 0, btn_shelf_z]) cylinder(d1=btn_lip_d + 0.60, d2=btn_bore_d, h=ramp_h);
+    translate([0, 0, btn_shelf_z - neck_h]) cylinder(d=btn_lip_d, h=neck_h);
+    translate([0, 0, btn_shelf_z - neck_h - lead_h]) cylinder(d1=btn_bore_d, d2=btn_lip_d, h=lead_h);
+    translate([0, 0, Z_pcb_t + 3.5 - 0.02]) cylinder(d=btn_bore_d, h=btn_shelf_z - neck_h - lead_h - (Z_pcb_t + 3.5) + 0.06);
+  }
+}
 
 // ---------------- panel carrier ----------------
 // One PETG piece. Feet on the PCB, hooks up. The panel back lands at panel_gap.
@@ -379,18 +481,18 @@ else if(part=="shell_orange") flipP() inlay_orange();
 else if(part=="shell_pink") flipP() { light_pipe(); inlay_pink(); }
 else if(part=="shell") translate([0,H,Z_out]) rotate([180,0,0]) shell();   // print face-down
 else if(part=="carrier") carrier();
-else if(part=="caps") for(i=[0:2]) translate([i*10,0,0]) cap();
-else if(part=="assembly"){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); fpc(); color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); for(b=btn) color("orange") translate([cx(b[0]),cy(b[1]),sw_top]) cap(); }
-else if(part=="exploded"){ color("lightgray") backplate(); translate([0,0,22]){ pcb(); color("wheat") carrier(); epd(); fpc(); } translate([0,0,64]){ color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); } for(b=btn) color("orange") translate([cx(b[0]),cy(b[1]),sw_top+52]) cap(); }
-else if(part=="section") difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); fpc(); color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); for(b=btn) color("orange") translate([cx(b[0]),cy(b[1]),sw_top]) cap(); }
-  translate([-1,-1,-30]) cube([W+2, cy(44)+1, 80]); }   // cut at board y=44 (through panel, FPC, DOWN button)
-else if(part=="section_hooks") difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); fpc(); color("white") shell(false); for(b=btn) color("orange") translate([cx(b[0]),cy(b[1]),sw_top]) cap(); }
+else if(part=="caps") for(i=[0:2]) translate([i*14,0,0]) cap(0);
+else if(part=="assembly"){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); fpc(); color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); color("orange") cap_placed(btn_flare); }
+else if(part=="exploded"){ color("lightgray") backplate(); translate([0,0,22]){ pcb(); color("wheat") carrier(); epd(); fpc(); } translate([0,0,64]){ color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); color("orange") cap_placed(btn_flare); } }
+else if(part=="section") difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); fpc(); color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); color("orange") cap_placed(btn_flare); }
+  translate([-1,-1,-30]) cube([W+2, cy(40), 80]); }   // cut through the DOWN button centre (board y=40), the panel, and the FPC
+else if(part=="section_hooks") difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); fpc(); color("white") shell(false); color("orange") cap_placed(btn_flare); }
   translate([-1,-1,-30]) cube([W+2, cy(panel[1]+1.3)+1, 80]); }   // cut through the top hooks and the support pads
 else if(part=="section_j1") difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); color("white") shell(false); }
   translate([-1,-1,-30]) cube([W+2, cy(58)+1, 80]); }   // cut along the J1 pin row / C43 centre (board y=58)
 else if(part=="section_j1x") difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); color("white") shell(false); }
   translate([cx(term[0]),-1,-30]) cube([W, H+2, 80]); }   // cut across J1 + plug + wire bend (board x=70)
-else if(part=="section_airflow") difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); for(b=btn) color("orange") translate([cx(b[0]),cy(b[1]),sw_top]) cap(); }
+else if(part=="section_airflow") difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); color("orange") cap_placed(btn_flare); }
   translate([-1, cy(32), -30]) cube([W+2, H, 80]); }   // cut at board y=32, through the SHT40 and both zone ribs
 // rear clearance check: tallest rear parts must clear the backplate top (plate_t)
 assert(Z_pcb_b-bulk_h>plate_t+1, "C43 hits backplate");
@@ -399,6 +501,6 @@ assert(Z_pcb_b-plug_h>plate_t-plug_pocket+1, "J1 plug hits backplate");
 if(part=="plate"){
   translate([5,5,0]) translate([0,H,Z_out]) rotate([180,0,0]) shell();
   translate([5,H+12-(wall+clr),0]) backplate();
-  for(i=[0:2]) translate([200+ (i*12), 30, 0]) cap();
+  for(i=[0:2]) translate([168+ (i*14), 22, 0]) cap(0);
   translate([152, 168, -Z_pcb_t]) carrier();
 }

@@ -7,7 +7,9 @@
 #   OPENSCADPATH=case openscad -o back.stl -D 'part="none"' -D 'which="b"' scripts/case_fit_export.scad
 #   OPENSCADPATH=case openscad -o shell.stl -D 'part="none"' -D 'which="s"' scripts/case_fit_export.scad
 #   OPENSCADPATH=case openscad -o carrier.stl -D 'part="none"' -D 'which="c"' scripts/case_fit_export.scad
-# Run this script in the directory that contains back.stl, shell.stl, and carrier.stl.
+#   OPENSCADPATH=case openscad -o caps_seated.stl -D 'part="none"' -D 'which="k"' scripts/case_fit_export.scad
+#   OPENSCADPATH=case openscad -o caps_pressed.stl -D 'part="none"' -D 'which="kp"' scripts/case_fit_export.scad
+# Run this script in the directory that contains back.stl, shell.stl, carrier.stl, and the two cap meshes.
 # The fold and the carrier checks run without board.stl. The mesh sampling does not.
 import trimesh,numpy as np,sys,os,re,math
 P=dict(standoff_h=14.0,panel_gap=5.0)   # case standoff and panel gap
@@ -48,7 +50,7 @@ def box(name,bx0,by0,bx1,by1,z0,z1):
   m=trimesh.creation.box(extents=[X1-X0,Y1-Y0,z1-z0]); m.apply_translation([(X0+X1)/2,(Y0+Y1)/2,(z0+z1)/2]); return name,m
 def cyl(name,bx,by,r,z0,z1):
   X,Y=T(bx,by); m=trimesh.creation.cylinder(radius=r,height=z1-z0,sections=64); m.apply_translation([X,Y,(z0+z1)/2]); return name,m
-for req in ('back.stl','shell.stl','carrier.stl'):
+for req in ('back.stl','shell.stl','carrier.stl','caps_seated.stl','caps_pressed.stl'):
     if not os.path.exists(req):
         print('missing', req)
         sys.exit(1)
@@ -266,7 +268,84 @@ if in_bulge.any():
     carrier_fail=True
 else:
     print('carrier stays clear of the FPC bulge')
-if interfere or pcb_shell<-0.05 or pcb_back<-0.05 or carrier_fail:
+# Buttons. TS-1187A-B-A-B: H=1.5±0.05, drawing TRAVEL 0.2±0.1, spec table 0.25.
+# The stem is sized so a nominal board reaches 0.30 mm of stroke, and a thick board
+# (+0.16) plus a tall switch (+0.05) still has air at rest.
+SW_TRAVEL=0.30
+SW_H_TOL=0.05
+seated_caps=trimesh.load('caps_seated.stl')
+pressed_caps=trimesh.load('caps_pressed.stl')
+btn_fail=False
+def stem_tip(mesh, c):
+    v=mesh.vertices
+    d=np.hypot(v[:,0]-c[0], v[:,1]-c[1])
+    sel=v[d<1.2]
+    return float(sel[:,2].min())
+def reach_r(mesh, c, z0, z1):
+    v=mesh.vertices
+    m=(np.abs(v[:,1]-c[1])<2.6)&(v[:,0]>c[0]+1.5)&(v[:,2]>=z0)&(v[:,2]<=z1)
+    if not np.any(m): return 0.0
+    p=v[m]
+    return float(np.hypot(p[:,0]-c[0], p[:,1]-c[1]).max())
+print('buttons: gap is seated stem to the actuator; stroke is travel minus that gap')
+for yb in (30, 40, 50):
+    c=T(112, yb)
+    gap=stem_tip(seated_caps, c)-(Zt+1.5)
+    travel=stem_tip(seated_caps, c)-stem_tip(pressed_caps, c)
+    stroke=travel-gap
+    rest_hi=gap-pcb_tol-SW_H_TOL
+    print('  y=%g gap %5.2f travel %5.2f stroke %5.2f thick+tall rest %5.2f'%(yb, gap, travel, stroke, rest_hi))
+    if not (0.18<=gap<=0.32 and 0.50<=travel<=0.65 and stroke+1e-6>=SW_TRAVEL and rest_hi>0):
+        btn_fail=True
+        print('  BUTTON STROKE FAIL')
+    barb=reach_r(seated_caps, c, 23.6, 24.3)
+    print('  barb radius %5.2f (lip 3.15, bore 3.85)'%barb)
+    if not (3.15+0.08 < barb < 3.85-0.08):
+        btn_fail=True
+        print('  BARB REACH FAIL')
+# Lip still exists on the partition side after the FPC pocket. Neck is open.
+cxb,cyb=T(112,40)
+qshell=trimesh.proximity.ProximityQuery(shell)
+lip_d=float(qshell.signed_distance([[cxb+3.45, cyb, 23.20]])[0])
+neck_d=float(qshell.signed_distance([[cxb+1.6, cyb, 23.20]])[0])
+print('lip solid %+0.2f (want >0), neck open %+0.2f (want <0)'%(lip_d, neck_d))
+if lip_d<=0 or neck_d>=0:
+    btn_fail=True
+c_seat=mesh_clearance(seated_caps, shell, n=8000)
+c_press=mesh_clearance(pressed_caps, shell, n=8000)
+print('seated cap vs shell (cone kiss, near 0) %6.3f'%c_seat)
+print('pressed cap vs shell (lip kiss, near 0) %6.3f'%c_press)
+if c_seat<-0.08 or c_seat>0.10 or c_press<-0.08 or c_press>0.10:
+    btn_fail=True
+    print('BUTTON NOT SEATED ON BOTH STOPS')
+_,panel_m=box('panel',29.46,26.24,108.46,62.94,Zpb,Zpb+1.2)
+for name,mesh in ('seated',seated_caps),('pressed',pressed_caps):
+    c=mesh_clearance(mesh, panel_m, n=4000)
+    print('cap %s vs panel %6.2f'%(name, c))
+    if c<0.40:
+        btn_fail=True
+# Cover is 1.2 mm; the body box stops at 1.15 so it does not include the actuator.
+# Seated, the stem and the leaves stay 0.40 mm off that box. Pressed, the stem
+# ends on the cover (about 0.05 mm above this box). The leaves stay higher.
+sw_body=box('SW body',112-2.60,40-2.60,112+2.60,40+2.60,Zt,Zt+1.15)[1]
+sw_act=cyl('SW actuator',112,40,1.00,Zt+1.20,Zt+1.50)[1]
+for name,mesh,lim in (('seated',seated_caps,0.40),('pressed',pressed_caps,0.02)):
+    c=mesh_clearance(mesh, sw_body, n=3000)
+    print('cap %s vs switch body %6.2f (min %4.2f)'%(name, c, lim))
+    if c<lim:
+        btn_fail=True
+c_act=mesh_clearance(seated_caps, sw_act, n=2000)
+# A thick board and a tall switch both lift the actuator.
+sw_hi=sw_act.copy(); sw_hi.apply_translation([0,0,pcb_tol+SW_H_TOL])
+c_act_hi=mesh_clearance(seated_caps, sw_hi, n=2000)
+c_act_pr=mesh_clearance(pressed_caps, sw_act, n=2000)
+print('seated vs actuator %6.2f, vs tall+thick %6.2f, pressed %6.2f'%(c_act, c_act_hi, c_act_pr))
+# Stroke depth is the tip measurement above. Here, pressed should have reached the actuator
+# (the end cap sits on it) and the seated stem should still clear a tall switch on a thick board.
+if c_act<0.10 or c_act_hi<=0 or c_act_pr>0.08:
+    btn_fail=True
+    print('ACTUATOR GAP FAIL')
+if interfere or pcb_shell<-0.05 or pcb_back<-0.05 or carrier_fail or btn_fail:
     print('INTERFERE')
     sys.exit(1)
 print('FIT OK')
