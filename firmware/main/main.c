@@ -53,6 +53,7 @@ static const char *kTag = "app";
 
 static bool s_nvsOk;            /* settings can be persisted */
 static bool s_safeMode;         /* boot loop detected: outputs held off */
+static bool s_clearNotSaved;    /* clear did not commit: banner says so, stay in safe mode */
 static bool s_outputsOk = true; /* HvacOutputsInit() succeeded */
 
 /* on-device menu (pure state machine in components/ui/menu.c) */
@@ -464,6 +465,8 @@ static MenuCtx BuildMenuCtx(const Persist *pP, U64 now)
     };
 }
 
+/* ---------------- boot-loop guard ---------------- */
+
 /**
  * Read/modify the boot-loop counter (NVS namespace "boot", key "n").
  *
@@ -478,15 +481,17 @@ static MenuCtx BuildMenuCtx(const Persist *pP, U64 now)
  *
  * `op` is 1 = increment (saturating), 0 = clear, -1 = read only, 0x100|n = set to n.
  *
- * Returns the counter after the operation. Returns -1 when NVS cannot be opened or a write does
- * not commit, so a successful clear (0) is distinct from NVS being unavailable.
+ * Returns the counter after the operation. Increment, read and set return that count even when
+ * the write does not commit, so a boot that has already been counted still enters safe mode.
+ * A clear returns 0 when the write commits and -1 when NVS cannot be opened or the write does
+ * not commit. Opening NVS failing on any other op returns 0.
  */
 static int BootCountRw(int op)
 {
     nvs_handle_t h;
     U8 n = 0;
     if (!s_nvsOk || nvs_open("boot", NVS_READWRITE, &h) != ESP_OK)
-        return -1;
+        return op == 0 ? -1 : 0;
     if (nvs_get_u8(h, "n", &n) != ESP_OK)
         n = 0;
     if (op >= 0x100)
@@ -501,10 +506,12 @@ static int BootCountRw(int op)
         if (e == ESP_OK)
             e = nvs_commit(h);
         nvs_close(h);
-        return e == ESP_OK ? (int)n : -1;
+        if (op == 0 && e != ESP_OK)
+            return -1;
+        return (int)n;
     }
     nvs_close(h);
-    return n;
+    return (int)n;
 }
 
 /**
@@ -595,11 +602,17 @@ static bool ApplyMenuAction(const MenuAction *pA)
     {
         int n = BootCountRw(0);
         if (n == 0)
+        {
             ESP_LOGW(kTag, "EVT safe mode: cleared from the menu");
+            SaveSettings(true);
+            esp_restart();
+        }
         else
+        {
+            /* Stay up. The banner and the log say the clear was not saved. */
             ESP_LOGW(kTag, "EVT safe mode: clear not saved");
-        SaveSettings(true);
-        esp_restart();
+            s_clearNotSaved = true;
+        }
         break;
     }
     default:
@@ -863,7 +876,7 @@ static void AppTask(void *pArg)
         }
         else if (s_safeMode)
         {
-            dm.pBanner = "SAFE MODE: repeated resets";
+            dm.pBanner = s_clearNotSaved ? "SAFE MODE: clear not saved" : "SAFE MODE: repeated resets";
         }
         else if (outFault)
         {
@@ -1017,12 +1030,10 @@ void app_main(void)
 
     esp_reset_reason_t rr = esp_reset_reason();
     int boots = BootCountRw(rr == ESP_RST_SW ? -1 : 1);
-    if (boots < 0)
-        boots = 0; /* NVS unavailable: do not treat the failure as a full counter */
     EVT("EVT boot reason=%d count=%u", (int)rr, (unsigned)boots);
     s_safeMode = boots >= BOOT_LOOP_LIMIT;
     if (s_safeMode)
-        EVT("EVT safe mode: %u resets without %d min of stable uptime", boots, BOOT_STABLE_MS / 60000);
+        EVT("EVT safe mode: %u resets without %d min of stable uptime", (unsigned)boots, BOOT_STABLE_MS / 60000);
 
     s_mtx = xSemaphoreCreateMutex();
     s_btnQ = xQueueCreate(16, sizeof(BtnMsg));

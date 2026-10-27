@@ -83,10 +83,13 @@ static void HomeKeysPassThrough(void)
 /** The main list wraps both ways, and Back returns home with a full refresh and no action. */
 static void NavigationWrapsAndBack(void)
 {
+    MenuView v;
     Reset();
     Sel();
     CHECK_EQ(s_m.cursor, kMiMode);
     Up(); /* wraps to Back; Clear safe mode is not listed */
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK_EQ(v.sel, v.nRows - 1);
     CHECK_EQ(s_m.cursor, kMiBack);
     Down();
     CHECK_EQ(s_m.cursor, kMiMode);

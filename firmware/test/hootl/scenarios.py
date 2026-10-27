@@ -1302,6 +1302,35 @@ def clear_from_menu(s):
     return check
 
 
+@scenario("bootloop_fifth_write_fail_still_safe_mode", until=5 * MIN, max_boots=6)
+def fifth_write_fails(s):
+    """The fifth counted boot still enters safe mode when that NVS commit fails. The count is 5."""
+    heating(s)
+    enter_safe_mode(s)
+    s.set(119 * SEC, "nvs.commit_fail", 1)
+    def check(r):
+        r.check(counts(r) == [1, 2, 3, 4, 5], f"counts {counts(r)}")
+        t = r.expect(r"EVT safe mode: 5 resets", after=r.boot_times[4])
+        r.check(r.high_ms(W, t, 5 * MIN) == 0, "no heat in safe mode")
+    return check
+
+
+@scenario("bootloop_clear_commit_fail_stays", until=4 * MIN, max_boots=6)
+def clear_commit_fail(s):
+    """A clear whose NVS commit fails does not restart. The log says it was not saved, and the count stays at 5."""
+    s.temp(0, 2100)
+    enter_safe_mode(s)
+    opened = open_clear_confirm(s, 130 * SEC)
+    s.set(opened + 500, "nvs.commit_fail", 1)
+    s.press(opened + SEC, "mode", 200)
+    def check(r):
+        r.expect(r"EVT safe mode: clear not saved", after=r.boot_times[4])
+        r.never(r"EVT safe mode: cleared from the menu")
+        r.check(r.boots == 5, f"{r.boots} boots")
+        r.check(counts(r) == [1, 2, 3, 4, 5], f"counts {counts(r)}")
+    return check
+
+
 BOOT_LIMIT = 5
 
 
