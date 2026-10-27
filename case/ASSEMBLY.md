@@ -1,8 +1,8 @@
 # Assembly
 
-The case is a 147 × 71 × 26.8 mm PETG shell and backplate. The board, the panel carrier, and the panel are one subassembly. The shell is a cover: it clamps the board and snaps onto the backplate, and it does not hold the panel.
+The case is a 147 × 71 × 26.4 mm PETG shell, backplate, and panel carrier. The board, the carrier, and the panel are one subassembly. The shell is a cover: it clamps the board and snaps onto the backplate, and it does not hold the panel.
 
-Coordinates below are board coordinates unless noted: origin at the board's top-left, x to the right, y down, z up from the PCB top. Case z is out from the wall, with the wall at z = 0.
+Coordinates below are board coordinates unless noted: origin at the board's top-left, x to the right, y down, z up from the PCB top. Case z is out from the wall, with the wall at z = 0. The outer depth, 26.4 mm, is the shell front (`Z_out`).
 
 ## What has to fit
 
@@ -19,126 +19,127 @@ The mechanical drawing (datasheet page 7) dimensions the tail:
 
 Pin 1 is 23.5 mm from the tail edge that is nearest pin 24, and that edge is 11.50 mm from the outline. That lands pad 1 at board y = 49.74, which is where the footprint puts it. The contacts are on the display-face side of the tail. Folded 180° under the panel, they face the board.
 
-J4 is a Jushuo AFC07-S24FCA-00 (LCSC C262567). The drawing title is "0.5Pitch H=2.0 FPC ZIF R/A Type3 Lower SMT CONN": right-angle, 2.0 mm high, bottom contact, flip latch. The latch is a separate black part and opens upward, away from the PCB. DIM_B, the body depth, is 3.90 mm. For 24 contacts the drawing's four length columns are 11.50, 12.60, 16.50, and 17.60 mm. The side view also shows 2.70, 2.20, 0.50 ± 0.05, 0.30 ± 0.03, and R0.20. The footprint's silk front face is at board x = 103.77, and the mouth faces +x, so the tail enters from the right. The recommended FPC thickness on the drawing is 0.30 ± 0.03 mm, which matches the panel tail.
+J4 is a Jushuo AFC07-S24FCA-00 (LCSC C262567). It is a right-angle, 2.0 mm high, bottom-contact FPC connector with a horizontal slide lock, the "drawer" style. The drawing title says "0.5Pitch H=2.0 FPC ZIF R/A Type3 Lower SMT CONN". The mechanism view is a slider, not a flip latch: the slider-open dimension is 0.85 mm, sticking out on the cable side of the housing. DIM_B, the body depth, is 3.90 mm. For 24 contacts the drawing's four length columns are 11.50, 12.60, 16.50, and 17.60 mm. The side view also shows 2.70, 2.20, 0.50 ± 0.05, 0.30 ± 0.03, and R0.20. R0.20 is a housing fillet. The footprint's silk front face is at board x = 103.77, and the mouth faces +x, so the tail enters from the right. The recommended FPC thickness on the drawing is 0.30 ± 0.03 mm, which matches the panel tail. The same drawing recommends a contact length of 3.0 mm minimum.
 
-The side view does not label a single "FPC centerline" height. The fold below uses 0.50 mm for the lower leg, because 0.50 ± 0.05 is the small vertical callout next to the 0.30 mm FPC thickness. A later section shows how far the insertion moves if that callout is the wrong one.
+The side view does not label a single "FPC centerline" height. The fold below uses 0.50 mm for the lower leg, because 0.50 ± 0.05 is the small vertical callout next to the 0.30 mm FPC thickness. That callout is not labeled as the centerline. A later section shows how far the insertion moves if the leg is 0.30 mm or 0.70 mm instead.
 
-The optos under the left of the panel (U6, U7, U8, MOC3063S) are about 4 mm tall, so the glass has to clear them. The carrier holds the panel back 5.0 mm above the PCB top. The allowed band is 4.6–5.2 mm.
+The optos under the left of the panel (U6, U7, U8, MOC3063S) are modeled at 4.0 mm tall, so the glass has to clear them. The carrier holds the panel back 4.6 mm above the PCB top.
 
 ## The fold
 
-The free tail starts at the outline and enters the bend there. There is no straight run on the glass. The lower leg runs left from the bend, level at 0.50 mm, into the mouth.
+The free tail starts at the outline, in the plane of the glass back, and enters the bend there. There is no straight run on the glass. The lower leg runs left from the bend, level at 0.50 mm, into the mouth.
 
-At a 5.0 mm gap and a 0.50 mm lower leg:
+At a 4.6 mm gap and a 0.50 mm lower leg:
 
-- bend diameter 4.50 mm, centerline radius 2.25 mm
-- arc length π × 2.25 = 7.07 mm
+- bend diameter 4.10 mm, centerline radius 2.05 mm
+- arc length π × 2.05 = 6.44 mm
 - straight run from the panel edge (x = 108.46) to the mouth (x = 103.77) = 4.69 mm
-- inserted length 14.40 − 7.07 − 4.69 = 2.64 mm
+- inserted length 14.40 − 6.44 − 4.69 = 3.27 mm
 
-The outer fiber of the bend bulges about 2.4 mm past the panel edge, to board x ≈ 110.9. The shell pocket on that side is 4 mm deep, out to x = 112.46, and it is the same pocket that already clears the button tubes.
+The outer fiber of the bend bulges about R + 0.15 = 2.20 mm past the panel edge, to board x ≈ 110.66. The shell pocket on that side is 4 mm deep, out to x = 112.46.
 
-Raising the panel lengthens only the semicircle. The pull-out is π/2 ≈ 1.57 mm of tail per millimetre of extra gap, and it does not depend on the lower-leg height. Across the allowed band, with the lower leg at 0.50 mm:
+Raising the panel lengthens only the semicircle. The pull-out is π/2 ≈ 1.57 mm of tail per millimetre of extra gap, and it does not depend on the lower-leg height. `scripts/case_fit.py` prints the rows below and fails unless the 0.50 mm leg stays at or above 3.0 mm both at 4.6 mm and at a carrier printed 0.10 mm tall (gap 4.70 mm, inserted 3.11 mm). The other legs are printed and are not all gated.
 
-| Panel gap | Radius | Inserted |
-|---|---|---|
-| 4.6 mm | 2.05 mm | 3.27 mm |
-| 5.0 mm | 2.25 mm | 2.64 mm |
-| 5.2 mm | 2.35 mm | 2.33 mm |
+| Lower leg | Gap 4.50 mm | Gap 4.60 mm | Gap 4.70 mm |
+|---|---|---|---|
+| 0.30 mm | 3.11 mm | 2.96 mm | 2.80 mm |
+| 0.50 mm | 3.43 mm | 3.27 mm | 3.11 mm |
+| 0.70 mm | 3.74 mm | 3.58 mm | 3.43 mm |
 
-The contact zone is 3.66 mm long, so 2.3 mm of insertion does not bury the stiffener to its end. The terminals sit back from the mouth, and 2.3 mm still reaches them, but 5.2 mm is the tight end of the band. The carrier is built at 5.0 mm and does not stack up on top of the board tolerance: a thicker board lifts the board, the carrier, and the panel together.
+4.6 mm is the design gap, not 4.7 mm. At 4.7 mm the nominal 0.50 mm leg inserts 3.11 mm, and a carrier that prints 0.10 mm tall drops that to 2.96 mm, under the drawing's 3.0 mm. At 4.6 mm the same tall print inserts 3.11 mm. A thicker board does not change the gap: it lifts the board, the carrier, and the panel together. Carrier print height does.
 
-If the 0.50 mm callout is not the slot, the insertion at a 5.0 mm gap is:
+A 0.30 mm leg at the design gap inserts 2.96 mm, 0.04 mm under the drawing. That is the tail lying on the soldermask. The 0.50 mm figure is an unlabeled side-view number, so this row is the open question on the fold.
 
-| Lower leg | Inserted at 5.0 mm | Inserted at 5.2 mm |
-|---|---|---|
-| 0.30 mm (tail lying on the soldermask) | 2.33 mm | 2.01 mm |
-| 0.50 mm | 2.64 mm | 2.33 mm |
-| 0.70 mm (the radius that matches the older 2.15 mm note) | 2.96 mm | 2.64 mm |
+Neither the GDEY drawing in the part notes nor the Jushuo drawing states which face the tail leaves, and neither states a minimum bend radius. This model starts the free length at the outline in the plane of the glass back. If the tail instead left flush with the glass front, the bend would also climb the 1.2 mm glass and the inserted length at this gap would be 1.38 mm, which is under 3.0 mm. A centerline 0.15 mm off the glass back (half the 0.30 mm tail) is inside the 0.50 mm leg at the nominal gap and fails the tall-print row. The Jushuo R0.20 is the housing fillet, not a tail radius.
 
-`scripts/case_fit.py` prints these and fails if any of them drops to 2.0 mm or below.
+The slider has to be shut before the glass comes down. The body is 2.0 mm high and the glass back is at 4.6 mm, so 2.6 mm remains above the housing once the panel is in place. The mouth is at x = 103.77 and the glass edge is at x = 108.46, so the 0.85 mm tab sits about 3.8 mm inboard of the glass, in a tunnel 4.69 mm deep. A finger or a tool does not reach it there. On the bench the panel is held up, the tail is slid in from the right, and the slider is pushed shut toward the mouth. Open it by moving the slider away from the mouth, toward the cable. The drawing's open pose is that 0.85 mm tab on the cable side. The tab is small; a small flat tool is the reliable way to move it. The EasyEDA model on the footprint is the same part at the same silk line, and it is not a measured copy of the drawing.
 
-The latch has to be closed before the glass comes down. The body is 2.0 mm high and the glass back is at 5.0 mm, so about 3 mm remains above the housing once the panel is in place. That is not room to flip the latch with the panel already seated. On the bench the latch is open while the tail goes in, and it is closed before the panel is pressed onto the carrier.
+## Why the panel is on a carrier
 
-## Why the panel cannot live in the shell
+The mouth is under the panel. With the glass seated, the shell wall and the glass both cover the slider, so the tail cannot be plugged and the slider cannot be moved after the shell is on. The window is smaller than the panel, so the glass cannot drop in through the front either. The carrier is the piece that makes a step where the tail is in sight: mate J4 with the panel in the hand, then press the glass onto the hooks.
 
-A shell that holds the panel, and a backplate that holds the board, leaves no step where the tail can be inserted and the latch closed.
-
-The mouth is under the panel: the silk face is at x = 103.77 and the glass edge is at x = 108.46. Once the glass is in the shell, the shell wall and the glass both cover the latch. The tail cannot be plugged in, and the latch cannot be closed, after the shell is on.
-
-The other order fails too. With the tail already plugged, the glass is 5 mm above the board and tied to it. The shell would have to come down over that stack. The window is smaller than the panel, so the glass cannot drop in through the front. The old shell clips were 1.2 mm thick and about 2 mm tall, with a 0.7 mm lip, two on each long edge. A beam that short and that thick does not spread under a thumb; a rough cantilever puts each clip near 350 N, on the order of 35 kg. They were meant to let the glass snap in from the open back of the shell, not to pass over a panel that is already on the board. Lowering the shell onto a plugged panel either breaks the clips or pulls the tail.
-
-## Alternatives
-
-Two other ways to get the tail in were set aside.
-
-A hinged carrier, folded like a book onto the board after the tail is plugged, needs the hinge within a few millimetres of J4, because the free tail is only 14.40 mm. That hinge would sit in the button column and against the sensor duct. A PETG living hinge also cracks after a few folds, and this case has to come apart for service.
-
-A shell that opens from the side cannot slide. The backplate ribs, the mated 15EDGK plug, and the four locating pins all stand up in the rear cavity, and a side opening would cut the hot-zone curtain or the sensor partition. Those walls are the airflow design: hot zone on the left, quiet middle zone over the wire hole, sensor duct on the right.
-
-The carrier avoids both. The tail is mated on the bench, in the open, and the shell never touches the glass.
+The shell never touches the glass. Four hooks on the carrier hold it.
 
 ## The carrier
 
-The carrier is one PETG piece. It sits on the PCB, holds the panel back at 5.0 mm, and locates on the board edges rather than on the standoff pins. The pins are Ø3.9 and stick through the board, and the shell's clamp posts land on the same holes, so the carrier stays clear of them.
+The carrier is one PETG piece. It sits on the PCB, holds the panel back at 4.6 mm, and locates on the board edges rather than on the standoff pins. The pins are Ø3.9 and stick through the board, and the shell's clamp posts land on the same holes, so the carrier stays clear of them.
 
 Four hooks, two on each long edge, and none on the cable end:
 
 - top edge, x 47.0–53.0 and x 84.6–90.6
 - bottom edge, x 49.6–55.6 and x 76.0–82.0
 
-Each hook is a 0.8 mm beam (two perimeters of a 0.4 mm nozzle), 0.25 mm off the glass, about 6 mm tall. A 0.42 mm ledge sits on the glass face, 0.30 mm proud of it, with a ramp on the outside so the glass spreads the beam as it is pressed in. A beam this tall and this thin is a fingernail job, not a press: on the order of 4 N per hook to spread the ledge. The same ledge is what a fingernail lifts to take the panel off.
+Each hook is a 0.80 mm beam (two perimeters of a 0.4 mm nozzle), 6 mm wide, standing 0.25 mm off the glass. Only the bottom 0.40 mm of the beam, the foot, bridges to the pad. The pad is inboard of the glass edge, so it does not fill the beam. The free length is the glass front minus that foot:
 
-The ledges stand proud of the glass, so the shell has a pocket over each hook, 0.85 mm deep. The rest of the inner face is recessed 0.36 mm over the panel, which keeps a thick board (the +0.16 mm end of the JLCPCB tolerance) from pressing the glass into the shell. The recess stops at board x = 107.55. The button tubes are Ø8.6 at x = 112, so they already occupy the last 0.9 mm of the outline, and cutting the recess through them would leave the tube walls loose. The window chamfer starts 0.40 mm behind the inner face, so the 0.36 mm recess stays in front of it.
+L = 24.4 − (18.6 + 0.40) = 5.40 mm
+
+From the solder mask (z = 18.6) to the glass front (z = 24.4) is 5.8 mm. A foot has to sit in that span, so a 5.9 mm free beam does not fit above the board. The ledge crosses the glass by 0.32 mm, which is the deflection, and the shelf on the glass face is 0.25 mm tall. Above the shelf a lead-in rises 0.32 mm while it steps back 0.32 mm, so the lead-in is 45°. With E = 1.8 GPa,
+
+- strain ε = 1.5 × 0.80 × 0.32 / 5.40² = 1.32%
+- force F = 3 E I δ / L³ = 2.81 N per hook, I = 6 × 0.80³ / 12
+
+`scripts/case_fit.py` recomputes both and fails if the strain reaches 2% or the force reaches 8 N. It also probes the mesh: the beam is solid, the 0.25 mm gap beside it is air, and the foot is solid. 2.8 N is a firm finger on the lead-in. Taking the panel off is the same load, with a small flat tool under the lead-in of one edge. The shelf is 0.25 mm tall, so the tool is what finds it.
+
+The ledges stand proud of the glass, so the shell has a pocket over each hook, 1.10 mm deep. The rest of the inner face is recessed 0.36 mm over the panel, which keeps a thick board (the +0.16 mm end of the JLCPCB tolerance) from pressing the glass into the shell. The recess stops at board x = 107.55. The button tubes are Ø8.6 at x = 112, so they occupy the last of the outline, and cutting the recess through them would leave the tube walls loose. The window chamfer starts 0.40 mm behind the inner face, so the 0.36 mm recess stays in front of it.
 
 Under each hook a pad rises from the PCB to the panel back. The right-hand top pad also bridges across to the column at x 76–82, under the glass edge and past the ESP32 module (the module ends at y = 25.49, the pad starts at y = 25.99). Nothing in the carrier crosses the optos, L1, or the FPC bulge. The path between the top hooks and the bottom rail jogs east around C42, narrows to 0.85 mm to pass between the two C43 leads (x = 51.50 and x = 55.00), and narrows again to pass to the right of J1 pin 5 (x = 77.00).
 
-The piece locates on two edges. A fence on the left, 0.25 mm off the board edge, and a fence on the bottom edge do the same job. Short ties join each fence to the rail on the board so a 0.4 mm nozzle does not weld the fence to the rail and eat the clearance. The bottom rail is the spine that makes the hooks, the fences, and the columns one solid.
+The piece locates on two edges. A fence on the left, 0.25 mm off the board edge, and a fence on the bottom edge do the same job. Short ties join each fence to the rail on the board so a 0.4 mm nozzle does not weld the fence to the rail and eat the clearance. The bottom rail is the spine that makes the hooks, the fences, and the columns one solid. At the two bottom hooks the rail is only foot-height (0.40 mm) where it meets the beam, and the tall rail stops inboard of the glass edge, so the beam stays free.
 
-That rail has to cross the front curtain, which is the wall between the hot zone and the panel at board x 27.7–29.0. The curtain floor is 1.1 mm above the PCB. For 1 mm of y at the board's bottom edge the curtain is cut up to 1.55 mm, and the rail through that slot is 1.00 mm tall. The remaining crack is about 0.55 mm high (about 0.39 mm if the board is thick) and well under 1 mm², smaller than the ~1.3 mm² leak already left where the rear rib and the front partition do not line up. The rail plugs the rest of the notch, so the curtain still separates the zones.
+That rail crosses the front curtain, which is the wall between the hot zone and the panel at board x 27.7–29.0. The curtain floor is 1.1 mm above the PCB. For 1 mm of y at the board's bottom edge the curtain is cut up to 1.55 mm, and the rail through that slot is 1.00 mm tall. The remaining crack is about 0.55 mm high (about 0.39 mm if the board is thick) and well under 1 mm², smaller than the ~1.3 mm² leak where the rear rib and the front partition do not line up. The rail plugs the rest of the notch, so the curtain separates the zones.
+
+In the print the hook shelf is a horizontal lip 0.57 mm deep (the 0.25 mm air gap plus the 0.32 mm ledge). The lead-in above it is 45°. The lip is short. A profile that supports every overhang supports this lip too.
 
 ## Buttons
 
-UP, DOWN, and MODE are the same three holes as before, at board (112, 30), (112, 40), and (112, 50). The pitch is 10 mm and the guide tubes stay Ø8.6, so the front partition still overlaps the tube wall and the recess in the face still stops at x = 107.55.
+UP, DOWN, and MODE are at board (112, 30), (112, 40), and (112, 50). The pitch is 10 mm and the guide tubes are Ø8.6, so the front partition overlaps the tube wall and the recess in the face stops at x = 107.55.
 
 The switch is a TS-1187A-B-A-B. Height code A is 1.5 ± 0.05 mm, which is how tall the actuator stands, not how far it moves. The drawing calls the travel 0.2 ± 0.1 mm and the spec table says 0.25 mm. Force code B is 160 gf. The actuator is Ø2.0 and the body is 5.1 mm square, with the cover at 1.2 mm. The stem is Ø1.6, so it meets the actuator and not the cover.
 
-Each cap is captive in the face. A Ø4.70 head passes through the Ø5.0 hole with 0.15 mm to spare. Behind the hole a 45° cone, opening to Ø6.0, seats on the inner corner of the hole, so the cap cannot leave through the front. Two leaves on the partition side of the stem carry a catch. The catch sits behind a lip in the tube (the lip's hole is Ø6.3, the bore around it is Ø7.7). The FPC pocket already removes the panel side of each tube, which is why the leaves face the partition, where the lip is still there. Seated, the catch is 0.55 mm off the lip. That is the travel. At the end of it the catch meets the lip and stops. The cone is the other stop. A cap in the shell cannot fall out of the front, and it cannot fall out of the back when the shell is lifted off the board.
+Each cap is captive in the face. A Ø4.70 head passes through the Ø5.0 hole with 0.15 mm to spare. Behind the hole a cone opens to Ø6.0 at 65° from horizontal and meets the inner corner of the hole, so the cap cannot leave through the front. One leaf on the partition side of the stem carries the catch. The catch sits behind a lip in the tube (the lip's hole is Ø6.3, the bore around it is Ø7.7). The FPC pocket removes the panel side of each tube, which is why the leaf faces the partition, where the lip is present. Two leaves of this length do not fit in that bore on the partition side.
 
-The stem is 0.25 mm above the actuator when the cone is seated on a nominal 1.6 mm board. The 0.55 mm travel therefore puts 0.30 mm of stroke into the switch, which covers the drawing's long end (0.30 mm) and the 0.25 mm in the spec table. A thick board (+0.16 mm) and a tall switch (+0.05 mm) together lift the actuator by 0.21 mm, which still leaves about 0.04 mm of air, so the switch is not held closed. A thin board gets less stroke. The switch's own cover is the stop inside the part; the lip is the stop in the plastic, 0.55 mm from the seated cone.
+The leaf is a straight vertical wall, 0.40 mm thick and 4.50 mm long. A rib clamps the first 0.15 mm, so the free length is 4.35 mm. The barb at the free end stands 0.30 mm past the lip and has to bend that far in x to pass. With the rectangular-beam formula ε = 1.5 t δ / L²,
 
-The leaves are printed 0.30 mm further out than they sit. Pushing the cap in flexes them past the lip, and they spring back behind it. A second pair of 45° leaves bears on the lip corner and holds the cone in the hole, so the cap does not rattle between the two stops. Print the caps head-down. The leaves are vertical walls, 0.40 mm thick. The catch is a 0.32 mm flat on a 45° arm, and the lip in the shell is a 45° lead-in plus a 0.40 mm shelf, so neither part needs support. The head is on the bed, and the cone widens at 45° above it.
+ε = 1.5 × 0.40 × 0.30 / 4.35² = 0.95%
+
+`scripts/case_fit.py` recomputes that and fails if the free length is under 4 mm or the strain reaches 2%. The pressed-catch check is the barb face against the lip, and that face kisses the lip (clearance 0). The seated cone kisses the hole corner.
+
+There is no second spring. A leaf that stayed on the lip through the whole 1.20 mm of travel would be several times this strain. The cap can move the full 1.20 mm between the cone and the lip. The switch's own 160 gf is what pushes it back out, and only after the stem has crossed the gap. Off the board, the cap rattles. It cannot fall out of the front, and it cannot fall out of the back.
+
+The shell is fixed to the backplate. The clamp posts are cylinders that start at z = Z_pcb_t + 0.1, 0.1 mm of air above a nominal board, so they do not make the shell follow the board. Board thickness stays in the stack. The snap windows run z 2.2–4.2 and the bumps are about 2.3–4.1, so a shell that is not seated in the middle of the window has about ±0.1 mm of extra play. That play is not in the numbers below.
+
+Nominal gap (seated stem to the actuator) is 0.48 mm. Nominal travel (cone on the hole, to the catch on the lip) is 1.20 mm. Nominal plastic stroke is 0.72 mm. The switch itself only travels about 0.25 mm, and its cover is the stop a finger feels. The lip is further along, so the pressed mesh is past the cover: mashing past the click loads the cover until the lip. The fit script allows the stem to pass the actuator in that pose.
+
+The tolerance check is a uniform Monte Carlo, N = 200000, seed 1, four terms: printer z ±0.10 mm on the gap, an independent ±0.10 mm on the travel (the cap and the shell are separate prints), standoff ±0.15 mm, and board ±0.16 mm. At these nominals it reports P(gap ≤ 0) = 0%, P(stroke < 0.20 mm) = 0%, worst-case gap 0.07 mm, worst-case stroke 0.21 mm. The script fails if either probability is over 1% / 2% or the worst stroke is under 0.20 mm. A normal model that drops the board term and treats the remaining ± as 1σ is printed beside it and is not the gate. The review's 6.6% and 29.7% do not fall out of these ± values as either uniforms or matching 1σ normals, so the gate is this four-term uniform stack.
+
+Print the caps head-down, face on the bed. The cone, the barb underside, and the root rib are 65° from horizontal. PrusaSlicer measures its overhang threshold from the horizontal and skips faces steeper than the threshold, so those three are inside a 60° threshold. The free span of the leaf is not. It is a horizontal bridge about 4.1 mm long and 0.40 mm wide (1.64 mm²), one extrusion. That face is 0°, so every threshold from 30° to 60° supports it unless the slicer treats it as a bridge and "Don't support bridges" is on. PrusaSlicer was not re-run on this shape. The 3MF leaves supports off, which is the right setting only if the printer bridges that one wall.
 
 ## Build order
-
-Every step is done with the connector, the pins, or the snaps in sight. Nothing is inserted blind.
 
 1. Screw the backplate to the wall. Four drywall-anchor screws, pan heads in the recesses at the four anchor points. The board is not on the plate yet, so the heads are reachable. The lip, the snap bumps, the ribs, and the standoffs face out of the wall.
 
 2. Pull the cable through the centred 25 × 20 mm hole. Leave enough slack to mate the plug in the hand.
 
-3. On the bench, board component-side up, latch open. Fold the tail 180° under the panel, contacts down, and slide it into J4 from the right until it stops. Close the latch with a fingernail. The panel is not down yet, so the latch is clear of the glass.
+3. On the bench, board component-side up, panel held up off the carrier. Fold the tail 180° under the panel, contacts down, and slide it into J4 from the right until it stops. Push the slider shut toward the mouth with a small flat tool. The 0.85 mm tab is the part that moves. The glass is not down yet, which is the only pose in which the tab is reachable.
 
-4. Set the carrier on the board. The left fence and the bottom fence drop onto the board edges; the pads sit on the soldermask. Press the panel down onto the four pads until the ledges click. The panel back is then 5.0 mm above the PCB. This is the subassembly: board, carrier, panel, tail.
+4. Set the carrier on the board. The left fence and the bottom fence drop onto the board edges; the pads sit on the soldermask. Press the panel down onto the four pads until the ledges click. Each hook is about 2.8 N. The panel back is then 4.6 mm above the PCB. This is the subassembly: board, carrier, panel, tail.
 
-5. Mate the 15EDGK plug onto J1 while the board is still in the hand. The plug faces the wire hole. Do this in sight, not against the wall.
+5. Mate the 15EDGK plug onto J1 while the board is in the hand. The plug faces the wire hole.
 
 6. Set the subassembly onto the four locating pins. Feed the wire loop back through the hole as the board goes down. The pins stop the board in x and y. The plug and C43 are in the space the standoffs leave above the plate.
 
-7. Snap the three button caps into the shell from the inside, before the shell goes near the board. Lay the shell face-down, push each head through its hole, and press until the cone seats and the catches click behind the lip. The caps stay in the shell from here on, including while it is tilted or carried. Lower the shell over the stack. It slides onto the backplate lip. The clamp posts land around the four mounting holes and press the board onto the standoffs. The stems come down onto the three actuators. Four bumps on the lip click into the snap windows. There are no panel clips to clear.
+7. Snap the three button caps into the shell from the inside, before the shell goes near the board. Lay the shell face-down, push each head through its hole, and press until the cone seats and the barb clicks behind the lip. The barb bends 0.30 mm to pass. The caps stay in the shell from here on. They can rattle between the cone and the lip. Lower the shell over the stack. It slides onto the backplate lip. The clamp posts land around the four mounting holes and press the board onto the standoffs. The stems come down onto the three actuators with the 0.48 mm gap. Four bumps on the lip click into the snap windows.
 
-The light pipe, the RESET pinhole, the window, and the vents are all in the shell and do not depend on the carrier. The three airflow zones are unchanged: hot zone on the left (triacs and the opto drive), quiet middle over the wire hole (fill the wall opening with putty), sensor duct on the right. The baffle around the SHT40 island is still open to the right wall. The edge vents are still about 28% open area, on all four edges, with the triac heat kept on the far side of the curtain from the sensor.
+The light pipe, the RESET pinhole, the window, and the vents are in the shell. The three airflow zones are the hot zone on the left (triacs and the opto drive), the quiet middle over the wire hole (fill the wall opening with putty), and the sensor duct on the right. The baffle around the SHT40 island is open to the right wall. The edge vents are about 28% open area, on all four edges, with the triac heat on the far side of the curtain from the sensor.
 
 ## Taking it apart
 
-Pry the shell at the snap windows, not by pulling the face. Pulling the face loads all four snaps at once. A small flat tool in one window on the bottom edge, then the other bottom window, then the top edge, flexes the 2.4 mm wall out over the 0.9 mm bump. The bumps are 45° on both sides, so the wall can climb off them. Lift the shell straight off. The button caps stay in it. To take one out, squeeze the two catches on the partition side of the stem and push the cap out the back of the hole. The lip's lead-in is 45°, so once the catches are in, a fingernail finishes it. They go back in the same way as step 7.
+Pry the shell at the snap windows. A small flat tool in one window on the bottom edge, then the other bottom window, then the top edge, flexes the 2.4 mm wall out over the 0.9 mm bump. The bumps are 45° on both sides, so the wall can climb off them. Lift the shell straight off. The button caps stay in it. To take one out, press the single barb toward the stem and push the cap out the back of the hole.
 
 Lift the subassembly off the pins. Unplug the HVAC plug in the hand.
 
-To release the panel, lift the two ledges on one long edge with a fingernail and tilt the glass up. That unfolds the tail enough to reach the latch. Flip the latch up and pull the tail straight out of the mouth.
+To release the panel, get a small flat tool under the lead-in of the two hooks on one long edge and tilt the glass up. That is about 2.8 N per hook, and it is the pose that uncovers the slider. Move the slider away from the mouth and pull the tail straight out.
 
-## A PCB change that would make this easier
+## Where J4 sits
 
-Not done here. The board is unchanged.
-
-J4's mouth is 4.7 mm inboard of the panel edge, and the latch opens toward the glass. Moving the connector so the mouth is to the right of x = 108.46, or turning it so the actuator faces a free edge instead of the panel, would let the latch be closed after the glass is down. The carrier sequence does not need that. It would also want a new look at the tail length, because the straight run would change.
+J4 is the footprint in `kicad/`: silk mouth at board x = 103.77, 4.69 mm inboard of the glass edge, slider under the panel. The case mates the tail with the panel held up because that is where the connector is. A mouth to the right of x = 108.46 would put the slider in the open, and it would also change the straight run and the inserted length. This case does not move the connector.

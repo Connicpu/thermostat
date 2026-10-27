@@ -26,7 +26,7 @@ More: case renders in [case/](case/), every menu screen in [firmware/README.md](
 
 ## Case
 
-The case (`case/thermostat_case.scad`) is a 147 × 71 × 26.8 mm PETG shell, backplate, and panel carrier for a Bambu P2S with a 0.4 mm nozzle. It prints without supports. The carrier holds the e-paper 5.0 mm above the board, so the flex is plugged and latched on the bench and the shell is only a cover. The three buttons snap into the face from the inside and stay in the shell. [case/ASSEMBLY.md](case/ASSEMBLY.md) is the build order, the fold dimensions, and the service steps.
+The case (`case/thermostat_case.scad`) is a 147 × 71 × 26.4 mm PETG shell, backplate, and panel carrier for a Bambu P2S with a 0.4 mm nozzle. The carrier holds the e-paper 4.6 mm above the board. The flex plugs into J4's slide lock on the bench, with the panel held up, and the shell is only a cover. The three buttons snap into the face from the inside and stay in the shell. Each cap is a 65° cone and one 0.40 mm leaf; the leaf's free span is a bridge about 4.1 mm long, so a slicer that supports bridges will add a support there. [case/ASSEMBLY.md](case/ASSEMBLY.md) is the build order, the fold dimensions, and the service steps.
 
 ![Section through the sensor duct at the SHT40 (board y = 32). The two ribs divide the rear cavity; the front curtain and partition divide the face side.](case/case-section-airflow.png)
 

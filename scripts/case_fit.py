@@ -12,7 +12,14 @@
 # Run this script in the directory that contains back.stl, shell.stl, carrier.stl, and the two cap meshes.
 # The fold and the carrier checks run without board.stl. The mesh sampling does not.
 import trimesh,numpy as np,sys,os,re,math
-P=dict(standoff_h=14.0,panel_gap=5.0)   # case standoff and panel gap
+_root0=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_scad=open(os.path.join(_root0,'case','thermostat_case.scad')).read()
+def scad_num(name):
+    m=re.search(r'(?m)^%s\s*=\s*([0-9.]+)\s*;'%re.escape(name), _scad)
+    if not m:
+        print('SCAD CONSTANT MISSING', name); sys.exit(1)
+    return float(m.group(1))
+P=dict(standoff_h=scad_num('standoff_h'), panel_gap=scad_num('panel_gap'))
 for a in sys.argv[1:]: k,v=a.split('='); P[k]=float(v)
 plate_t=3; pcb_t=1.6; pcb_tol=0.16   # JLCPCB 1.6 mm board, ±0.16 mm
 Zb=plate_t+P['standoff_h']; Zt=Zb+pcb_t; Zpb=Zt+P['panel_gap']
@@ -28,19 +35,33 @@ FPC_EDGE=108.46
 FPC_STRAIGHT=FPC_EDGE-FPC_MOUTH
 def fpc_inserted(gap, z_leg):
     return FPC_FREE - math.pi*(gap-z_leg)/2.0 - FPC_STRAIGHT
-print('FPC tail %.2f mm, mouth x %.2f, straight %.2f mm, pull-out %.3f mm/mm'%(FPC_FREE, FPC_MOUTH, FPC_STRAIGHT, math.pi/2))
+# Jushuo drawing: recommended contact length 3.0 mm minimum. The gate is that
+# minimum at the design gap and at a carrier printed 0.10 mm tall, lower leg 0.50 mm.
+# Other legs are printed so the assumption stays visible. They are not all gated:
+# a 0.30 mm leg is the tail lying on the soldermask, and the side view does not say that.
+FPC_MIN=3.0
+PRINT_Z=0.10
+print('FPC tail %.2f mm, mouth x %.2f, straight %.2f mm, pull-out %.3f mm/mm, minimum %.2f mm'%(FPC_FREE, FPC_MOUTH, FPC_STRAIGHT, math.pi/2, FPC_MIN))
 fpc_ok=True
 for z_leg in (0.30, 0.50, 0.70):
-    for gap in (4.6, 5.0, 5.2):
+    for gap in (P['panel_gap']-PRINT_Z, P['panel_gap'], P['panel_gap']+PRINT_Z):
         ins=fpc_inserted(gap, z_leg)
-        bad=ins<=2.0
+        gated = abs(z_leg-0.50)<1e-6 and gap>=P['panel_gap']-1e-6
+        bad=gated and ins<FPC_MIN-1e-6
         fpc_ok = fpc_ok and not bad
-        print('  leg %.2f  gap %.1f  R %.3f  inserted %5.2f%s'%(z_leg, gap, (gap-z_leg)/2.0, ins, '  SHORT' if bad else ''))
+        print('  leg %.2f  gap %.2f  R %.3f  inserted %5.2f%s'%(z_leg, gap, (gap-z_leg)/2.0, ins, '  SHORT' if bad else ''))
 nominal=fpc_inserted(P['panel_gap'], 0.50)
-print('nominal gap %.2f leg 0.50 inserted %.2f (model band 2.2..3.8)'%(P['panel_gap'], nominal))
-if not (2.2 < nominal < 3.8):
+print('nominal gap %.2f leg 0.50 inserted %.2f (drawing minimum %.2f)'%(P['panel_gap'], nominal, FPC_MIN))
+# Exit plane. The free length is measured past the outline. This model starts the
+# bend at the glass back. Neither datasheet states which face the tail leaves, and
+# neither states a minimum bend radius (the connector's R0.20 is a housing fillet).
+front_exit=fpc_inserted(P['panel_gap']+1.2, 0.50)
+print('if the tail left the glass front face instead, inserted %.2f mm at this gap'%(front_exit))
+opto_h=4.0
+print('opto clearance nominal %.2f mm, if the carrier prints short %.2f mm'%(P['panel_gap']-opto_h, P['panel_gap']-PRINT_Z-opto_h))
+if P['panel_gap']-PRINT_Z-opto_h < 0.40:
     fpc_ok=False
-    print('nominal insertion outside 2.2..3.8')
+    print('OPTO CLEARANCE FAIL')
 if not fpc_ok:
     print('FPC BUDGET FAIL')
     sys.exit(1)
@@ -268,56 +289,150 @@ if in_bulge.any():
     carrier_fail=True
 else:
     print('carrier stays clear of the FPC bulge')
+# Hooks. The beam is free beside the glass; only cl_foot ties it to the pad.
+# E = 1.8 GPa. ε = 1.5 t δ / L^2, F = 3 E I δ / L^3, I = w t^3 / 12, w = 6 mm.
+cl_t=scad_num('cl_t'); cl_gap=scad_num('cl_gap'); cl_lip=scad_num('cl_lip')
+cl_lip_h=scad_num('cl_lip_h'); cl_foot=scad_num('cl_foot')
+Zin=Zt+P['panel_gap']+1.2
+cl_L=Zin-(Zt+cl_foot)
+cl_E=1800.0
+cl_I=6.0*cl_t**3/12.0
+cl_eps=1.5*cl_t*cl_lip/(cl_L*cl_L)
+cl_F=3*cl_E*cl_I*cl_lip/(cl_L**3)
+print('hooks: L %.2f mm  t %.2f  overlap %.2f  strain %.2f%%  force %.2f N/hook'%(cl_L, cl_t, cl_lip, 100*cl_eps, cl_F))
+hook_fail=False
+# The ramp rises by cl_lip while it steps back by cl_lip, so the lead-in is 45 deg.
+if cl_L<5.0 or cl_eps>=0.020 or cl_F>=8.0 or abs(math.degrees(math.atan2(cl_lip, cl_lip))-45)>1:
+    hook_fail=True
+    print('HOOK BEAM FAIL')
+qcar=trimesh.proximity.ProximityQuery(carrier)
+def _cy(by):
+    return H-OYT-by
+for x0,x1,edge,dire in ((47.0,53.0,26.24,1),(84.6,90.6,26.24,1),(49.6,55.6,62.94,-1),(76.0,82.0,62.94,-1)):
+    xm=OX+0.5*(x0+x1)
+    def _at(u, z):
+        return [xm, _cy(edge+dire*u), z]
+    d_beam=float(qcar.signed_distance([_at(-(cl_gap+cl_t/2), Zt+cl_foot+1.0)])[0])
+    d_gap=float(qcar.signed_distance([_at(-cl_gap/2, Zt+cl_foot+1.0)])[0])
+    d_foot=float(qcar.signed_distance([_at(-cl_gap/2, Zt+cl_foot/2)])[0])
+    print('  hook x %.1f beam %+.2f (want >0)  gap %+.2f (want <0)  foot %+.2f (want >0)'%(0.5*(x0+x1), d_beam, d_gap, d_foot))
+    if d_beam<0.05 or d_gap>-0.05 or d_foot<0.05:
+        hook_fail=True
+        print('  HOOK NOT FREE')
+if hook_fail:
+    print('HOOK FAIL')
 # Buttons. TS-1187A-B-A-B: H=1.5±0.05, drawing TRAVEL 0.2±0.1, spec table 0.25.
-# The stem is sized so a nominal board reaches 0.30 mm of stroke, and a thick board
-# (+0.16) plus a tall switch (+0.05) still has air at rest.
-SW_TRAVEL=0.30
+# The shell is fixed to the backplate. Clamp posts start 0.1 mm above a nominal
+# board, so they do not make the shell follow the board, and the board-thickness
+# term stays in the stack. Snap windows add about ±0.1 mm if the shell is not
+# seated in the middle of the window; that play is not in the numbers below.
+# Uniform draws: printer z ±0.10 on the gap, an independent ±0.10 on the cap-to-shell
+# travel (two prints), standoff ±0.15, board ±0.16.
 SW_H_TOL=0.05
+leaf_t=scad_num('leaf_t'); leaf_L=scad_num('leaf_L'); leaf_defl=scad_num('leaf_defl')
+leaf_free=scad_num('leaf_free') if False else leaf_L-scad_num('leaf_root')
+leaf_eps=1.5*leaf_t*leaf_defl/(leaf_free*leaf_free)
+print('leaf: free L %.2f mm  t %.2f  insertion δ %.2f  strain %.2f%%'%(leaf_free, leaf_t, leaf_defl, 100*leaf_eps))
 seated_caps=trimesh.load('caps_seated.stl')
 pressed_caps=trimesh.load('caps_pressed.stl')
 btn_fail=False
+if leaf_free<4.0 or leaf_eps>=0.020 or not (0.20<=leaf_defl<=0.40):
+    btn_fail=True
+    print('LEAF STRAIN FAIL')
 def stem_tip(mesh, c):
     v=mesh.vertices
     d=np.hypot(v[:,0]-c[0], v[:,1]-c[1])
-    sel=v[d<1.2]
+    sel=v[d<1.0]
     return float(sel[:,2].min())
-def reach_r(mesh, c, z0, z1):
+def catch_face(mesh, c):
+    """Lowest world-z of the barb. That face is what meets the lip."""
     v=mesh.vertices
-    m=(np.abs(v[:,1]-c[1])<2.6)&(v[:,0]>c[0]+1.5)&(v[:,2]>=z0)&(v[:,2]<=z1)
-    if not np.any(m): return 0.0
-    p=v[m]
-    return float(np.hypot(p[:,0]-c[0], p[:,1]-c[1]).max())
+    r=np.hypot(v[:,0]-c[0], v[:,1]-c[1])
+    m=(v[:,0]>c[0]+1.2)&(r>3.15)&(r<3.80)&(np.abs(v[:,1]-c[1])<3.2)
+    if not np.any(m):
+        return None
+    return float(v[m,2].min())
 print('buttons: gap is seated stem to the actuator; stroke is travel minus that gap')
+gaps=[]; travels=[]
 for yb in (30, 40, 50):
     c=T(112, yb)
     gap=stem_tip(seated_caps, c)-(Zt+1.5)
     travel=stem_tip(seated_caps, c)-stem_tip(pressed_caps, c)
     stroke=travel-gap
     rest_hi=gap-pcb_tol-SW_H_TOL
-    print('  y=%g gap %5.2f travel %5.2f stroke %5.2f thick+tall rest %5.2f'%(yb, gap, travel, stroke, rest_hi))
-    if not (0.18<=gap<=0.32 and 0.50<=travel<=0.65 and stroke+1e-6>=SW_TRAVEL and rest_hi>0):
+    cz_s=catch_face(seated_caps, c); cz_p=catch_face(pressed_caps, c)
+    print('  y=%g gap %5.2f travel %5.2f stroke %5.2f thick+tall rest %5.2f catch seated z %.2f pressed z %.2f'%(yb, gap, travel, stroke, rest_hi, cz_s if cz_s is not None else -1, cz_p if cz_p is not None else -1))
+    gaps.append(gap); travels.append(travel)
+    if not (0.45<=gap<=0.52 and 1.15<=travel<=1.28 and rest_hi>0.05 and cz_s is not None):
         btn_fail=True
         print('  BUTTON STROKE FAIL')
-    barb=reach_r(seated_caps, c, 23.6, 24.3)
-    print('  barb radius %5.2f (lip 3.15, bore 3.85)'%barb)
-    if not (3.15+0.08 < barb < 3.85-0.08):
+    if cz_s is None or abs((cz_s-cz_p)-travel)>0.08:
         btn_fail=True
-        print('  BARB REACH FAIL')
+        print('  CATCH DOES NOT TRAVEL WITH THE CAP')
+g0=float(np.mean(gaps)); t0=float(np.mean(travels))
+# Tolerance stack. Shell fixed, so the board term is in.
+rng=np.random.default_rng(1)
+N=200000
+ez=rng.uniform(-0.10,0.10,N); et=rng.uniform(-0.10,0.10,N)
+es=rng.uniform(-0.15,0.15,N); eb=rng.uniform(-0.16,0.16,N)
+gap_s=g0+ez-es-eb
+stroke_s=(t0+et)-gap_s
+p_closed=float(np.mean(gap_s<=0)*100)
+p_short=float(np.mean(stroke_s<0.20)*100)
+worst_gap=g0-0.10-0.15-0.16
+worst_stroke=(t0-0.10)-(g0+0.10+0.15+0.16)
+print('tolerance uniform: P(gap<=0)=%.2f%%  P(stroke<0.20)=%.2f%%  worst gap %.2f  worst stroke %.2f'%(p_closed, p_short, worst_gap, worst_stroke))
+# Sensitivity, not the gate: ± taken as 1σ, board left out. That is the stack that
+# lands near a 1% stroke risk at these nominals. The gate below keeps the board in.
+def _phi(z):
+    return 0.5*(1+math.erf(z/math.sqrt(2)))
+sig_gap=math.sqrt(0.10**2+0.15**2)          # printer and standoff, no board
+sig_stroke=math.sqrt(0.10**2+0.10**2+0.15**2)
+print('sensitivity, ± as 1σ and the board left out: P(gap<=0)=%.1f%%  P(stroke<0.20)=%.1f%%'%(_phi((0-g0)/sig_gap)*100, _phi((0.20-(t0-g0))/sig_stroke)*100))
+if p_closed>1.0 or p_short>2.0 or worst_gap<=0.05 or worst_stroke<0.20:
+    btn_fail=True
+    print('TOLERANCE STACK FAIL')
 # Lip still exists on the partition side after the FPC pocket. Neck is open.
 cxb,cyb=T(112,40)
+shelf=catch_face(pressed_caps, T(112,40))
 qshell=trimesh.proximity.ProximityQuery(shell)
-lip_d=float(qshell.signed_distance([[cxb+3.45, cyb, 23.20]])[0])
-neck_d=float(qshell.signed_distance([[cxb+1.6, cyb, 23.20]])[0])
-print('lip solid %+0.2f (want >0), neck open %+0.2f (want <0)'%(lip_d, neck_d))
+lip_d=float(qshell.signed_distance([[cxb+3.40, cyb, shelf-0.15]])[0])
+neck_d=float(qshell.signed_distance([[cxb+1.6, cyb, shelf-0.15]])[0])
+print('lip solid %+0.2f (want >0), neck open %+0.2f (want <0) at z %.2f'%(lip_d, neck_d, shelf-0.15))
 if lip_d<=0 or neck_d>=0:
     btn_fail=True
-c_seat=mesh_clearance(seated_caps, shell, n=8000)
-c_press=mesh_clearance(pressed_caps, shell, n=8000)
-print('seated cap vs shell (cone kiss, near 0) %6.3f'%c_seat)
-print('pressed cap vs shell (lip kiss, near 0) %6.3f'%c_press)
-if c_seat<-0.08 or c_seat>0.10 or c_press<-0.08 or c_press>0.10:
-    btn_fail=True
-    print('BUTTON NOT SEATED ON BOTH STOPS')
+def face_clearance(mesh, c):
+    v=mesh.vertices
+    r=np.hypot(v[:,0]-c[0], v[:,1]-c[1])
+    m=(v[:,0]>c[0]+1.2)&(r>3.15)&(r<3.80)&(np.abs(v[:,1]-c[1])<3.2)
+    pts=v[m]
+    z0=float(pts[:,2].min())
+    face=pts[pts[:,2]<z0+0.05]
+    return -float(trimesh.proximity.ProximityQuery(shell).signed_distance(face).max()), z0
+# Cone seat: vertices on the cone near r = 2.5, within 0.4 mm of the inner face.
+def cone_clearance(mesh, c):
+    v=np.vstack([mesh.vertices, mesh.sample(5000)])
+    r=np.hypot(v[:,0]-c[0], v[:,1]-c[1])
+    m=(r>2.45)&(r<2.58)&(np.abs(v[:,2]-Zin)<0.20)
+    if not np.any(m):
+        return 99.0
+    return -float(trimesh.proximity.ProximityQuery(shell).signed_distance(v[m]).max())
+print('catch face to lip, seated / pressed (0 is a kiss):')
+for yb in (30, 40, 50):
+    c=T(112, yb)
+    cs,zs=face_clearance(seated_caps, c)
+    cp,zp=face_clearance(pressed_caps, c)
+    ck=cone_clearance(seated_caps, c)
+    print('  y=%g seated catch %+.3f  pressed catch %+.3f  seated cone %+.3f'%(yb, cs, cp, ck))
+    if not (-0.08<=cp<=0.08):
+        btn_fail=True
+        print('  PRESSED CATCH NOT ON THE LIP')
+    if cs<0.15:
+        btn_fail=True
+        print('  SEATED CATCH ALREADY ON THE LIP')
+    if not (-0.08<=ck<=0.10):
+        btn_fail=True
+        print('  CONE NOT SEATED')
 _,panel_m=box('panel',29.46,26.24,108.46,62.94,Zpb,Zpb+1.2)
 for name,mesh in ('seated',seated_caps),('pressed',pressed_caps):
     c=mesh_clearance(mesh, panel_m, n=4000)
@@ -325,27 +440,30 @@ for name,mesh in ('seated',seated_caps),('pressed',pressed_caps):
     if c<0.40:
         btn_fail=True
 # Cover is 1.2 mm; the body box stops at 1.15 so it does not include the actuator.
-# Seated, the stem and the leaves stay 0.40 mm off that box. Pressed, the stem
-# ends on the cover (about 0.05 mm above this box). The leaves stay higher.
+# The leaf (not the stem) stays off that box. The pressed pose is the lip stop, which
+# is past the switch cover, so the stem is allowed to pass the actuator there.
 sw_body=box('SW body',112-2.60,40-2.60,112+2.60,40+2.60,Zt,Zt+1.15)[1]
 sw_act=cyl('SW actuator',112,40,1.00,Zt+1.20,Zt+1.50)[1]
-for name,mesh,lim in (('seated',seated_caps,0.40),('pressed',pressed_caps,0.02)):
-    c=mesh_clearance(mesh, sw_body, n=3000)
-    print('cap %s vs switch body %6.2f (min %4.2f)'%(name, c, lim))
-    if c<lim:
+def leaf_clearance(mesh, obst):
+    v=np.vstack([mesh.vertices, mesh.sample(3000)])
+    c=T(112,40)
+    r=np.hypot(v[:,0]-c[0], v[:,1]-c[1])
+    pts=v[r>1.3]
+    return -float(trimesh.proximity.ProximityQuery(obst).signed_distance(pts).max())
+for name,mesh in ('seated',seated_caps),('pressed',pressed_caps):
+    c=leaf_clearance(mesh, sw_body)
+    print('cap %s leaf vs switch body %6.2f (min 0.30)'% (name, c))
+    if c<0.30:
         btn_fail=True
 c_act=mesh_clearance(seated_caps, sw_act, n=2000)
-# A thick board and a tall switch both lift the actuator.
 sw_hi=sw_act.copy(); sw_hi.apply_translation([0,0,pcb_tol+SW_H_TOL])
 c_act_hi=mesh_clearance(seated_caps, sw_hi, n=2000)
 c_act_pr=mesh_clearance(pressed_caps, sw_act, n=2000)
-print('seated vs actuator %6.2f, vs tall+thick %6.2f, pressed %6.2f'%(c_act, c_act_hi, c_act_pr))
-# Stroke depth is the tip measurement above. Here, pressed should have reached the actuator
-# (the end cap sits on it) and the seated stem should still clear a tall switch on a thick board.
-if c_act<0.10 or c_act_hi<=0 or c_act_pr>0.08:
+print('seated vs actuator %6.2f, vs tall+thick %6.2f, pressed (past the cover) %6.2f'%(c_act, c_act_hi, c_act_pr))
+if c_act<0.30 or c_act_hi<=0.05:
     btn_fail=True
     print('ACTUATOR GAP FAIL')
-if interfere or pcb_shell<-0.05 or pcb_back<-0.05 or carrier_fail or btn_fail:
+if interfere or pcb_shell<-0.05 or pcb_back<-0.05 or carrier_fail or btn_fail or hook_fail:
     print('INTERFERE')
     sys.exit(1)
 print('FIT OK')
