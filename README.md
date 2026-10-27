@@ -26,7 +26,7 @@ More: case renders in [case/](case/), every menu screen in [firmware/README.md](
 
 ## Case
 
-The case (`case/thermostat_case.scad`) is a 147 × 71 × 26.8 mm PETG shell, backplate, and panel carrier for a Bambu P2S with a 0.4 mm nozzle. It prints without supports. The carrier holds the e-paper 5.0 mm above the board, so the flex is plugged and latched on the bench and the shell is only a cover. [case/ASSEMBLY.md](case/ASSEMBLY.md) is the build order, the fold dimensions, and the service steps.
+The case (`case/thermostat_case.scad`) is a 147 × 71 × 26.8 mm PETG shell, backplate, and panel carrier for a Bambu P2S with a 0.4 mm nozzle. It prints without supports. The carrier holds the e-paper 5.0 mm above the board, so the flex is plugged and latched on the bench and the shell is only a cover. The three buttons snap into the face from the inside and stay in the shell. [case/ASSEMBLY.md](case/ASSEMBLY.md) is the build order, the fold dimensions, and the service steps.
 
 ![Section through the sensor duct at the SHT40 (board y = 32). The two ribs divide the rear cavity; the front curtain and partition divide the face side.](case/case-section-airflow.png)
 
@@ -48,7 +48,7 @@ The ribs stop 0.4 mm short of the board, and above the lip they run out to the l
 kicad-cli pcb export stl -o board.stl --force --cut-vias-in-body kicad/thermostat-v3.kicad_pcb
 ```
 
-The script header also has the OpenSCAD lines for the assembly-frame `back.stl`, `shell.stl`, and `carrier.stl` it checks against. The flex fold, the tail insertion, and the carrier clearances run even when `board.stl` is absent.
+The script header also has the OpenSCAD lines for the assembly-frame `back.stl`, `shell.stl`, `carrier.stl`, and the seated and pressed button meshes it checks against. The flex fold, the tail insertion, the carrier clearances, and the button travel run even when `board.stl` is absent.
 
 - kicad/: KiCad 9 project
 - fab/: Gerbers plus JLC BOM/CPL

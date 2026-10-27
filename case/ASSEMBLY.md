@@ -97,6 +97,18 @@ The piece locates on two edges. A fence on the left, 0.25 mm off the board edge,
 
 That rail has to cross the front curtain, which is the wall between the hot zone and the panel at board x 27.7–29.0. The curtain floor is 1.1 mm above the PCB. For 1 mm of y at the board's bottom edge the curtain is cut up to 1.55 mm, and the rail through that slot is 1.00 mm tall. The remaining crack is about 0.55 mm high (about 0.39 mm if the board is thick) and well under 1 mm², smaller than the ~1.3 mm² leak already left where the rear rib and the front partition do not line up. The rail plugs the rest of the notch, so the curtain still separates the zones.
 
+## Buttons
+
+UP, DOWN, and MODE are the same three holes as before, at board (112, 30), (112, 40), and (112, 50). The pitch is 10 mm and the guide tubes stay Ø8.6, so the front partition still overlaps the tube wall and the recess in the face still stops at x = 107.55.
+
+The switch is a TS-1187A-B-A-B. Height code A is 1.5 ± 0.05 mm, which is how tall the actuator stands, not how far it moves. The drawing calls the travel 0.2 ± 0.1 mm and the spec table says 0.25 mm. Force code B is 160 gf. The actuator is Ø2.0 and the body is 5.1 mm square, with the cover at 1.2 mm. The stem is Ø1.6, so it meets the actuator and not the cover.
+
+Each cap is captive in the face. A Ø4.70 head passes through the Ø5.0 hole with 0.15 mm to spare. Behind the hole a 45° cone, opening to Ø6.0, seats on the inner corner of the hole, so the cap cannot leave through the front. Two leaves on the partition side of the stem carry a catch. The catch sits behind a lip in the tube (the lip's hole is Ø6.3, the bore around it is Ø7.7). The FPC pocket already removes the panel side of each tube, which is why the leaves face the partition, where the lip is still there. Seated, the catch is 0.55 mm off the lip. That is the travel. At the end of it the catch meets the lip and stops. The cone is the other stop. A cap in the shell cannot fall out of the front, and it cannot fall out of the back when the shell is lifted off the board.
+
+The stem is 0.25 mm above the actuator when the cone is seated on a nominal 1.6 mm board. The 0.55 mm travel therefore puts 0.30 mm of stroke into the switch, which covers the drawing's long end (0.30 mm) and the 0.25 mm in the spec table. A thick board (+0.16 mm) and a tall switch (+0.05 mm) together lift the actuator by 0.21 mm, which still leaves about 0.04 mm of air, so the switch is not held closed. A thin board gets less stroke. The switch's own cover is the stop inside the part; the lip is the stop in the plastic, 0.55 mm from the seated cone.
+
+The leaves are printed 0.30 mm further out than they sit. Pushing the cap in flexes them past the lip, and they spring back behind it. A second pair of 45° leaves bears on the lip corner and holds the cone in the hole, so the cap does not rattle between the two stops. Print the caps head-down. The leaves are vertical walls, 0.40 mm thick. The catch is a 0.32 mm flat on a 45° arm, and the lip in the shell is a 45° lead-in plus a 0.40 mm shelf, so neither part needs support. The head is on the bed, and the cone widens at 45° above it.
+
 ## Build order
 
 Every step is done with the connector, the pins, or the snaps in sight. Nothing is inserted blind.
@@ -113,13 +125,13 @@ Every step is done with the connector, the pins, or the snaps in sight. Nothing 
 
 6. Set the subassembly onto the four locating pins. Feed the wire loop back through the hole as the board goes down. The pins stop the board in x and y. The plug and C43 are in the space the standoffs leave above the plate.
 
-7. Drop the three button caps into the shell from the inside. The flange is Ø7.4 mm, the face hole is Ø5.0 mm, and the counterbore behind the face is Ø7.9 mm, so the cap goes in from the back and does not fall out the front. Lower the shell over the stack. It slides onto the backplate lip. The clamp posts land around the four mounting holes and press the board onto the standoffs. Four bumps on the lip click into the snap windows. There are no panel clips to clear.
+7. Snap the three button caps into the shell from the inside, before the shell goes near the board. Lay the shell face-down, push each head through its hole, and press until the cone seats and the catches click behind the lip. The caps stay in the shell from here on, including while it is tilted or carried. Lower the shell over the stack. It slides onto the backplate lip. The clamp posts land around the four mounting holes and press the board onto the standoffs. The stems come down onto the three actuators. Four bumps on the lip click into the snap windows. There are no panel clips to clear.
 
 The light pipe, the RESET pinhole, the window, and the vents are all in the shell and do not depend on the carrier. The three airflow zones are unchanged: hot zone on the left (triacs and the opto drive), quiet middle over the wire hole (fill the wall opening with putty), sensor duct on the right. The baffle around the SHT40 island is still open to the right wall. The edge vents are still about 28% open area, on all four edges, with the triac heat kept on the far side of the curtain from the sensor.
 
 ## Taking it apart
 
-Pry the shell at the snap windows, not by pulling the face. Pulling the face loads all four snaps at once. A small flat tool in one window on the bottom edge, then the other bottom window, then the top edge, flexes the 2.4 mm wall out over the 0.9 mm bump. The bumps are 45° on both sides, so the wall can climb off them. Lift the shell straight off. The caps stay in the shell.
+Pry the shell at the snap windows, not by pulling the face. Pulling the face loads all four snaps at once. A small flat tool in one window on the bottom edge, then the other bottom window, then the top edge, flexes the 2.4 mm wall out over the 0.9 mm bump. The bumps are 45° on both sides, so the wall can climb off them. Lift the shell straight off. The button caps stay in it. To take one out, squeeze the two catches on the partition side of the stem and push the cap out the back of the hole. The lip's lead-in is 45°, so once the catches are in, a fingernail finishes it. They go back in the same way as step 7.
 
 Lift the subassembly off the pins. Unplug the HVAC plug in the hand.
 
