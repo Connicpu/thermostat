@@ -1125,6 +1125,37 @@ def counts(r):
     return [int(x.split("count=")[1]) for t, x in r.find_all(r"EVT boot reason=")]
 
 
+def banner_band_crc(path):
+    """FNV-1a of native columns 0..23 on every gate line.
+
+    Portrait RAM is 16 bytes per row. With the panel mounted EPD_ROTATION 1, landscape y maps to
+    native x as 127 - y, so those columns are the status bar (y 104..127). The PBM stores black
+    as 1; the hash is of the raw RAM bytes, where 1 is white.
+    """
+    with open(path, "rb") as f:
+        blob = f.read()
+    start = blob.find(b"\n", blob.find(b"\n") + 1) + 1
+    data = blob[start:]
+    crc = 2166136261
+    for row in range(296):
+        base = row * 16
+        for col in range(3):
+            crc = ((crc ^ (data[base + col] ^ 0xFF)) * 16777619) & 0xFFFFFFFF
+    return f"{crc:08x}"
+
+
+def epd_frame(r, after=0, before=None, last=False):
+    """(time, pbm path) of an EPD refresh in the window. last picks the latest one."""
+    hits = r.find_all(r"EPD refresh ", after, before)
+    if not hits:
+        return None
+    t, line = hits[-1] if last else hits[0]
+    for part in line.split():
+        if part.startswith("file="):
+            return t, part[5:]
+    return None
+
+
 @scenario("bootloop_sw_resets_not_counted", until=3 * MIN, max_boots=7)
 def sw_not_counted(s):
     """Six factory resets in a row (ESP_RST_SW each): counter never moves, no safe mode."""
@@ -1317,15 +1348,43 @@ def fifth_write_fails(s):
 
 @scenario("bootloop_clear_commit_fail_stays", until=4 * MIN, max_boots=6)
 def clear_commit_fail(s):
-    """A clear whose NVS commit fails does not restart. The log says it was not saved, and the count stays at 5."""
+    """A clear whose NVS commit fails does not restart. The log says it was not saved. The status-bar
+    band (native columns 0..23 of every row) differs from the frame before the menu opened, where it
+    reads "SAFE MODE: repeated resets", and the band after the failure is pinned so a typo in
+    "SAFE MODE: clear not saved" is caught. The count stays at 5."""
     s.temp(0, 2100)
     enter_safe_mode(s)
     opened = open_clear_confirm(s, 130 * SEC)
     s.set(opened + 500, "nvs.commit_fail", 1)
     s.press(opened + SEC, "mode", 200)
     def check(r):
+        t = r.expect(r"EVT safe mode: clear not saved", after=r.boot_times[4])
+        before = epd_frame(r, before=130 * SEC, last=True)
+        after = epd_frame(r, after=t)
+        r.check(before is not None and after is not None, "banner frames")
+        before_crc = banner_band_crc(before[1])
+        after_crc = banner_band_crc(after[1])
+        r.check(before_crc != after_crc, f"status bar unchanged ({before_crc})")
+        r.check(before_crc == "015209f2", f"before menu {before_crc}, want SAFE MODE: repeated resets")
+        r.check(after_crc == "a2c68b96", f"after clear {after_crc}, want SAFE MODE: clear not saved")
+        r.never(r"EVT safe mode: cleared from the menu")
+        r.check(r.boots == 5, f"{r.boots} boots")
+        r.check(counts(r) == [1, 2, 3, 4, 5], f"counts {counts(r)}")
+    return check
+
+
+@scenario("bootloop_clear_open_fail_stays", until=4 * MIN, max_boots=6)
+def clear_open_fail(s):
+    """A clear whose NVS open fails does not restart. The log says it was not saved, and the count stays at 5."""
+    s.temp(0, 2100)
+    enter_safe_mode(s)
+    opened = open_clear_confirm(s, 130 * SEC)
+    s.set(opened + 500, "nvs.open_fail", 1)
+    s.press(opened + SEC, "mode", 200)
+    def check(r):
         r.expect(r"EVT safe mode: clear not saved", after=r.boot_times[4])
         r.never(r"EVT safe mode: cleared from the menu")
+        r.never(r"RESET", after=r.boot_times[4] + 1)
         r.check(r.boots == 5, f"{r.boots} boots")
         r.check(counts(r) == [1, 2, 3, 4, 5], f"counts {counts(r)}")
     return check
