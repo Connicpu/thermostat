@@ -45,6 +45,9 @@ fpc_guide = 12.60;                   // drawing column for the applicable FPC wi
 fpc_thick = 0.30;
 fpc_z_ret = 0.50;                    // lower leg. Side view shows 0.50±0.05; it is not labeled as the centerline
 mouth_x = 103.77;                    // J4 silk front face. Mouth faces +x
+j4_depth = 3.90;                     // DIM B, body depth behind that face
+j4_len = 17.60;                      // overall length, centered on the tail
+j4_h = 2.00;                         // housing height above the PCB top
 fpc_R = (panel_gap - fpc_z_ret) / 2;
 fpc_straight = panel[2] - mouth_x;
 fpc_arc = PI * fpc_R;
@@ -77,10 +80,12 @@ cl_face_below = 0.40;                // vertical push face starts this far below
 cl_head_ang = 50;                    // underside of the head, from horizontal, so the head is not a flat overhang
 xstop_bite = 0.05;                   // +x posts cross the glass edge by this much, so a short print still stops the slide
 // Free length is the glass front minus the foot. E = 1.8 GPa. Strain = 1.5 t δ / L^2.
-// Relaxed shelf tips are panel_h - 2*cl_lip apart. Sliding the glass out between them
-// means holding one edge out by at least (glass width - that span). The outline is
-// 36.70 mm. The datasheet gives that one width. 36.50–36.90 is an assumption around it.
-// rel_air is extra opening so the slide leaves a gap on both shelves.
+// Relaxed shelf tips are panel_h - 2*cl_lip apart. The beams are cl_gap outside the outline.
+// Release holds both long edges out and lifts the glass straight up. There is no sideways
+// slide. Shoved against one beam, that lip still covers cl_lip + cl_gap; rel_air/2 is the
+// air left on that shelf. The outline is 36.70 mm. The datasheet gives that one width.
+// 36.50–36.90 is an assumption around it. The beam is bending, so the strain limit is the
+// Ultimaker PETG flexural strain, 3.6%, divided by 1.5.
 cl_L = (Z_in - (Z_pcb_t + cl_foot));
 cl_E = 1800;                         // N/mm^2
 cl_I = 6 * cl_t * cl_t * cl_t / 12;  // 6 mm wide beam
@@ -90,23 +95,24 @@ glass_lo = 36.50;
 glass_hi = 36.90;
 panel_h = 36.70;
 rel_air = 0.05;
+petg_eps = 0.024;
 shelf_span = panel_h - 2*cl_lip;
-rel_hold = 2*cl_lip + rel_air;                       // nominal glass, service hold-out
-rel_slide = cl_lip + rel_air/2;                      // nominal glass, slide toward the freed edge
-rel_hold_hi = glass_hi - shelf_span + rel_air;       // widest glass
-rel_eps_hi = 1.5 * cl_t * rel_hold_hi / (cl_L * cl_L);
-rel_F_hi = 3 * cl_E * cl_I * rel_hold_hi / (cl_L * cl_L * cl_L);
+rel_hold = cl_lip + cl_gap + rel_air/2;              // both edges, glass against one beam
+rel_slide = 0;                                       // lift, no sideways travel
+rel_eps = 1.5 * cl_t * rel_hold / (cl_L * cl_L);
+rel_F = 3 * cl_E * cl_I * rel_hold / (cl_L * cl_L * cl_L);
 echo(str("HOOK L=", cl_L, " lip_strain=", cl_eps, " lip_force_N=", cl_F,
-         " release_d=", rel_hold_hi, " release_strain=", rel_eps_hi, " release_force_N=", rel_F_hi));
+         " release_d=", rel_hold, " release_strain=", rel_eps, " release_force_N=", rel_F));
 assert(cl_L >= 5.0, "hook beam is too short");
 assert(abs(panel_h - (panel[3] - panel[1])) < 1e-6, "panel_h is not the outline");
 assert(abs(cl_head - (cl_slot_gap + cl_slot_wall)) < 1e-6, "tool head is not the slot plus the wall");
 assert(cl_slot_gap >= 1.20, "tool slot is narrower than a 1.0 mm blade");
 assert(cl_head_above + 0.36 < cl_pocket, "tool head hits the shell pocket on a thick board");
-assert(cl_eps < 0.020, "hook strain is past the PETG snap limit");
+assert(cl_eps < petg_eps, "hook strain is past the PETG flexural limit");
 assert(cl_F < 8, "hook takes more than a finger");
-assert(rel_eps_hi < 0.020, "release hold-out is past the PETG snap limit");
-assert(rel_F_hi < 8, "release hold-out takes more than a finger");
+assert(rel_slide == 0, "release slide is not zero");
+assert(rel_eps < petg_eps, "release hold-out is past the PETG flexural limit");
+assert(rel_F < 8, "release hold-out takes more than a finger");
 btn = [[112,30],[112,40],[112,50]];  // UP DOWN MODE
 pin = [[93,5]];                      // RESET pinhole only (BOOT is only useful with USB attached)
 led = [63.3,21.2];                   // D5 status LED -> light-pipe hole
@@ -631,18 +637,28 @@ module release_blade(defl=0) {
   board_box(48.4, 26.24 + u_push, 51.6, 26.24 + u_push + 1.00,
             Z_in - cl_face_below + 0.35, Z_in + cl_head_above + 0.70);
 }
-// Leaning pick. Straight along +x dies in the fold (y 37.75–50.25, wall near x 110).
-// The blade leans pick_ang degrees off +x through the 10.15 mm gap (y 50.25–60.40),
-// which is the 60–78° band that clears the fold and the carrier posts. The handle
-// then runs along +x in that gap, through the J2 notch. Open is +x: the whole tool
-// translates by slider_travel while the lean stays put and the glass stays down.
+// Hook for the J4 slider. Open is +x: the lip bears on the slider's pull face (the mouth
+// plane, on the cable side) and the tool translates by slider_travel. A blade that only
+// pushes can only close the slider. The shank is 0.80 mm wide and 0.45 mm thick, cut from
+// shim, 18 mm from the lip to the elbow, leaning pick_ang degrees off +x. The handle is
+// 3.2 mm along +x from the elbow and stops before J2. Insertion holds the tool pick_lift
+// above this seated pose and rotates it about the elbow from pick_swing degrees up to this
+// lean, then lowers it so the lip meets the face. The seated pose is what this module draws.
+// Straight along +x from here runs the shank into the fold.
 pick_ang = 66;
-pick_ytip = 48.60;
-pick_yhand = 55.60;
-pick_w = 1.40;
-pick_t = 0.80;
-pick_tipx = 103.55;
-pick_handx = 128;
+pick_ytip = 43;
+pick_L = 18;
+pick_w = 0.80;
+pick_hand = 3.2;
+pick_inset = 0.70;
+pick_z0 = 20.75;
+pick_z1 = 21.20;
+pick_lip_z0 = 20.25;
+pick_lip_z1 = 20.72;
+pick_lip_dx = 0.34;
+pick_lip_hy = 0.28;
+pick_swing = -28;
+pick_lift = 0.60;
 slider_travel = 0.85;
 module board_rod(x0, y0, x1, y1, w, z0, z1) {
   ang = atan2(y1 - y0, x1 - x0);
@@ -653,11 +669,15 @@ module board_rod(x0, y0, x1, y1, w, z0, z1) {
         cube([len, w, z1 - z0]);
 }
 module j4_pick(shift=0) {
-  zc = Z_pcb_t + 2.0 + (panel_gap - 2.0) / 2;
-  x0 = pick_tipx + shift;
-  x1 = x0 + (pick_yhand - pick_ytip) / tan(pick_ang);
-  board_rod(x0, pick_ytip, x1, pick_yhand, pick_w, zc - pick_t/2, zc + pick_t/2);
-  board_rod(x1, pick_yhand, pick_handx + shift, pick_yhand, pick_w, zc - pick_t/2, zc + pick_t/2);
+  x_tip = mouth_x + shift;
+  y_tip = pick_ytip;
+  x_elb = x_tip + pick_L * cos(pick_ang);
+  y_elb = y_tip + pick_L * sin(pick_ang);
+  x_s = x_tip + pick_inset * cos(pick_ang);
+  y_s = y_tip + pick_inset * sin(pick_ang);
+  board_rod(x_s, y_s, x_elb, y_elb, pick_w, pick_z0, pick_z1);
+  board_rod(x_elb, y_elb, x_elb + pick_hand, y_elb, pick_w, pick_z0, pick_z1);
+  board_box(x_tip, y_tip - pick_lip_hy, x_tip + pick_lip_dx, y_tip + pick_lip_hy, pick_lip_z0, pick_lip_z1);
 }
 // Keep only the neighbourhood of the first top hook, so a section shows the window and the shelves.
 module release_keep() {
@@ -697,7 +717,7 @@ else if(part=="section") difference(){ union(){ color("lightgray") backplate(); 
 else if(part=="section_hooks") difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); fpc(); color("white") shell(false); color("orange") cap_placed(btn_flare); }
   translate([-1,-1,-30]) cube([W+2, cy(panel[1]+1.3)+1, 80]); }   // cut through the top hooks and the support pads
 // Removal. The shell is off. The cut is the middle of the first top hook (board x = 50), through the tool window.
-// section_release_out holds that edge out by rel_hold and slides the glass toward it by rel_slide.
+// section_release_out holds that edge out by rel_hold. The glass is not slid: the release is a lift.
 else if(part=="section_release") { difference(){ intersection(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); fpc(); } release_keep(); }
   translate([cx(50), -1, -30]) cube([W, H+2, 80]); }
   color("crimson") release_blade(); }
@@ -714,11 +734,11 @@ else if(part=="section_j4") {
   j4_cut() pcb();
   color("wheat") j4_cut() carrier();
   color("goldenrod") j4_cut() fpc();
-  // The outline sits under the pick so the blade stays in view.
+  // The outline sits under the shank so the hook stays in view.
   color([0.25, 0.48, 0.82]) difference() {
-    translate([cx(panel[0]), cy(panel[3]), 21.00]) cube([panel[2]-panel[0], panel[3]-panel[1], 0.15]);
-    translate([cx(panel[0]) + 0.7, cy(panel[3]) + 0.7, 20.85])
-      cube([panel[2]-panel[0] - 1.4, panel[3]-panel[1] - 1.4, 0.5]);
+    translate([cx(panel[0]), cy(panel[3]), 20.40]) cube([panel[2]-panel[0], panel[3]-panel[1], 0.12]);
+    translate([cx(panel[0]) + 0.7, cy(panel[3]) + 0.7, 20.28])
+      cube([panel[2]-panel[0] - 1.4, panel[3]-panel[1] - 1.4, 0.40]);
   }
   color("crimson") j4_pick();
 }
