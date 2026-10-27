@@ -22,6 +22,10 @@
 /* App-task health check. The display task must loop at least this often. */
 #define DISPLAY_STALL_MS (30u * 1000u)
 
+/* Before the first valid SHT40 sample, the screen says "Starting sensor..." for this long
+ * after boot, then SENSOR FAIL. Outputs stay off the whole time (the controller is in failsafe). */
+#define SENSOR_START_MS (10u * 1000u)
+
 /**
  * Local minute to draw at `nowMs`.
  *

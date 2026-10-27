@@ -599,6 +599,33 @@ static void DisplayStallIgnoresHeartbeatAheadOfSample(void)
     CHECK(DisplayHeartbeatStalled(0, DISPLAY_STALL_MS));
 }
 
+/**
+ * For the first 10 s with no reading the run-state word is "Starting sensor...", drawn on the left
+ * where it fits. After that, or once a fault is showing for real, the word is SENSOR FAIL and it
+ * fits the right column.
+ */
+static void StartingSensorWordAndWidth(void)
+{
+    static GfxFb s_fb;
+    DisplayModel m;
+    const char *pStart = DisplayRunWord(kCtrlFaultSensorTimeout, true, false, false, false, false);
+    const char *pFail = DisplayRunWord(kCtrlFaultSensorTimeout, false, false, false, false, false);
+    int edge = 0;
+    CHECK(!strcmp(pStart, "Starting sensor..."));
+    CHECK(!strcmp(pFail, "SENSOR FAIL"));
+    CHECK(GfxTextWidth(&kFontSmall, pStart) <= 160); /* x = 8, divider at 168 */
+    CHECK(GfxTextWidth(&kFontSmall, pFail) <= 296 - 176);
+    memset(&m, 0, sizeof m);
+    m.fault = kCtrlFaultSensorTimeout;
+    m.sensorStarting = true;
+    m.s.mode = kCtrlModeHeat;
+    DisplayRender(&s_fb, &m);
+    for (int y = 0; y < 100; y++)
+        edge += GfxGet(&s_fb, GFX_W - 1, y);
+    CHECK_EQ(edge, 0);
+    CHECK(!strcmp(DisplayRunWord(kCtrlFaultNone, false, true, false, false, false), "Heating"));
+}
+
 /** Run every test in this file; exit status 1 if any failed (tinytest DONE()). */
 int main(void)
 {
@@ -617,5 +644,6 @@ int main(void)
     RUN(ClockBannerClash);
     RUN(RefreshPolicy);
     RUN(DisplayStallIgnoresHeartbeatAheadOfSample);
+    RUN(StartingSensorWordAndWidth);
     DONE();
 }

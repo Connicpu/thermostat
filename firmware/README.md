@@ -18,7 +18,7 @@ HA thermostat for a single-stage gas furnace plus AC, with 24 VAC W/Y/G triac ou
 |---|---|---|
 | `components/control` | Thermostat logic: hysteresis, minimum on/off times, changeover, fan run-on, failsafe | **yes**, pure C |
 | `components/hvac_outputs` | `hvac_interlock.c` (pure) is the **single** W/Y interlock. `hvac_outputs.c` is the only code that touches DRV_W/Y/G | interlock: yes |
-| `components/sensor` | SHT40 over I2C (`sht40_parse.c` handles CRC and conversion and is pure) | parser: yes |
+| `components/sensor` | SHT40 over I2C. CRC and conversion (`sht40_parse.c`) and the measure/retry cycle (`sensor_cycle.c`) are pure; `sensor.c` is the I2C driver | parser and retry cycle: yes |
 | `components/display` | SSD1680/GDEY029T94 driver, 1-bpp graphics plus fonts, screen renderer (pure), refresh-policy task | renderer: yes |
 | `components/control/schedule.c` | Day/night program schedule + morning heat boost | **yes**, pure C (`test/host/test_schedule.c`) |
 | `components/ui` | Button debounce, auto-repeat and hold-stage state machine (pure), on-device menu state machine (pure), 10 ms sampler, LED | state machines: yes |
@@ -52,7 +52,7 @@ All of these live in `control.c`, and the tests in `test/host/test_control.c` co
 | Heat↔cool changeover | 5 min between one stage stopping and the other starting |
 | Fan mode | Auto: G only with Y (and W when `heatDrivesFan`) plus run-on. **On: G runs continuously, even with no heat/cool demand, in every mode including Off** (still killed by the failsafe). Set from HA (Fan Control 0x0202 FanMode, ZHA fan control / climate fan mode) or the menu (*Fan*) |
 | Fan run-on | G stays on 90 s after W and 45 s after Y. G is energised with Y. With W it's left to the furnace (`heatDrivesFan=false`) |
-| **Failsafe** | No valid reading for 30 s, **or** a reading outside 0–45 °C, turns **all outputs off immediately** (overriding the minimum on-time and the fan run-on). Recovery needs 3 consecutive good readings. The firmware boots in failsafe |
+| **Failsafe** | No valid reading for 15 s, **or** a reading outside 0–45 °C, turns **all outputs off immediately** (overriding the minimum on-time and the fan run-on). The SHT40 is read every 2 s, so 15 s is about seven missed cycles: one lost sample cannot trip it, and a dead bus still drops every output within that window. Recovery needs 3 good readings. A single invalid cycle does not restart that count when the previous good reading is still within two sample periods (4 s); the next invalid cycle does. The firmware boots in failsafe. For the first 10 s of a boot that has not yet had a valid reading the screen says *Starting sensor...* (outputs stay off); after that it says SENSOR FAIL. Each read tries the sensor up to 3 times, about 20 ms apart, with a bus reset and a soft reset between tries. An acknowledged soft reset waits 2 ms before that gap. A cycle counts if any try succeeds |
 | **W/Y interlock** | `HvacInterlock()` is the only path to the pins. If W and Y are both requested, both are dropped and a fault is counted. That fault makes the loop unhealthy, so it stops kicking and the watchdogs reset the chip |
 | **Watchdog** | The STWD100 (about 1.6 s) is armed 10 s after boot, and only after the loop has run cleanly. It's kicked once per 250 ms loop, and only while the health check passes (no interlock fault; a stalled display is reported but deliberately not a reason to reset). The IDF task watchdog (5 s) watches the same loop as a second layer. A watchdog reset puts the GPIOs in high-Z, and the 10k pull-downs then switch every triac off |
 
@@ -260,7 +260,7 @@ still forces a full refresh.
 | Offset | ±2.5 °C in 0.1 °C steps, kept in 0.1 °C. Shown in tenths of the display unit (°F is ×1.8, no 32° offset, half away from zero). Each press changes the number on screen; in °F that step is 0.1 or 0.2 because 0.1 °C is 0.18 °F. M saves and returns to the list; the 10 s timeout discards the edit |
 | Units | °C / °F for the display (persisted; Kconfig sets the factory default; display only, HA keeps its own units) |
 | Zigbee | Link status; **hold M (1.5 s)** to start pairing |
-| Device info | Firmware version, raw (uncalibrated) temperature and RH, uptime |
+| Device info | Firmware, then the sensor counters (ok/err, I2C/CRC, retries / bus resets / longest run of failed cycles), then raw temperature, raw RH and uptime. Up/Down scrolls. The same counts are logged as `EVT sensor ok=… i2c=… crc=… retry=… rst=… gap=…` whenever a cycle starts or stops failing and once a minute. They are not Zigbee attributes: the device has no diagnostics cluster |
 | Back | Main screen |
 
 Changes go through the same paths as the buttons and HA: mode via the Thermostat cluster, boost
@@ -464,7 +464,7 @@ Every row also passes the safety monitor.
 
 | Peripheral | Failure mode | Scenario(s) | Expected (asserted) behaviour |
 |---|---|---|---|
-| SHT40 | NAK (no ACK) | `sht40_nak` | SENSOR FAIL within 30 s; W/Y/G **all** off incl. Fan ON; Zigbee unaffected; recovers after 3 good readings |
+| SHT40 | NAK (no ACK) | `sht40_nak` | SENSOR FAIL within 15 s; W/Y/G **all** off incl. Fan ON; Zigbee unaffected; recovers after 3 good readings |
 | SHT40 | bus stuck / timeout | `sht40_bus_stuck_timeout` | same |
 | SHT40 | CRC error | `sht40_crc_error` | same |
 | SHT40 | intermittent (100% / 30%) | `sht40_intermittent_100pct`, `sht40_intermittent_30pct_keeps_control` | 100%: failsafe + recovery; 30% (seeded): readings still arrive, no fault, keeps heating |
@@ -654,8 +654,10 @@ The OTA numeric scheme is `0xMMmmpppp` from `FW_VERSION_*`. The string inside th
 
 ## Bring-up checklist (before connecting 24 VAC)
 1. With the board on USB and no HVAC, check that the screen draws a home screen with a temperature.
-   A good SHT40 read is not logged (the sensor is read every 2 s); CRC/I2C errors and
-   `EVT fault sensor init` are. If the image is mirrored or upside down, build with
+   Each reading is not logged on its own (the sensor is read every 2 s). I2C and CRC errors are
+   logged as they happen, and the running totals are one `EVT sensor` line when a cycle starts or
+   stops failing and once a minute. `EVT fault sensor init` is logged if the bus does not come up.
+   If the image is mirrored or upside down, build with
    `-DEPD_ROTATION=3` (see `gfx.c`).
 2. Confirm that W/Y/G stay low at boot, in the bootloader, and during and after a forced watchdog
    reset (scope or LED on DRV_*).

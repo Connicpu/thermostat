@@ -106,6 +106,12 @@ typedef struct
     I16 rawTemp; /* c°C, uncalibrated sensor reading */
     U16 rawRh;   /* c%RH */
     U32 uptimeS;
+    U32 sensorOk;    /* measurement cycles that returned a reading */
+    U32 sensorI2c;   /* failed I2C transfers */
+    U32 sensorCrc;   /* frames with a bad CRC */
+    U32 sensorRetry; /* extra attempts after the first */
+    U32 sensorRst;   /* I2C bus resets */
+    U32 sensorGap;   /* longest run of cycles with no reading */
 } MenuCtx;
 
 typedef enum

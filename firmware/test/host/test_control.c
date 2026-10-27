@@ -140,16 +140,18 @@ static void CompressorMinOnTime(void)
 }
 
 /**
- * 30 s without valid readings forces everything off despite min on-time; after recovery min off-time still applies.
+ * 15 s without valid readings forces everything off despite min on-time; after recovery min off-time still applies.
+ * 15 s is about seven samples at the 2 s period: one lost sample cannot trip it, and the outputs drop
+ * as soon as the window expires.
  */
 static void FailsafeSensorTimeoutOverridesMinOn(void)
 {
     Setup(kCtrlModeCool, 2000, 2400);
     Run(MIN(6), 2800, true);
     CHECK(s_out.y);
-    Run(S(29), 0, false); /* 29 s of failed reads: still running */
+    Run(S(14), 0, false); /* 14 s of failed reads: still inside the 15 s window */
     CHECK(s_out.y);
-    Run(S(2), 0, false); /* > 30 s -> failsafe, all off */
+    Run(S(2), 0, false); /* > 15 s -> failsafe, all off */
     CHECK(!s_out.y && !s_out.w && !s_out.g);
     CHECK_EQ(s_out.fault, kCtrlFaultSensorTimeout);
     /* sensor comes back: after recovery the compressor still waits min-off */
@@ -160,6 +162,62 @@ static void FailsafeSensorTimeoutOverridesMinOn(void)
     while (!s_out.y && s_now < offAt + MIN(10))
         Run(S(1), 2800, true);
     CHECK(s_now - offAt >= s_p.compMinOffMs);
+}
+
+/**
+ * While recovering, one invalid sample inside two sensor periods leaves the streak. The next invalid sample clears it.
+ * A miss that arrives after the window has already closed clears it immediately.
+ */
+static void IsolatedMissKeepsRecoveryStreak(void)
+{
+    CtrlInput bad = {.valid = false, .temp = 0};
+    CtrlInput good = {.valid = true, .temp = 1800};
+    Setup(kCtrlModeHeat, 2000, 2400);
+    Run(S(16), 0, false);
+    CHECK_EQ(s_out.fault, kCtrlFaultSensorTimeout);
+    Run(S(2), 1800, true);
+    CHECK_EQ(s_c.goodStreak, 2);
+    CHECK(s_out.fault != kCtrlFaultNone);
+    s_now += 1000;
+    CtrlFeedSensor(&s_c, &bad, s_now);
+    s_out = CtrlStep(&s_c, &s_st, s_now);
+    CHECK(s_c.missTolerated);
+    CHECK_EQ(s_c.goodStreak, 2);
+    CHECK(!s_out.w && !s_out.y && !s_out.g);
+    s_now += 1000;
+    CtrlFeedSensor(&s_c, &good, s_now);
+    s_out = CtrlStep(&s_c, &s_st, s_now);
+    CHECK(!s_c.missTolerated);
+    /* the third good sample leaves failsafe and the streak is cleared with the fault */
+    CHECK_EQ(s_c.goodStreak, 0);
+    CHECK_EQ(s_out.fault, kCtrlFaultNone);
+
+    /* back into failsafe, two goods, then two misses: the second miss restarts the count */
+    Run(S(16), 0, false);
+    CHECK_EQ(s_out.fault, kCtrlFaultSensorTimeout);
+    Run(S(2), 1800, true);
+    CHECK_EQ(s_c.goodStreak, 2);
+    s_now += 1000;
+    CtrlFeedSensor(&s_c, &bad, s_now);
+    CHECK_EQ(s_c.goodStreak, 2);
+    s_now += 1000;
+    CtrlFeedSensor(&s_c, &bad, s_now);
+    s_out = CtrlStep(&s_c, &s_st, s_now);
+    CHECK_EQ(s_c.goodStreak, 0);
+    CHECK(s_out.fault != kCtrlFaultNone);
+    Run(S(2), 1800, true);
+    CHECK(s_out.fault != kCtrlFaultNone);
+    Run(S(1), 1800, true);
+    CHECK_EQ(s_out.fault, kCtrlFaultNone);
+
+    /* a miss more than two periods after the last good sample is not isolated */
+    Run(S(16), 0, false);
+    Run(S(2), 1800, true);
+    CHECK_EQ(s_c.goodStreak, 2);
+    s_now += CTRL_MISS_WINDOW_MS + 1;
+    CtrlFeedSensor(&s_c, &bad, s_now);
+    CHECK_EQ(s_c.goodStreak, 0);
+    CHECK(!s_c.missTolerated);
 }
 
 /** An implausible reading (60 °C / -10 °C) is an immediate fault; recovery needs several good samples. */
@@ -826,6 +884,7 @@ int main(void)
     RUN(CompressorMinOffBetweenCycles);
     RUN(CompressorMinOnTime);
     RUN(FailsafeSensorTimeoutOverridesMinOn);
+    RUN(IsolatedMissKeepsRecoveryStreak);
     RUN(FailsafeOutOfRangeIsImmediate);
     RUN(FailsafeKillsFanOnAndRunon);
     RUN(ModeOffIsImmediate);

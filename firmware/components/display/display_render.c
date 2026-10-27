@@ -89,13 +89,13 @@ static void HintLine(GfxFb *pFb, const char *pH)
 }
 
 /**
- * Draw up to ROWS_VIS label/value rows. With select, scroll so pV->sel is visible, invert the
- * selected row and draw scroll marks when rows are hidden above/below.
+ * Draw up to ROWS_VIS label/value rows. Scroll so pV->sel is visible, and draw scroll marks when
+ * rows are hidden above or below. With select, invert the selected row.
  */
 static void RenderRows(GfxFb *pFb, const MenuView *pV, bool select)
 {
     int first = 0;
-    if (select && pV->sel >= ROWS_VIS)
+    if (pV->sel >= ROWS_VIS)
         first = pV->sel - ROWS_VIS + 1;
     for (int i = first; i < pV->nRows && i < first + ROWS_VIS; i++)
     {
@@ -108,9 +108,9 @@ static void RenderRows(GfxFb *pFb, const MenuView *pV, bool select)
             GfxText(pFb, &kFontSmall, GFX_W - 10 - GfxTextWidth(&kFontSmall, pV->value[i]), y, pV->value[i], !inv);
     }
     /* scroll marks on the right edge when rows are hidden */
-    if (select && first > 0)
+    if (first > 0)
         GfxFillRect(pFb, GFX_W - 4, ROW_Y0, 3, 6, true);
-    if (select && first + ROWS_VIS < pV->nRows)
+    if (first + ROWS_VIS < pV->nRows)
         GfxFillRect(pFb, GFX_W - 4, ROW_Y0 + ROWS_VIS * ROW_H - 8, 3, 6, true);
 }
 
@@ -192,6 +192,24 @@ static void DrawStatusBar(GfxFb *pFb, const DisplayModel *pM, const char *pLeft,
     GfxText(pFb, &kFontSmall, STATUS_MARGIN, 108, pLeft, ink);
 }
 
+/** See display_model.h. */
+const char *DisplayRunWord(CtrlFault fault, bool sensorStarting, bool w, bool y, bool g, bool waiting)
+{
+    if (sensorStarting)
+        return "Starting sensor...";
+    if (fault != kCtrlFaultNone)
+        return CtrlFaultStr(fault);
+    if (w)
+        return "Heating";
+    if (y)
+        return "Cooling";
+    if (waiting)
+        return "Waiting";
+    if (g)
+        return "Fan";
+    return "Idle";
+}
+
 /** Menu view or home screen. See display_model.h. */
 void DisplayRender(GfxFb *pFb, const DisplayModel *pM)
 {
@@ -204,8 +222,10 @@ void DisplayRender(GfxFb *pFb, const DisplayModel *pM)
     GfxClear(pFb);
     const bool f = pM->fahrenheit;
 
-    /* ---- left: big room temperature ---- */
-    if (pM->tempValid)
+    /* ---- left: big room temperature, or the boot grace message (it does not fit the right column) ---- */
+    if (pM->sensorStarting)
+        GfxText(pFb, &kFontSmall, 8, 22, "Starting sensor...", true);
+    else if (pM->tempValid)
     {
         FormatTemp(b, sizeof b, pM->temp, f, true);
         int x = GfxText(pFb, &kFontBig, 4, 2, b, true);
@@ -278,23 +298,16 @@ void DisplayRender(GfxFb *pFb, const DisplayModel *pM)
     }
     GfxText(pFb, &kFontMed, rx, 32, b, true);
 
-    const char *pSt = "Idle";
-    if (pM->fault != kCtrlFaultNone)
-        pSt = CtrlFaultStr(pM->fault);
-    else if (pM->w)
-        pSt = "Heating";
-    else if (pM->y)
-        pSt = "Cooling";
-    else if (pM->waiting)
-        pSt = "Waiting";
-    else if (pM->g)
-        pSt = "Fan";
-    /* running state shown inverted when something is on */
-    bool active = pM->w || pM->y || pM->g || pM->fault != kCtrlFaultNone;
-    int tw = GfxTextWidth(&kFontSmall, pSt);
-    if (active)
-        GfxFillRect(pFb, rx - 2, 62, tw + 6, kFontSmall.height + 2, true);
-    GfxText(pFb, &kFontSmall, rx + 1, 63, pSt, !active);
+    /* The starting sentence is drawn on the left. SENSOR FAIL would also be true, and does not fit here. */
+    if (!pM->sensorStarting)
+    {
+        const char *pSt = DisplayRunWord(pM->fault, false, pM->w, pM->y, pM->g, pM->waiting);
+        bool active = pM->w || pM->y || pM->g || pM->fault != kCtrlFaultNone;
+        int tw = GfxTextWidth(&kFontSmall, pSt);
+        if (active)
+            GfxFillRect(pFb, rx - 2, 62, tw + 6, kFontSmall.height + 2, true);
+        GfxText(pFb, &kFontSmall, rx + 1, 63, pSt, !active);
+    }
 
     /* ---- bottom status bar ---- */
     GfxHline(pFb, 0, 104, GFX_W);

@@ -28,6 +28,7 @@
 #include "nvs_flash.h"
 #include "sdkconfig.h"
 #include "sensor.h"
+#include "sensor_cycle.h"
 #include "sensor_stuck.h"
 #include "settings.h"
 #include "schedule.h"
@@ -444,6 +445,8 @@ static void SetUnits(Persist *pP, I32 v)
  */
 static MenuCtx BuildMenuCtx(const Persist *pP, U64 now)
 {
+    SensorStats st;
+    SensorStatsGet(&st);
     return (MenuCtx){
         .mode = pP->s.mode,
         .fan = pP->s.fan,
@@ -460,6 +463,12 @@ static MenuCtx BuildMenuCtx(const Persist *pP, U64 now)
         .rawTemp = s_raw.tempC100,
         .rawRh = s_raw.rhC100,
         .uptimeS = (U32)(now / 1000),
+        .sensorOk = st.ok,
+        .sensorI2c = st.i2cErr,
+        .sensorCrc = st.crcErr,
+        .sensorRetry = st.retries,
+        .sensorRst = st.busResets,
+        .sensorGap = st.failRunMax,
     };
 }
 
@@ -654,6 +663,26 @@ static void AppTask(void *pArg)
             }
             if (frozen)
                 rd.valid = false; /* a frozen sensor is no sensor: failsafe */
+            {
+                static bool s_fail, s_failInit;
+                static U64 s_sensorLogAt;
+                bool fail = !rd.valid;
+                if (!s_failInit || fail != s_fail || now - s_sensorLogAt >= 60000)
+                {
+                    SensorStats st;
+                    SensorStatsGet(&st);
+                    EVT("EVT sensor ok=%lu i2c=%lu crc=%lu retry=%lu rst=%lu gap=%lu",
+                        (unsigned long)st.ok,
+                        (unsigned long)st.i2cErr,
+                        (unsigned long)st.crcErr,
+                        (unsigned long)st.retries,
+                        (unsigned long)st.busResets,
+                        (unsigned long)st.failRunMax);
+                    s_fail = fail;
+                    s_failInit = true;
+                    s_sensorLogAt = now;
+                }
+            }
             CtrlInput in = {.valid = rd.valid, .temp = rd.tempC100};
             CtrlFeedSensor(&ctl, &in, now);
             s_raw = rd;
@@ -781,6 +810,7 @@ static void AppTask(void *pArg)
         DisplayModel dm;
         memset(&dm, 0, sizeof dm);
         dm.tempValid = zs.tempValid;
+        dm.sensorStarting = !ctl.haveTemp && now >= boot && now - boot < SENSOR_START_MS;
         /* quantise so sensor noise does not cause refreshes */
         dm.temp = (I16)((rd.tempC100 + (rd.tempC100 >= 0 ? 5 : -5)) / 10 * 10);
         dm.rhValid = rd.valid;
