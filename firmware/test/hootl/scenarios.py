@@ -522,12 +522,17 @@ def _flap_range_until(s, end, hold=True):
     """One sample outside 0–45 °C, then three good samples, on an 8 s period.
     `hold` leaves the temperature out of range at `end`."""
     s.temp(0, 9000)
-    t = 0
+    _flap_range_from(s, 0, end)
+    if hold:
+        s.temp(end, 9000)
+
+
+def _flap_range_from(s, start, end):
+    """The same 8 s pattern, from `start` up to `end`."""
+    t = start
     while t < end:
         s.temp(t, 9000 if (t // 2000) % 4 == 0 else 2100)
         t += 2000
-    if hold:
-        s.temp(end, 9000)
 
 
 def _partials(r, want):
@@ -750,15 +755,16 @@ def sensor_refill_waits(s):
     return check
 
 
-@scenario("sensor_edge_token_returns_when_glass_matches", until=540 * SEC, timeout=180)
+@scenario("sensor_edge_token_returns_when_glass_matches", until=420 * SEC, timeout=180)
 def sensor_token_return(s):
     """Clock set at 45 s. Out of range and back, held out of range at 240 s, healthy again at
-    250 s. A token charged for a frame the glass already shows comes back, so the OK at 254 s
-    paints on the button path. The refresh is underway by 254.5 s. Six refreshes after 230 s:
-    that recovery and the five minute rollovers through about 526 s."""
+    250 s, then the same flap from 270 s to 400 s. The OK at 254 s refreshes by 254.5 s. Six
+    refreshes after 230 s. The Idle edge at 302 s is one of them: it spends a token a matching
+    frame put back."""
     s.clock(45 * SEC, 8, 0)
     _flap_range_until(s, 240 * SEC)
     s.temp(250 * SEC, 2100)
+    _flap_range_from(s, 270 * SEC, 400 * SEC)
 
     def check(r):
         ok = r.expect(r"EVT ctrl fault=OK", after=250 * SEC, before=255 * SEC)
