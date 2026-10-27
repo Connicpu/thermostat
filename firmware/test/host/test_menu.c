@@ -130,6 +130,25 @@ static void OpenAfterLongIdleDoesNotTimeOut(void)
     CHECK_EQ(s_m.st, kMsEditMode);
 }
 
+/**
+ * The app samples the clock, then a key stamps lastKeyMs from a later NowMs(), then MenuTick
+ * runs on the earlier sample. That sample is not idle: unsigned subtraction must not underflow
+ * and close the menu.
+ */
+static void TickBeforeLastKeyDoesNotClose(void)
+{
+    Reset();
+    Sel();
+    CHECK(!MenuIsHome(&s_m));
+    CHECK_EQ(MenuTick(&s_m, s_t - 1).kind, kMaNone);
+    CHECK(!MenuIsHome(&s_m));
+    CHECK_EQ(MenuTick(&s_m, s_t + MENU_TIMEOUT_MS - 1).kind, kMaNone);
+    CHECK(!MenuIsHome(&s_m));
+    MenuAction a = MenuTick(&s_m, s_t + MENU_TIMEOUT_MS);
+    CHECK(MenuIsHome(&s_m));
+    CHECK_EQ(a.kind, kMaNone);
+}
+
 /** The mode editor cycles Heat -> Cool -> Off (no Auto), wraps, and saves with M. */
 static void EditModeSaves(void)
 {
@@ -848,6 +867,7 @@ int main(void)
     RUN(NavigationWrapsAndBack);
     RUN(TimeoutDiscardsEdit);
     RUN(OpenAfterLongIdleDoesNotTimeOut);
+    RUN(TickBeforeLastKeyDoesNotClose);
     RUN(EditModeSaves);
     RUN(EditFanToggles);
     RUN(ScheduleListShowsAllKnobs);

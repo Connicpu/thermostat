@@ -176,7 +176,8 @@ MenuAction MenuOnKey(Menu *pM, const MenuCtx *pC, MenuKey k, BtnEvent ev, U64 no
 
 /**
  * Idle timeout: MENU_TIMEOUT_MS with no key anywhere in the menu returns to the main screen
- * without saving (full refresh). Call periodically.
+ * without saving (full refresh). A key stamped later than nowMs is not idle; the caller may
+ * have sampled the clock before reading the buttons. Call periodically.
  *
  * Returns the action (kMaNone; redraw/fullRefresh set when it timed out).
  */

@@ -521,7 +521,7 @@ MenuAction MenuOnKey(Menu *pM, const MenuCtx *pC, MenuKey k, BtnEvent ev, U64 no
 /** See menu.h. */
 MenuAction MenuTick(Menu *pM, U64 now)
 {
-    if (!MenuIsHome(pM) && now - pM->lastKeyMs >= MENU_TIMEOUT_MS)
+    if (!MenuIsHome(pM) && now >= pM->lastKeyMs && now - pM->lastKeyMs >= MENU_TIMEOUT_MS)
         return GoHome(pM, kMaNone, 0);
     return (MenuAction){0};
 }
