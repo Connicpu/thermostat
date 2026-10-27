@@ -460,12 +460,16 @@ static MenuCtx BuildMenuCtx(const Persist *pP, U64 now)
         .rawTemp = s_raw.tempC100,
         .rawRh = s_raw.rhC100,
         .uptimeS = (U32)(now / 1000),
+        .safeMode = s_safeMode,
     };
 }
 
+/** Read, increment, clear or set the boot-loop counter. See the definition below. */
+static U8 BootCountRw(int op);
+
 /**
  * Carry out a menu action (app task): settings edits, boost commands (queued), pairing, factory
- * reset. Bumps the full-refresh epoch when the menu asks for one.
+ * reset, or clearing safe mode. Bumps the full-refresh epoch when the menu asks for one.
  *
  * Returns true if the display should refresh promptly.
  */
@@ -523,6 +527,11 @@ static bool ApplyMenuAction(const MenuAction *pA)
     case kMaFactoryReset:
         FactoryReset();
         break;
+    case kMaClearSafeMode: /* next boot is a normal one; further resets fill the counter again */
+        ESP_LOGW(kTag, "EVT safe mode: cleared from the menu");
+        BootCountRw(0);
+        esp_restart();
+        break;
     default:
         break;
     }
@@ -578,10 +587,11 @@ static void LedUpdate(U64 now, const CtrlOutput *pO, LinkState link)
  * Counts boots that did not reach BOOT_STABLE_MS of uptime. Whatever keeps resetting the chip
  * (watchdog, panic, brown-out), after BOOT_LOOP_LIMIT of them the thermostat stays up in safe
  * mode instead: outputs off, STWD100 not armed, the fault on screen and on Zigbee. Deliberate
- * software restarts (ESP_RST_SW: OTA reboot/rollback, factory reset, safe-mode retry) are not
- * counted. Power-on resets ARE counted, because an STWD100 reset pulls CHIP_EN and reports as
- * ESP_RST_POWERON, so 5 quick power cycles also enter safe mode (it ends by itself after
- * SAFE_MODE_RETRY_MS). The counter lives in its own NVS namespace and survives a factory reset.
+ * software restarts (ESP_RST_SW: OTA reboot/rollback, factory reset, safe-mode retry, clearing
+ * safe mode from the menu) are not counted. Power-on resets ARE counted, because an STWD100
+ * reset pulls CHIP_EN and reports as ESP_RST_POWERON, so 5 quick power cycles also enter safe
+ * mode (it ends by itself after SAFE_MODE_RETRY_MS). The counter lives in its own NVS namespace
+ * and survives a factory reset.
  *
  * `op` is 1 = increment (saturating), 0 = clear, -1 = read only, 0x100|n = set to n.
  *
