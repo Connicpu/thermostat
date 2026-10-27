@@ -1029,11 +1029,11 @@ void app_main(void)
 #endif
 
     esp_reset_reason_t rr = esp_reset_reason();
-    int boots = BootCountRw(rr == ESP_RST_SW ? -1 : 1);
-    EVT("EVT boot reason=%d count=%u", (int)rr, (unsigned)boots);
+    U8 boots = (U8)BootCountRw(rr == ESP_RST_SW ? -1 : 1);
+    EVT("EVT boot reason=%d count=%u", (int)rr, boots);
     s_safeMode = boots >= BOOT_LOOP_LIMIT;
     if (s_safeMode)
-        EVT("EVT safe mode: %u resets without %d min of stable uptime", (unsigned)boots, BOOT_STABLE_MS / 60000);
+        EVT("EVT safe mode: %u resets without %d min of stable uptime", boots, BOOT_STABLE_MS / 60000);
 
     s_mtx = xSemaphoreCreateMutex();
     s_btnQ = xQueueCreate(16, sizeof(BtnMsg));

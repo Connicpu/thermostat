@@ -1317,15 +1317,34 @@ def fifth_write_fails(s):
 
 @scenario("bootloop_clear_commit_fail_stays", until=4 * MIN, max_boots=6)
 def clear_commit_fail(s):
-    """A clear whose NVS commit fails does not restart. The log says it was not saved, and the count stays at 5."""
+    """A clear whose NVS commit fails does not restart. The log says it was not saved, the banner
+    reads "SAFE MODE: clear not saved" (that frame is ink 4101, crc feda418a), and the count stays at 5."""
     s.temp(0, 2100)
     enter_safe_mode(s)
     opened = open_clear_confirm(s, 130 * SEC)
     s.set(opened + 500, "nvs.commit_fail", 1)
     s.press(opened + SEC, "mode", 200)
     def check(r):
+        t = r.expect(r"EVT safe mode: clear not saved", after=r.boot_times[4])
+        r.expect(r"EPD refresh .* ink=4101 crc=feda418a", after=t, msg="banner is SAFE MODE: clear not saved")
+        r.never(r"EVT safe mode: cleared from the menu")
+        r.check(r.boots == 5, f"{r.boots} boots")
+        r.check(counts(r) == [1, 2, 3, 4, 5], f"counts {counts(r)}")
+    return check
+
+
+@scenario("bootloop_clear_open_fail_stays", until=4 * MIN, max_boots=6)
+def clear_open_fail(s):
+    """A clear whose NVS open fails does not restart. The log says it was not saved, and the count stays at 5."""
+    s.temp(0, 2100)
+    enter_safe_mode(s)
+    opened = open_clear_confirm(s, 130 * SEC)
+    s.set(opened + 500, "nvs.open_fail", 1)
+    s.press(opened + SEC, "mode", 200)
+    def check(r):
         r.expect(r"EVT safe mode: clear not saved", after=r.boot_times[4])
         r.never(r"EVT safe mode: cleared from the menu")
+        r.never(r"RESET", after=r.boot_times[4] + 1)
         r.check(r.boots == 5, f"{r.boots} boots")
         r.check(counts(r) == [1, 2, 3, 4, 5], f"counts {counts(r)}")
     return check
