@@ -41,6 +41,7 @@ win_m = 0.5;                         // window margin around active area
 // GDEY029T94 tail and Jushuo AFC07-S24FCA-00. Drawing numbers; the fold is derived in case/ASSEMBLY.md.
 fpc_free = 14.40;                    // free length past the outline
 fpc_wide = 12.50;
+fpc_guide = 12.60;                   // drawing column for the applicable FPC width. Overall length is 17.60.
 fpc_thick = 0.30;
 fpc_z_ret = 0.50;                    // lower leg. Side view shows 0.50±0.05; it is not labeled as the centerline
 mouth_x = 103.77;                    // J4 silk front face. Mouth faces +x
@@ -78,8 +79,8 @@ xstop_bite = 0.05;                   // +x posts cross the glass edge by this mu
 // Free length is the glass front minus the foot. E = 1.8 GPa. Strain = 1.5 t δ / L^2.
 // Relaxed shelf tips are panel_h - 2*cl_lip apart. Sliding the glass out between them
 // means holding one edge out by at least (glass width - that span). The outline is
-// 36.70 mm; the tolerance used here is 36.50–36.90. rel_air is extra opening so the
-// slide leaves a gap on both shelves.
+// 36.70 mm. The datasheet gives that one width. 36.50–36.90 is an assumption around it.
+// rel_air is extra opening so the slide leaves a gap on both shelves.
 cl_L = (Z_in - (Z_pcb_t + cl_foot));
 cl_E = 1800;                         // N/mm^2
 cl_I = 6 * cl_t * cl_t * cl_t / 12;  // 6 mm wide beam
@@ -260,7 +261,7 @@ module shell(pk=true){   // pk=false: preview only, pockets left solid (inlays s
     // panel pocket clearance (FPC loop side)
     translate([cx(panel[2]),cy(panel[3])+1,Z_pcb_t+0.5]) cube([4,panel[3]-panel[1]-2,Z_in-Z_pcb_t-0.5]);
     // land behind the glass, so a thick board does not press the panel into the face.
-    // Stops at x 107.55: the button tubes (Ø8.6 at x 112) already occupy the last 0.9 mm of the outline.
+    // Stops at x 107.55: the button tubes (Ø8.6 at x 112) occupy the last 0.9 mm of the outline.
     board_box(panel[0]-0.25, panel[1]-0.55, 107.55, panel[3]+0.55, Z_in-0.02, Z_in+face_recess);
     hook_relief();
     button_void();
@@ -630,20 +631,54 @@ module release_blade(defl=0) {
   board_box(48.4, 26.24 + u_push, 51.6, 26.24 + u_push + 1.00,
             Z_in - cl_face_below + 0.35, Z_in + cl_head_above + 0.70);
 }
-// Pick in the gap over J4. The shaft stays in the fold's open side and above the 2.0 mm
-// housing; the tip reaches the mouth so it can draw the slider toward the glass.
-module j4_pick() {
+// Leaning pick. Straight along +x dies in the fold (y 37.75–50.25, wall near x 110).
+// The blade leans pick_ang degrees off +x through the 10.15 mm gap (y 50.25–60.40),
+// which is the 60–78° band that clears the fold and the carrier posts. The handle
+// then runs along +x in that gap, through the J2 notch. Open is +x: the whole tool
+// translates by slider_travel while the lean stays put and the glass stays down.
+pick_ang = 66;
+pick_ytip = 48.60;
+pick_yhand = 55.60;
+pick_w = 1.40;
+pick_t = 0.80;
+pick_tipx = 103.55;
+pick_handx = 128;
+slider_travel = 0.85;
+module board_rod(x0, y0, x1, y1, w, z0, z1) {
+  ang = atan2(y1 - y0, x1 - x0);
+  len = norm([x1 - x0, y1 - y0]);
+  translate([cx(x0), cy(y0), z0])
+    rotate([0, 0, -ang])
+      translate([0, -w/2, 0])
+        cube([len, w, z1 - z0]);
+}
+module j4_pick(shift=0) {
   zc = Z_pcb_t + 2.0 + (panel_gap - 2.0) / 2;
-  board_box(104.20, 41.80, 108.46 + (panel_gap - fpc_z_ret) / 2 - fpc_thick/2 - 0.30, 46.20, zc - 0.40, zc + 0.40);
-  board_box(103.55, 42.20, 104.20, 45.80, Z_pcb_t + 2.05, zc + 0.40);
+  x0 = pick_tipx + shift;
+  x1 = x0 + (pick_yhand - pick_ytip) / tan(pick_ang);
+  board_rod(x0, pick_ytip, x1, pick_yhand, pick_w, zc - pick_t/2, zc + pick_t/2);
+  board_rod(x1, pick_yhand, pick_handx + shift, pick_yhand, pick_w, zc - pick_t/2, zc + pick_t/2);
 }
 // Keep only the neighbourhood of the first top hook, so a section shows the window and the shelves.
 module release_keep() {
   translate([cx(46), cy(31), 18.4]) cube([8, cy(22.2) - cy(31), 8.2]);
 }
-// Keep the J4 mouth, the fold, and the pick. The shell is not in this view.
-module j4_keep() {
-  translate([cx(98), cy(50), 16.5]) cube([24, cy(38) - cy(50), 10]);
+// Slab on the release cut. Intersection keeps a colour; a difference on this plane does not.
+module release_slab(x0, x1) {
+  intersection() {
+    children();
+    release_keep();
+    translate([x0, -1, -30]) cube([x1 - x0, H + 2, 80]);
+  }
+}
+module j4_cut() {
+  difference() {
+    intersection() {
+      children();
+      translate([cx(96), cy(66), 16]) cube([46, cy(36) - cy(66), 12]);
+    }
+    translate([-5, -5, 22.50]) cube([220, 120, 40]);
+  }
 }
 
 module flipP(){ translate([0,H,Z_out]) rotate([180,0,0]) children(); }
@@ -661,17 +696,32 @@ else if(part=="section") difference(){ union(){ color("lightgray") backplate(); 
   translate([-1,-1,-30]) cube([W+2, cy(40), 80]); }   // cut through the DOWN button centre (board y=40), the panel, and the FPC
 else if(part=="section_hooks") difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); fpc(); color("white") shell(false); color("orange") cap_placed(btn_flare); }
   translate([-1,-1,-30]) cube([W+2, cy(panel[1]+1.3)+1, 80]); }   // cut through the top hooks and the support pads
-// Removal. The shell is already off. The cut is the middle of the first top hook (board x = 50), through the tool window.
+// Removal. The shell is off. The cut is the middle of the first top hook (board x = 50), through the tool window.
 // section_release_out holds that edge out by rel_hold and slides the glass toward it by rel_slide.
 else if(part=="section_release") { difference(){ intersection(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); fpc(); } release_keep(); }
   translate([cx(50), -1, -30]) cube([W, H+2, 80]); }
   color("crimson") release_blade(); }
-else if(part=="section_release_out") { difference(){ intersection(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(rel_hold); translate([0, rel_slide, 0]) epd(); fpc(); } release_keep(); }
-  translate([cx(50), -1, -30]) cube([W, H+2, 80]); }
+else if(part=="section_release_out") {
+  // Pads and glass are separate slabs, so the tan does not take the blue.
+  color([0.62, 0.40, 0.18]) release_slab(cx(49.6), cx(50.0)) carrier(rel_hold);
+  color([0.25, 0.48, 0.82]) release_slab(cx(50.05), cx(50.45)) translate([0, rel_slide, 0])
+    translate([cx(panel[0]), cy(panel[3]), Z_panel_b]) cube([panel[2]-panel[0], panel[3]-panel[1], panel_t]);
   color("crimson") release_blade(rel_hold); }
-// J4 with the shell off and the glass seated. The cut is board y = 44, through the tail and the pick.
-else if(part=="section_j4") difference(){ intersection(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); fpc(); color("crimson") j4_pick(); } j4_keep(); }
-  translate([-1, cy(44), -30]) cube([W+2, H, 80]); }
+// J4, shell off, glass seated. The cut is the gap under the glass (z = 22.50), seen from above,
+// so the lean through the 10.15 mm opening is in the picture. The blue frame is the glass outline.
+else if(part=="section_j4") {
+  color("lightgray") j4_cut() backplate();
+  j4_cut() pcb();
+  color("wheat") j4_cut() carrier();
+  color("goldenrod") j4_cut() fpc();
+  // The outline sits under the pick so the blade stays in view.
+  color([0.25, 0.48, 0.82]) difference() {
+    translate([cx(panel[0]), cy(panel[3]), 21.00]) cube([panel[2]-panel[0], panel[3]-panel[1], 0.15]);
+    translate([cx(panel[0]) + 0.7, cy(panel[3]) + 0.7, 20.85])
+      cube([panel[2]-panel[0] - 1.4, panel[3]-panel[1] - 1.4, 0.5]);
+  }
+  color("crimson") j4_pick();
+}
 else if(part=="section_j1") difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); color("white") shell(false); }
   translate([-1,-1,-30]) cube([W+2, cy(58)+1, 80]); }   // cut along the J1 pin row / C43 centre (board y=58)
 else if(part=="section_j1x") difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); color("white") shell(false); }

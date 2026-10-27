@@ -324,17 +324,33 @@ for x0,x1,edge,dire in ((47.0,53.0,26.24,1),(84.6,90.6,26.24,1),(49.6,55.6,62.94
     if d_beam<0.05 or d_gap>-0.05 or d_foot<0.05:
         hook_fail=True
         print('  HOOK NOT FREE')
-    # Window: air a 1.0 mm blade can occupy, and a solid wall on the glass side of that air.
-    # u increases toward the glass. The push face is the inboard face of the outboard wall.
+    # Window path. A 1.0 mm blade comes down from above the head into the opening,
+    # 0.12 mm off the push face so the volume itself is air, then the face it bears
+    # on is solid. Three points on that face used to pass while the opening was shut.
     u_outer=-(cl_gap+cl_t)
     u_push=u_outer-cl_slot_gap
-    d_slot=float(qcar.signed_distance([_at(u_push+0.50, Zin)])[0])
-    d_wall=float(qcar.signed_distance([_at(u_push-0.20, Zin)])[0])
-    d_root=float(qcar.signed_distance([_at(u_outer+0.15, Zin-1.6)])[0])
-    print('  slot x %.1f blade %+.2f (want <0)  push wall %+.2f (want >0)  root %+.2f (want >0)'%(0.5*(x0+x1), d_slot, d_wall, d_root))
-    if d_slot>-0.05 or d_wall<0.05 or d_root<0.05:
+    z_lo=Zin-cl_face_below+0.35
+    z_hi=Zin+cl_head_above+0.70
+    ya=edge+dire*(u_push+0.12); yb=edge+dire*(u_push+1.12)
+    blade=box('slot blade', 0.5*(x0+x1)-1.60, min(ya,yb),
+              0.5*(x0+x1)+1.60, max(ya,yb), z_lo, z_hi)[1]
+    slot_blocked=False
+    worst_air=-9
+    for dz in (0.0, 0.6, 1.2, 1.8, 2.4):
+        pts=np.vstack([blade.vertices, blade.sample(800)])+np.array([0, 0, dz])
+        sd=qcar.signed_distance(pts)
+        worst_air=max(worst_air, float(sd.max()))
+        if float(sd.max())>-0.02:
+            slot_blocked=True
+    # The push face is vertical from just under the glass front to the top of the head.
+    # Below that the head slopes away, so a sample there is air and is not the wall.
+    wall_zs=(Zin-0.20, Zin+0.20, Zin+0.50)
+    wall_sd=[float(qcar.signed_distance([_at(u_push-0.15, z)])[0]) for z in wall_zs]
+    print('  slot x %.1f path air %+.2f (want <0)  wall %s (want >0)'%(
+        0.5*(x0+x1), worst_air, ' '.join('%+.2f'%s for s in wall_sd)))
+    if slot_blocked or min(wall_sd)<0.05:
         hook_fail=True
-        print('  HOOK SLOT MISSING')
+        print('  HOOK SLOT BLOCKED')
 # Shelf tips, relaxed, are shelf_span apart. Holding one edge out by (glass - span)
 # opens a gap the glass can slide through. rel_air is split across the two shelves.
 shelf_span=panel_h-2*cl_lip
@@ -383,23 +399,101 @@ for G in (glass_lo, panel_h, glass_hi):
         if eps>=0.020 or force>=8.0 or top_ov>-0.02 or bot_ov>-0.02:
             hook_fail=True
             print('  RELEASE CLEARANCE FAIL')
-# J4, shell off, glass seated. The pick lies in the gap over the 2.0 mm housing and
-# reaches the mouth from outside the glass, through the open side of the fold.
-# A locked lift pulls pi/2 mm of tail per mm; this step does not lift or slide.
-fpc_R=(P['panel_gap']-0.50)/2.0
-fpc_inner=fpc_R-0.15
-pick_half=0.40
+# Centred slide on a 36.70 mm glass. The glass can already sit against either beam
+# (cl_gap) and the lip still holds it, so the move that is left is that slide ± cl_gap.
+slide_mid=cl_lip+rel_air/2.0
+side_play=min(cl_gap, (panel_h-shelf_span)/2.0)
+slide_lo=slide_mid-side_play
+slide_hi=slide_mid+side_play
+print('slide from a centred %.2f mm seat %.3f mm; against either beam it is %.3f to %.3f mm'%(panel_h, slide_mid, slide_lo, slide_hi))
+# Lips printed 0.10 mm long each. Reported, not the nominal gate: the verified
+# service case stays the 36.90 mm row above.
+lip_err=0.10
+hold_err=glass_hi-(shelf_span-2*lip_err)
+eps_err=1.5*cl_t*hold_err/(cl_L*cl_L)
+F_err=3*cl_E*cl_I*hold_err/(cl_L**3)
+svc_eps=1.5*cl_t*(glass_hi-shelf_span+rel_air)/(cl_L*cl_L)
+print('print-error lips +%.2f mm each at %.2f mm glass: hold-out %.2f mm  strain %.2f%%  force %.2f N  OVER the 2%% gate'%(
+    lip_err, glass_hi, hold_err, 100*eps_err, F_err))
+print('service stress at %.2f mm is %.0f MPa (E times 1.92%%), the weak across-layer direction of PETG'%(glass_hi, cl_E*svc_eps))
+# J4 pick. The blade leans off +x through the gap beside the fold, then the handle
+# runs along +x. Opening the slider translates that tool along +x. The glass stays
+# down. A straight box in the fold cannot stand in for the path: the control below
+# is that straight box, and it has to intersect the fold or the test is blind.
+pick_ang=scad_num('pick_ang'); pick_ytip=scad_num('pick_ytip'); pick_yhand=scad_num('pick_yhand')
+pick_w=scad_num('pick_w'); pick_t=scad_num('pick_t')
+pick_tipx=scad_num('pick_tipx'); pick_handx=scad_num('pick_handx'); slider_travel=scad_num('slider_travel')
+fpc_guide=scad_num('fpc_guide')
 zc_tun=Zt+2.0+(P['panel_gap']-2.0)/2.0
-pick_x1=FPC_EDGE+fpc_inner-0.30
-pick=box('J4 pick', 103.55, 41.80, pick_x1, 46.20, Zt+2.05, zc_tun+pick_half)[1]
-c_pick=mesh_clearance(carrier, pick, n=4000)
-print('J4 pick vs carrier %6.2f (mouth to x %.2f, fold inner radius %.2f, blade half %.2f)'%(c_pick, pick_x1, fpc_inner, pick_half))
+fpc_R=(P['panel_gap']-0.50)/2.0
+ri=fpc_R-0.15; ro=fpc_R+0.15
+def _rod(p0, p1, width, thick, zc):
+    p0=np.asarray(p0, float); p1=np.asarray(p1, float)
+    delta=p1-p0; length=float(np.linalg.norm(delta))
+    th=math.atan2(delta[1], delta[0]); c,s=math.cos(th), math.sin(th)
+    m=trimesh.creation.box(extents=[length, width, thick])
+    m.apply_translation([length/2.0, 0, 0])
+    R=np.eye(4); R[0,0]=c; R[1,0]=-s; R[0,1]=s; R[1,1]=c
+    m.apply_transform(R)
+    X,Y=T(p0[0], p0[1])
+    m.apply_translation([X, Y, zc])
+    return m
+def j4_tool(shift):
+    tipx=pick_tipx+shift
+    x1=tipx+(pick_yhand-pick_ytip)/math.tan(math.radians(pick_ang))
+    blade=_rod((tipx, pick_ytip), (x1, pick_yhand), pick_w, pick_t, zc_tun)
+    hand=_rod((x1, pick_yhand), (pick_handx+shift, pick_yhand), pick_w, pick_t, zc_tun)
+    return trimesh.util.concatenate([blade, hand])
+# Half-annulus of the fold, bulging to +x. Positive clearance is air.
+def _fold_clear(pts):
+    bx=pts[:,0]-OX; by=H-OYT-pts[:,1]; bz=pts[:,2]
+    y0,y1=44.0-12.50/2.0, 44.0+12.50/2.0
+    zc=Zt+0.50+fpc_R
+    dx=bx-FPC_EDGE; dz=bz-zc
+    r=np.hypot(dx, dz)
+    d_pos=np.where(r<ri, ri-r, np.where(r>ro, r-ro, -np.minimum(r-ri, ro-r)))
+    az=np.abs(dz)
+    d_neg=np.where(az<ri, np.hypot(dx, az-ri), np.where(az>ro, np.hypot(dx, az-ro), -dx))
+    d2=np.where(dx>=0, d_pos, d_neg)
+    dy=np.maximum(np.maximum(y0-by, by-y1), 0.0)
+    return float(np.where(dy<=0, d2, np.where(d2<0, dy, np.hypot(d2, dy))).min())
+glass=box('glass', 29.46, 26.24, 108.46, 62.94, Zt+P['panel_gap'], Zt+P['panel_gap']+1.2)[1]
+qglass=trimesh.proximity.ProximityQuery(glass)
+qshell=trimesh.proximity.ProximityQuery(shell)
+sweep_clear={'carrier': 99.0, 'fold': 99.0, 'glass': 99.0, 'shell': 99.0}
+for shift in (0.0, slider_travel/2.0, slider_travel):
+    tool=j4_tool(shift)
+    pts=np.vstack([tool.vertices, tool.sample(4000, seed=1)])
+    sweep_clear['carrier']=min(sweep_clear['carrier'], -float(qcar.signed_distance(pts).max()))
+    sweep_clear['fold']=min(sweep_clear['fold'], _fold_clear(pts))
+    sweep_clear['glass']=min(sweep_clear['glass'], -float(qglass.signed_distance(pts).max()))
+    sweep_clear['shell']=min(sweep_clear['shell'], -float(qshell.signed_distance(pts).max()))
+# Straight shaft down the fold. This one is inside the wall, so the check can fail.
+blind=_rod((103.55, 44.0), (112.0, 44.0), 2.0, 0.8, zc_tun)
+blind_fold=_fold_clear(np.vstack([blind.vertices, blind.sample(1500, seed=1)]))
+print('J4 pick lean %.0f deg off +x, tip (%.2f, %.2f), handle y %.2f to x %.0f, slider travel %.2f mm along +x'%(
+    pick_ang, pick_tipx, pick_ytip, pick_yhand, pick_handx, slider_travel))
+print('J4 pick sweep  carrier %6.2f  fold %6.2f  glass %6.2f  shell %6.2f  (min 0.20)'%(
+    sweep_clear['carrier'], sweep_clear['fold'], sweep_clear['glass'], sweep_clear['shell']))
+print('J4 straight shaft through the fold, clearance %6.2f (want <0, or the path test cannot fail)'%blind_fold)
+if min(sweep_clear.values())<0.20 or not (60.0<=pick_ang<=78.0) or blind_fold>=0.0:
+    hook_fail=True
+    print('J4 PICK FAIL')
+# Open slider: the tail can shift by the guide width minus the tail width.
+# That play is what the sideways slide (slide_lo to slide_hi) has to fit in.
+fpc_tol=0.10
+play_nom=fpc_guide-12.50
+play_narrow=fpc_guide-(12.50-fpc_tol)
+play_wide=fpc_guide-(12.50+fpc_tol)
+print('J4 guide %.2f mm, tail 12.50±%.2f, open play nominal %.2f  narrow %.2f  wide %.2f'%(
+    fpc_guide, fpc_tol, play_nom, play_narrow, play_wide))
+print('open guide vs sideways slide: nominal play %.2f mm, slide %.2f to %.2f mm'%(play_nom, slide_lo, slide_hi))
+if play_nom+1e-9 < slide_hi:
+    print('  the %.2f mm guide covers the %.2f mm end of the slide at a nominal tail and does not cover %.2f mm'%(
+        fpc_guide, slide_lo, slide_hi))
 print('locked lift pulls %.3f mm of tail per mm; the %.2f mm insertion has %.2f mm of lift before it is under %.2f mm'%(
     math.pi/2, fpc_inserted(P['panel_gap']+PRINT_Z, 0.50),
     (fpc_inserted(P['panel_gap']+PRINT_Z, 0.50)-FPC_MIN)/(math.pi/2), FPC_MIN))
-if c_pick<0.20 or fpc_inner-pick_half<0.80:
-    hook_fail=True
-    print('J4 PICK FAIL')
 if hook_fail:
     print('HOOK FAIL')
 # +x stop. Pull-out along x is 1 mm of tail per mm of slide (the straight run grows).
