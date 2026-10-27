@@ -288,7 +288,7 @@ humidity, running state, link, and the clock) share **one** slot. While the Zigb
 that slot is at most every 3 min. Once the clock is known it is the next local-minute rollover (about
 60 s): the display task extrapolates `minuteStartMs` from `ZbThermostatLocalClock()`, so the digits
 update when the minute changes rather than on a free-running 60 s timer that can lag an extra minute.
-A temperature or humidity change waits for that same slot; there is no separate clock-only refresh. A sensor fault, and the *Starting sensor...* line coming or going, uses the button path, about 0.4 s after the edge, so a healthy sensor with no clock leaves *Starting sensor...* with the fault instead of waiting for the 3 min slot. Those edges draw from a token bucket of 3. One token returns every 60 s, and the bucket never holds more than 3. The starting line and a fault that appears or clears inside the first minute each take a token. A sensor that keeps failing and recovering spends the burst, then one partial a minute. If the extrapolated
+A temperature or humidity change waits for that same slot; there is no separate clock-only refresh. A sensor fault, and the *Starting sensor...* line coming or going, uses the button path, about 0.4 s after the edge, so a healthy sensor with no clock leaves *Starting sensor...* with the fault instead of waiting for the 3 min slot. Those edges draw from a token bucket of 3. One token returns every 60 s, and the bucket never holds more than 3. The starting line and a fault that appears or clears inside the first minute each take a token. A pending edge waits for the next token, and a frame that already matches the glass does not take one. With no clock, a sensor that keeps failing and recovering spends the burst, then one partial a minute. With the clock set, that edge is a second partial on top of the minute rollover. If the extrapolated
 minute never advances, a dirty screen is still flushed after 90 s. The panel
 deep-sleeps between refreshes. Displayed temperature is rounded to 0.1 °C before comparing, so sensor
 noise doesn't trigger refreshes.
@@ -305,12 +305,9 @@ The BUSY wait for a refresh (up to about 5 s full / 2 s partial) runs only in th
 polls with `vTaskDelay`, so the control task and the watchdog kick are never blocked on the panel. A
 dead panel is reported and does not stop heating.
 
-**Partial-refresh wear (GDEY029T94).** The clock slot is one partial a minute, about 1440 updates a day,
-about 0.53 million a year. Fault and starting-line edges sit inside that same budget: a burst of 3,
-then one partial a minute, including a sensor that flaps between failed and good. Good Display's
+**Partial-refresh wear (GDEY029T94).** With the Zigbee clock set, a healthy sensor partial-refreshes on the local minute. The first 60 min is 61 partials: the starting line clearing, then one a minute. That pace is about 1440 updates a day, about 0.53 million a year. The boot frame is a full refresh and is not in these counts. Fault and starting-line edges have a bucket of 3, then one token every 60 s. Without a clock the background slot stays quiet while the picture is unchanged, so the bucket is the whole flap. Over 60 min that is 62 partials for a sensor alternating dead and alive, and 62 for one stepping out of range and back: the burst, then one partial a minute. With the clock set the minute rollover still runs, and an edge between minutes is another partial. Those flaps are 122 partials in 60 min. About two partials a minute is about 1.05 million a year. Good Display's
 GDEY029T94 specification lists optical **Life** as **1,000,000 times or 5 years** at operating
-temperature (not split between full and partial). At that figure, counting every partial as one update
-spends about half of the 1,000,000-cycle rating per year; the "or 5 years" clause is the other limit,
+temperature (not split between full and partial). Counting every partial as one update, the healthy clock rate spends about half of the 1,000,000-cycle rating per year, and the flap with the clock set spends that rating in about a year. The "or 5 years" clause is the other limit,
 and the datasheet does not say partials count 1:1 with full updates. The same specification gives a
 partial refresh time of 0.3 s typical at 25 °C (this driver's BUSY timeout allows up to 2 s) and asks
 that the panel be refreshed at least every 24 hours so a stored image does not stick. The 6 hour
@@ -428,7 +425,10 @@ NAKs), `epd: BUSY timeout` and `display: refresh failed: ESP_ERR_TIMEOUT` (the p
 never releases BUSY), and a Zigbee steering retry. The run must reach `[emu] stop:
 Halted` on the cycle budget, with no panic, abort, assert, reset or boot error, and
 the control task must still be logging its 2 s `sht40: I2C error` heartbeat
-(`test/emu/smoke.sh`). This exercises what HOOTL fakes: the real IDF drivers, startup
+(`test/emu/smoke.sh`). That script checks the app-task stack high-water mark on the boot
+log (at least 1400 B free) and, in a second run, on factory reset (MODE held from the home
+screen, at least 800 B free). It does not open Device info, so that screen is not a stack
+sample. This exercises what HOOTL fakes: the real IDF drivers, startup
 order, partition table and bootloader, preemptive FreeRTOS on the RISC-V core, and
 esp-zigbee/ZBOSS starting the real 802.15.4 driver.
 
@@ -476,7 +476,9 @@ Every row also passes the safety monitor.
 | SHT40 | implausible value (90 °C) | `sht40_out_of_range` | TEMP RANGE fault, all off; recovers |
 | SHT40 | absent from power-on | `sht40_absent_at_boot` | never leaves failsafe, nothing on, no reboot |
 | SHT40 | fault edge after the starting window | `sensor_fault_after_start_repaints`, `sensor_fault_clears_after_start_repaints` | SENSOR FAIL on the glass within a couple of seconds; a later clear paints Idle the same way |
-| SHT40 | flapping dead/alive or out of range | `sensor_flap_dead_alive_refresh_budget`, `sensor_flap_out_of_range_refresh_budget` | token bucket: about one partial a minute over 10 min, not one per edge |
+| SHT40 | flapping dead/alive or out of range | `sensor_flap_dead_alive_refresh_budget`, `sensor_flap_out_of_range_refresh_budget`, `sensor_partials_dead_no_clock`, `sensor_partials_range_no_clock`, `sensor_partials_dead_clock`, `sensor_partials_range_clock`, `sensor_partials_healthy_no_clock`, `sensor_partials_healthy_clock` | 13 refreshes in 10 min with no clock. Over 60 min: 62 partials with no clock, 122 with the clock set, against 1 and 61 for a healthy sensor |
+| SHT40 | flap cut while healthy or in TEMP RANGE | `sensor_stale_dead_healthy_noclk_121`, `sensor_stale_dead_healthy_clk_121`, `sensor_stale_range_noclk_127`, `sensor_stale_range_clk_127` | glass matches within 60 s. Worst hold is 55.0 s (dead/alive, ends healthy) and 53.0 s (out of range), with or without a clock |
+| SHT40 | edge bucket cap, starting-line spend, 60 s refill | `sensor_edge_bucket_caps_at_burst`, `sensor_starting_edge_spends_a_token`, `sensor_edge_refill_waits_60s` | at most 3 tokens on hand; the starting line spends one; the next token is not early |
 | SHT40 | I2C driver init fails | `sht40_bus_init_fails` | sensor fault, rest of system runs |
 | STWD100 | missed kick (app hang) | `stwd100_missed_kick_resets` | reset 1.6 s after last WDI edge; outputs low; normal boot after |
 | STWD100 | reset mid-heat / power cut mid-cool | `reset_mid_heat_keeps_heat_off_time`, `reset_mid_cool_keeps_compressor_off_time` | W ≥ 60 s / Y ≥ 5 min off across the reboot |
