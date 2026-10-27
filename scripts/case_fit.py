@@ -648,16 +648,24 @@ float_hi=face_recess+stack_face
 # Tall-print insertion is the smaller budget. Rise pulls pull mm of tail per mm.
 lift_budget=(ins_tall-FPC_MIN)/pull
 ins_at_float=ins_tall-pull*float_hi
+ins_short=fpc_inserted(P['panel_gap']-PRINT_Z, 0.50)
+left_nom=ins_nom-pull*face_recess
+left_tight=ins_tall-pull*max(0.0, float_lo)
+left_loose=ins_short-pull*float_hi
 print('face recess %.2f mm, stack %.2f mm, float %.2f mm nominal, range %.2f–%.2f mm'%(
     face_recess, stack_face, face_recess, float_lo, float_hi))
-print('tall-print insertion %.2f mm allows %.3f mm of rise. At the loose float, %.2f mm stays inserted.'%(
-    ins_tall, lift_budget, ins_at_float))
+print('tall-print insertion %.2f mm allows %.3f mm of rise.'%(ins_tall, lift_budget))
+print('nominal rise leaves %.2f mm inserted. Tight rise on a tall print leaves %.2f mm. Loose rise on a short print leaves %.2f mm.'%(
+    left_nom, left_tight, left_loose))
 print('fence tops are 0.40 mm under the face, so %.2f mm of rise lets the panel ride over them.'%(1.2-0.40))
 def _float_ok(recess):
-    # The skin has to clear the stack, and the loose rise has to leave 3.0 mm inserted.
+    # The skin has to clear the stack. The nominal rise, and the tight rise on a
+    # tall print, both have to leave 3.0 mm of tail inserted.
     if recess<stack_face+0.10:
         return False
-    if recess+stack_face>lift_budget+1e-9:
+    if ins_nom-pull*recess<FPC_MIN-1e-9:
+        return False
+    if ins_tall-pull*max(0.0, recess-stack_face)<FPC_MIN-1e-9:
         return False
     return True
 if not _float_ok(face_recess):
