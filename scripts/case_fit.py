@@ -29,7 +29,7 @@ P=dict(standoff_h=scad_num('standoff_h'), panel_gap=scad_num('panel_gap'))
 for a in sys.argv[1:]: k,v=a.split('='); P[k]=float(v)
 plate_t=3; pcb_t=1.6; pcb_tol=0.16   # JLCPCB 1.6 mm board, ±0.16 mm
 Zb=plate_t+P['standoff_h']; Zt=Zb+pcb_t; Zpb=Zt+P['panel_gap']
-H=71; OX=3.5; OYT=3.5
+W=147; H=71; OX=3.5; OYT=3.5
 TAIL_LEN=1.0          # rear pin leg below the board
 FILLET_H=0.40         # solder fillet height, same as the rib-to-board gap
 FILLET_GROW=0.20      # fillet past the pad copper, total (0.1 mm per side)
@@ -59,10 +59,10 @@ for z_leg in (0.30, 0.50, 0.70):
 nominal=fpc_inserted(P['panel_gap'], 0.50)
 print('nominal gap %.2f leg 0.50 inserted %.2f (drawing minimum %.2f)'%(P['panel_gap'], nominal, FPC_MIN))
 # Exit plane. The free length is measured past the outline. This model starts the
-# bend at the glass back. Neither datasheet states which face the tail leaves, and
+# bend at the display panel back. Neither datasheet states which face the tail leaves, and
 # neither states a minimum bend radius (the connector's R0.20 is a housing fillet).
 front_exit=fpc_inserted(P['panel_gap']+1.2, 0.50)
-print('if the tail left the glass front face instead, inserted %.2f mm at this gap'%(front_exit))
+print('if the tail left the display panel front face instead, inserted %.2f mm at this gap'%(front_exit))
 opto_h=4.0
 print('opto clearance nominal %.2f mm, if the carrier prints short %.2f mm'%(P['panel_gap']-opto_h, P['panel_gap']-PRINT_Z-opto_h))
 if P['panel_gap']-PRINT_Z-opto_h < 0.40:
@@ -201,9 +201,8 @@ j2=[r for r in res if r[0].startswith('J2')]
 if j2:
   w=min(j2,key=lambda r:r[2])
   print('J2 rear tails/peg worst: %-28s vs %-14s %6.2f'%(w[0],w[1],w[2]))
-# board outline vs shell. Both of these are a designed kiss (0, or a numeric -0.0).
-# Sampling the contact can report a few hundredths of a millimetre of overlap, so
-# -0.05 mm of slack is allowed here only. Part rows above still fail on any c<0.
+# Board outline vs shell. Contact fails. The shell clips to the backplate and
+# clears the board, including a board that is pcb_tol thick.
 pcb_shell=0.0; pcb_back=0.0
 if have_board:
     d=trimesh.proximity.ProximityQuery(shell).signed_distance(np.vstack([pcbm.vertices,_sample(pcbm,20000)]))
@@ -213,7 +212,7 @@ if have_board:
     pcb_back=-float(d.max())
     print('PCB vs backplate (standoff seat expected 0)',round(pcb_back,2))
 else:
-    print('PCB outline checks skipped (no board.stl)')
+    print('KiCad board mesh absent; the slab below still checks the shell against the board outline')
 
 def mesh_clearance(part, obst, dz=0.0, n=6000):
     """Positive means air between the solids. dz lifts a second copy of the samples."""
@@ -221,6 +220,10 @@ def mesh_clearance(part, obst, dz=0.0, n=6000):
     if dz:
         pts=np.vstack([pts, pts+np.array([0,0,dz])])
     return -float(trimesh.proximity.ProximityQuery(obst).signed_distance(pts).max())
+
+_,board_slab=box('board slab',0,0,140,64,Zb,Zt)
+board_shell=mesh_clearance(board_slab, shell, dz=pcb_tol, n=8000)
+print('board slab vs shell (incl +%.2f board) %6.2f'%(pcb_tol, board_shell))
 
 carrier_fail=False
 bodies=carrier.split(only_watertight=False)
@@ -247,11 +250,13 @@ print('carrier vs shell (incl +%.2f board) %6.2f'%(pcb_tol, c_shell))
 print('carrier vs backplate (incl -%.2f board) %6.2f'%(pcb_tol, c_back))
 if c_shell<0.15 or c_back<0.15:
     carrier_fail=True
-# The shelves kiss the panel back and the ledges kiss the glass face. A few hundredths is the mesh.
+# The pads kiss the display panel back. A few hundredths is the mesh.
+# A gap is the panel with nothing under it. Interference is a pad through the panel.
 c_panel=mesh_clearance(carrier, panel, n=8000)
-print('carrier vs panel (kiss expected near 0) %6.2f'%c_panel)
-if c_panel<-0.08:
+print('carrier vs display panel (kiss expected near 0) %6.2f'%c_panel)
+if c_panel<-0.08 or c_panel>0.12:
     carrier_fail=True
+    print('PANEL SEAT FAIL')
 tall=[
  box('U6 opto x4.0',28.8,6.3,40.2,14.1,Zt,Zt+4.0),
  box('U7 opto x4.0',28.8,21.3,40.2,29.1,Zt,Zt+4.0),
@@ -295,126 +300,116 @@ if in_bulge.any():
     carrier_fail=True
 else:
     print('carrier stays clear of the FPC bulge')
-# Hooks. The beam is free beside the glass; only cl_foot ties it to the pad.
-# E = 1.8 GPa. ε = 1.5 t δ / L^2, F = 3 E I δ / L^3, I = w t^3 / 12, w = 6 mm.
-# The tool window is in the head at the free end. The root section that sets F is the full beam.
-cl_t=scad_num('cl_t'); cl_gap=scad_num('cl_gap'); cl_lip=scad_num('cl_lip')
-cl_lip_h=scad_num('cl_lip_h'); cl_foot=scad_num('cl_foot')
-cl_slot_w=scad_num('cl_slot_w'); cl_slot_gap=scad_num('cl_slot_gap'); cl_slot_wall=scad_num('cl_slot_wall')
-cl_head=scad_num('cl_head'); cl_head_above=scad_num('cl_head_above'); cl_face_below=scad_num('cl_face_below')
-glass_lo=scad_num('glass_lo'); glass_hi=scad_num('glass_hi'); panel_h=scad_num('panel_h'); rel_air=scad_num('rel_air')
-petg_eps=scad_num('petg_eps')
+# Display panel seat. No hooks and no release. The pads carry the panel.
+# A lip on the face, inboard of a long edge and above the panel front, is a hook.
+wall=scad_num('wall'); clr=scad_num('clr')
+snap_bump=scad_num('snap_bump'); snap_z=scad_num('snap_z'); snap_w=scad_num('snap_w')
+petg_eps=scad_num('petg_eps'); fence_air=scad_num('fence_air'); fence_t=scad_num('fence_t')
 xstop_bite=scad_num('xstop_bite'); face_recess=scad_num('face_recess')
+glass_lo=scad_num('glass_lo'); glass_hi=scad_num('glass_hi'); panel_h=scad_num('panel_h')
+j4_front=scad_num('j4_front'); j4_depth=scad_num('j4_depth'); j4_h=scad_num('j4_h')
+j4_y0=scad_num('j4_y0'); j4_y1=scad_num('j4_y1'); mouth_x=scad_num('mouth_x')
+step_mouth=scad_num('step_mouth')
 Zin=Zt+P['panel_gap']+1.2
-cl_L=Zin-(Zt+cl_foot)
-cl_E=1800.0
-cl_I=6.0*cl_t**3/12.0
-cl_eps=1.5*cl_t*cl_lip/(cl_L*cl_L)
-cl_F=3*cl_E*cl_I*cl_lip/(cl_L**3)
-print('hooks: L %.2f mm  t %.2f  lip %.2f  strain %.2f%%  force %.2f N/hook'%(cl_L, cl_t, cl_lip, 100*cl_eps, cl_F))
-hook_fail=False
-# The ramp rises by cl_lip while it steps back by cl_lip, so the lead-in is 45 deg.
-if cl_L<5.0 or cl_eps>=petg_eps or cl_F>=8.0 or abs(math.degrees(math.atan2(cl_lip, cl_lip))-45)>1:
-    hook_fail=True
-    print('HOOK BEAM FAIL')
+seat_fail=False
+if re.search(r'(?m)^module\s+(edge_hook|j4_pick|release_blade|hook_relief|hook_pocket)\b', _scad):
+    seat_fail=True
+    print('HOOK MODULE STILL IN THE MODEL')
+# Backplate clips. δ is the bump past the shell clearance. L is the wall from the
+# bump up to the front face. ε = 1.5 t δ / L^2. F = 3 E I δ / L^3, I = w t^3 / 12.
+# w is the snap window. The climb is local to that window.
+snap_defl=snap_bump-clr
+snap_L=Zin-snap_z
+snap_E=1800.0
+snap_I=snap_w*wall**3/12.0
+snap_eps=1.5*wall*snap_defl/(snap_L*snap_L)
+snap_F=3*snap_E*snap_I*snap_defl/(snap_L**3)
+print('backplate clips: L %.2f mm  t %.2f  bump %.2f  climb %.2f  strain %.2f%%  force %.2f N'%(
+    snap_L, wall, snap_bump, snap_defl, 100*snap_eps, snap_F))
+print('the %.2f%% strain is the flexural gate (%.1f%%). A wall of L=8 mm at this climb is %.2f%% and fails.'%(
+    100*snap_eps, 100*petg_eps, 100*1.5*wall*snap_defl/(8.0*8.0)))
+if snap_defl<=0.20 or snap_L<=11.0 or snap_eps>=petg_eps or snap_F>=8.0:
+    seat_fail=True
+    print('CLIP STRAIN FAIL')
+if not (1.5*wall*snap_defl/(8.0*8.0) >= petg_eps):
+    seat_fail=True
+    print('CLIP GATE DOES NOT REJECT A SHORT WALL')
+# Four bumps. The apex sits in the shell window and in the backplate.
+# A point beside the window, at the same radius, is shell. That is the wall that climbs.
+def _clip_points(cx0, lip_y, outward):
+    # Inside the bump, 0.25 mm back from the apex. The apex itself is the surface.
+    inner=(cx0, lip_y+outward*(snap_bump-0.25), snap_z)
+    beside=(cx0+8.0, lip_y+outward*(snap_bump*0.75), snap_z)
+    return inner, beside
+qshell=trimesh.proximity.ProximityQuery(shell)
+qback=trimesh.proximity.ProximityQuery(back)
+po=wall+clr
+for cx0, lip_y, outward in (
+    (W/2-35, po, -1.0), (W/2+35, po, -1.0),
+    (W/2-35, H-po, +1.0), (W/2+35, H-po, +1.0)):
+    apex, beside=_clip_points(cx0, lip_y, outward)
+    d_back=float(qback.signed_distance([apex])[0])
+    d_win=float(qshell.signed_distance([apex])[0])
+    d_wall=float(qshell.signed_distance([beside])[0])
+    print('clip x %.1f y %.1f  bump %+.2f (want >0)  window %+.2f (want <0)  wall %+.2f (want >0)'%(
+        cx0, lip_y, d_back, d_win, d_wall))
+    if d_back<0.05 or d_win>-0.05 or d_wall<0.05:
+        seat_fail=True
+        print('CLIP MESH FAIL')
+# Closing the window around the apex makes the bump a solid interference. The gate rejects that.
+apex=(W/2-35, po-snap_bump, snap_z)
+d_apex=float(qshell.signed_distance([apex])[0])
+blocked=trimesh.creation.box(extents=[12.0, 3.2, 2.6])
+blocked.apply_translation(apex)
+d_blocked=float(trimesh.proximity.ProximityQuery(blocked).signed_distance([apex])[0])
+print('clip window %+.2f (want <0)  filled window %+.2f (want >0)'%(d_apex, d_blocked))
+if d_apex>-0.05 or d_blocked<0.05:
+    seat_fail=True
+    print('CLIP NEGATIVE DID NOT FAIL' if d_blocked<0.05 else 'CLIP WINDOW IS SOLID')
+# Lip volume of the old hooks: inboard of each long edge, on the panel face. Air.
 qcar=trimesh.proximity.ProximityQuery(carrier)
-def _cy(by):
-    return H-OYT-by
-for x0,x1,edge,dire in ((47.0,53.0,26.24,1),(84.6,90.6,26.24,1),(49.6,55.6,62.94,-1),(76.0,82.0,62.94,-1)):
-    xm=OX+0.5*(x0+x1)
-    def _at(u, z):
-        return [xm, _cy(edge+dire*u), z]
-    d_beam=float(qcar.signed_distance([_at(-(cl_gap+cl_t/2), Zt+cl_foot+1.0)])[0])
-    d_gap=float(qcar.signed_distance([_at(-cl_gap/2, Zt+cl_foot+1.0)])[0])
-    d_foot=float(qcar.signed_distance([_at(-cl_gap/2, Zt+cl_foot/2)])[0])
-    print('  hook x %.1f beam %+.2f (want >0)  gap %+.2f (want <0)  foot %+.2f (want >0)'%(0.5*(x0+x1), d_beam, d_gap, d_foot))
-    if d_beam<0.05 or d_gap>-0.05 or d_foot<0.05:
-        hook_fail=True
-        print('  HOOK NOT FREE')
-    # Window path. A 1.0 mm blade comes down from above the head into the opening,
-    # 0.12 mm off the push face so the volume itself is air, then the face it bears
-    # on is solid.
-    u_outer=-(cl_gap+cl_t)
-    u_push=u_outer-cl_slot_gap
-    z_lo=Zin-cl_face_below+0.35
-    z_hi=Zin+cl_head_above+0.70
-    ya=edge+dire*(u_push+0.12); yb=edge+dire*(u_push+1.12)
-    blade=box('slot blade', 0.5*(x0+x1)-1.60, min(ya,yb),
-              0.5*(x0+x1)+1.60, max(ya,yb), z_lo, z_hi)[1]
-    slot_blocked=False
-    worst_air=-9
-    for dz in (0.0, 0.6, 1.2, 1.8, 2.4):
-        pts=np.vstack([blade.vertices, _sample(blade, 800)])+np.array([0, 0, dz])
-        sd=qcar.signed_distance(pts)
-        worst_air=max(worst_air, float(sd.max()))
-        if float(sd.max())>-0.02:
-            slot_blocked=True
-    # The push face is vertical from just under the glass front to the top of the head.
-    # Below that the head slopes away, so a sample there is air and is not the wall.
-    wall_zs=(Zin-0.20, Zin+0.20, Zin+0.50)
-    wall_sd=[float(qcar.signed_distance([_at(u_push-0.15, z)])[0]) for z in wall_zs]
-    print('  slot x %.1f path air %+.2f (want <0)  wall %s (want >0)'%(
-        0.5*(x0+x1), worst_air, ' '.join('%+.2f'%s for s in wall_sd)))
-    if slot_blocked or min(wall_sd)<0.05:
-        hook_fail=True
-        print('  HOOK SLOT BLOCKED')
-# Shelf tips, relaxed, are shelf_span apart. The release holds both edges out and lifts.
-shelf_span=panel_h-2*cl_lip
-hooks=((47.0,53.0,26.24,1),(84.6,90.6,26.24,1),(49.6,55.6,62.94,-1),(76.0,82.0,62.94,-1))
-top=[h for h in hooks if h[3]>0]
-bot=[h for h in hooks if h[3]<0]
-def _span(group):
-    c=[0.5*(a+b) for a,b,_,_ in group]
-    return max(c)-min(c)
-top_span=_span(top); bot_span=_span(bot)
-print('shelf tip span %.2f mm, top hooks %.1f mm apart, bottom hooks %.1f mm apart'%(shelf_span, top_span, bot_span))
-if abs(cl_head-(cl_slot_gap+cl_slot_wall))>1e-6 or cl_slot_gap<1.20 or cl_lip<0.32-1e-6 or top_span<33 or top_span>38:
-    hook_fail=True
-    print('RELEASE SPAN FAIL')
-# Lip on the mesh: solid 0.08 mm inboard of the tip, air 0.08 mm outboard, both edges.
-for x0,x1,edge,dire in hooks:
-    xm=OX+0.5*(x0+x1)
-    z_shelf=Zin+cl_lip_h/2
-    d_in=float(qcar.signed_distance([[xm, _cy(edge+dire*(cl_lip-0.08)), z_shelf]])[0])
-    d_out=float(qcar.signed_distance([[xm, _cy(edge+dire*(cl_lip+0.08)), z_shelf]])[0])
-    print('  lip x %.1f in shelf %+.2f (want >0)  past tip %+.2f (want <0)'%(0.5*(x0+x1), d_in, d_out))
-    if d_in<0.02 or d_out>-0.02:
-        hook_fail=True
-        print('  LIP TIP FAIL')
-# Both long edges move out together and the glass lifts straight up. Shoved against one
-# beam, the near lip still covers cl_lip + cl_gap. rel_air/2 is the air on that shelf.
-# The sideways slide is rel_slide. A non-zero slide has to fit the guide play below.
-rel_slide=scad_num('rel_slide')
-beam_span=panel_h+2*cl_gap
-hold=cl_lip+cl_gap+rel_air/2.0
-near_air=hold-(cl_lip+cl_gap)
-rel_eps=1.5*cl_t*hold/(cl_L*cl_L)
-rel_F=3*cl_E*cl_I*hold/(cl_L**3)
-print('release lifts both edges %.3f mm, sideways slide %.3f mm, strain %.2f%%, force %.2f N/hook, near-shelf air %.3f mm'%(
-    hold, rel_slide, 100*rel_eps, rel_F, near_air))
-if rel_eps>=petg_eps or rel_F>=8.0 or near_air<0.02:
-    hook_fail=True
-    print('RELEASE CLEARANCE FAIL')
-for G in (glass_lo, panel_h, glass_hi):
-    spare=beam_span-G
-    print('  glass %.2f mm, spare between the beams %.2f mm'%(G, spare))
-    if spare<0.05:
-        hook_fail=True
-        print('  GLASS WIDER THAN THE BEAMS')
-# A lip that prints 0.10 mm long. Reported against the flexural gate, not a second gate.
-lip_err=0.10
-hold_err=(cl_lip+lip_err)+cl_gap+rel_air/2.0
-eps_err=1.5*cl_t*hold_err/(cl_L*cl_L)
-F_err=3*cl_E*cl_I*hold_err/(cl_L**3)
-print('print-error lip +%.2f mm: hold-out %.3f mm  strain %.2f%%  force %.2f N  %s the %.1f%% gate'%(
-    lip_err, hold_err, 100*eps_err, F_err, 'PASSES' if eps_err<petg_eps else 'OVER', 100*petg_eps))
-print('service strain %.2f%% is %.0f MPa at E %.0f N/mm^2. Ultimaker PETG tensile-Z is 19 ± 6.4 MPa at 1.8%% strain, flexural strength 50 MPa at 3.6%%. The gate is 3.6/1.5 = %.1f%%.'%(
-    100*rel_eps, cl_E*rel_eps, cl_E, 100*petg_eps))
-print('the beam bends about the board x axis; the outer fiber is in tension along z, across the layers. The %.1f%% gate is above the interlayer elongation at break, 1.8 ± 0.8%%. The %.2f%% hold and the %.2f%% long-lip hold are under that 1.8%% mean and above 1.0%%.'%(
-    100*petg_eps, 100*rel_eps, 100*eps_err))
-# Guide play is the drawing width minus the tail width. The tail width is fpc_wide.
-# Jushuo ±0.10 on guide column B and the GDEY ±0.10 on the tail are both printed.
-# A negative play means that pair does not enter. It is not a slide failure.
+hooks_old=((47.0,53.0,26.24,1),(84.6,90.6,26.24,1),(49.6,55.6,62.94,-1),(76.0,82.0,62.94,-1))
+def _lip_box(x0, x1, edge, dire):
+    y0, y1 = (edge, edge+0.32) if dire>0 else (edge-0.32, edge)
+    return box('lip', x0, y0, x1, y1, Zin, Zin+0.25)[1]
+for x0,x1,edge,dire in hooks_old:
+    lip=_lip_box(x0, x1, edge, dire)
+    sd=float(trimesh.proximity.ProximityQuery(carrier).signed_distance(np.vstack([lip.vertices, _sample(lip, 400)])).max())
+    print('hook lip x %.1f  solid %+.2f (want <0)'%(0.5*(x0+x1), sd))
+    if sd>-0.02:
+        seat_fail=True
+        print('HOOK LIP PRESENT')
+lip0=_lip_box(*hooks_old[0])
+sd_neg=float(trimesh.proximity.ProximityQuery(trimesh.util.concatenate([carrier, lip0])).signed_distance([lip0.centroid])[0])
+print('hook lip reintroduced %+.2f (want >0)'%sd_neg)
+if sd_neg<0.05:
+    seat_fail=True
+    print('HOOK NEGATIVE DID NOT FAIL')
+# Fences. Solid beside the outline, air in the gap, and the fence stops under the shell face.
+def _fence_probe(x, edge, dire):
+    y_solid = edge - dire*(fence_air + fence_t*0.5)
+    y_air = edge - dire*(fence_air*0.5)
+    z = Zpb + 0.40
+    d_solid=float(qcar.signed_distance([[OX+x, H-OYT-y_solid, z]])[0])
+    d_air=float(qcar.signed_distance([[OX+x, H-OYT-y_air, z]])[0])
+    return d_solid, d_air
+for x, edge, dire, name in ((47.5, 26.24, 1, 'top'), (88.0, 26.24, 1, 'top-right'),
+                            (52.0, 62.94, -1, 'bottom'), (80.0, 62.94, -1, 'bottom-right')):
+    d_solid, d_air=_fence_probe(x, edge, dire)
+    print('fence %-12s solid %+.2f (want >0)  gap %+.2f (want <0)'%(name, d_solid, d_air))
+    if d_solid<0.05 or d_air>-0.02:
+        seat_fail=True
+        print('FENCE FAIL')
+# A 36.50 / 36.70 / 36.90 mm panel, seated on the bottom fence. The top gap has to stay open
+# on the wide assumption, and the narrow one cannot gain more than fence_air + the missing width.
+for G, label in ((glass_lo, 'narrow'), (panel_h, 'nominal'), (glass_hi, 'wide')):
+    extra=(panel_h-G)/2.0
+    top_gap=fence_air+extra
+    print('  display panel %.2f mm (%s), top gap if it sits on the bottom fence %.2f mm'%(G, label, top_gap))
+    if top_gap<0.0:
+        seat_fail=True
+        print('  PANEL WIDER THAN THE FENCES')
+# Guide play. Sideways travel while the shell goes on or off is 0: the shell does not touch the panel.
 fpc_wide=scad_num('fpc_wide'); fpc_guide=scad_num('fpc_guide')
 tail_tol=0.10; guide_tol=0.10
 play_nom=fpc_guide-fpc_wide
@@ -426,227 +421,45 @@ print('J4 guide %.2f±%.2f mm, tail %.2f±%.2f mm, play nominal %.2f  narrow-tai
     fpc_guide, guide_tol, fpc_wide, tail_tol, play_nom, play_narrow, play_wide, play_hi, play_lo))
 print('the %.2f mm tight stack is printed and is not a gate: a wide tail in a narrow guide does not assemble'%play_lo)
 if fpc_wide>fpc_guide+1e-9:
-    hook_fail=True
+    seat_fail=True
     print('J4 TAIL DOES NOT FIT THE GUIDE')
 nonneg=[p for p in (play_nom, play_narrow, play_wide, play_hi, play_lo) if p>=-1e-9]
 slide_cap=min(nonneg) if nonneg else -1.0
-print('release sideways slide %.3f mm, smallest non-negative guide play %.2f mm'%(rel_slide, slide_cap))
-if rel_slide>slide_cap+1e-9:
-    hook_fail=True
+shell_slide=0.0
+print('shell sideways travel %.3f mm, smallest non-negative guide play %.2f mm'%(shell_slide, slide_cap))
+if shell_slide>slide_cap+1e-9:
+    seat_fail=True
     print('J4 GUIDE PLAY FAIL')
-# J4 hook. The tongue's +x face bears on the upper ear's -x face and the pull is +x.
-# Insertion holds the hook pick_lift high and rotates it about the elbow from pick_swing
-# to the seated lean, then lowers the tongue into the slot. The shell is off for that,
-# so shell distance is printed and is not a gate. A straight +x translation of the seated
-# hook is the control: this ear hook does not cross the fold, and the pull runs into J2.
-pick_ang=scad_num('pick_ang'); pick_ytip=scad_num('pick_ytip'); pick_L=scad_num('pick_L')
-pick_w=scad_num('pick_w'); pick_hand=scad_num('pick_hand'); pick_inset=scad_num('pick_inset')
-pick_z0=scad_num('pick_z0'); pick_z1=scad_num('pick_z1')
-pick_tongue_dx=scad_num('pick_tongue_dx')
-pick_tongue_y0=scad_num('pick_tongue_y0'); pick_tongue_y1=scad_num('pick_tongue_y1')
-pick_tongue_z0=scad_num('pick_tongue_z0'); pick_tongue_z1=scad_num('pick_tongue_z1')
-pick_head_dx=scad_num('pick_head_dx'); pick_head_hy=scad_num('pick_head_hy')
-pick_head_z0=scad_num('pick_head_z0'); pick_head_z1=scad_num('pick_head_z1')
-pick_swing=scad_num('pick_swing'); pick_lift=scad_num('pick_lift')
-stroke_lo=scad_num('stroke_lo'); stroke_hi=scad_num('stroke_hi')
-mouth_x=scad_num('mouth_x'); j4_depth=scad_num('j4_depth'); j4_len=scad_num('j4_len'); j4_h=scad_num('j4_h')
-j4_front=scad_num('j4_front'); ear_x=scad_num('ear_x')
-fpc_R=(P['panel_gap']-0.50)/2.0
-ri=fpc_R-0.15; ro=fpc_R+0.15
-j4_y0=44.0-j4_len/2.0; j4_y1=44.0+j4_len/2.0
-def _rod(p0, p1, width, z0, z1):
-    p0=np.asarray(p0, float); p1=np.asarray(p1, float)
-    delta=p1-p0; length=float(np.linalg.norm(delta))
-    th=math.atan2(delta[1], delta[0]); c,s=math.cos(th), math.sin(th)
-    m=trimesh.creation.box(extents=[length, width, z1-z0])
-    m.apply_translation([length/2.0, 0, (z0+z1)/2.0])
-    R=np.eye(4); R[0,0]=c; R[1,0]=-s; R[0,1]=s; R[1,1]=c
-    m.apply_transform(R)
-    X,Y=T(p0[0], p0[1])
-    m.apply_translation([X, Y, 0])
-    return m
-def _xform(pts, elb, psi, zlift, xshift):
-    c,s=math.cos(psi), math.sin(psi)
-    EX,EY=T(float(elb[0]), float(elb[1]))
-    out=np.array(pts, float, copy=True)
-    dX=out[:,0]-EX; dY=out[:,1]-EY
-    out[:,0]=EX+c*dX+s*dY+xshift
-    out[:,1]=EY-s*dX+c*dY
-    out[:,2]=out[:,2]+zlift
-    return out
-def _elbow(ang):
-    a=math.radians(ang)
-    return np.array([ear_x+pick_L*math.cos(a), pick_ytip+pick_L*math.sin(a)])
-def _seated(ang):
-    a=math.radians(ang)
-    tip=np.array([ear_x, pick_ytip])
-    elb=_elbow(ang)
-    unit=np.array([math.cos(a), math.sin(a)])
-    s0=tip+pick_inset*unit
-    shank=_rod(s0, elb, pick_w, pick_z0, pick_z1)
-    hand=_rod(elb, elb+np.array([pick_hand, 0.0]), pick_w, pick_z0, pick_z1)
-    tongue=box('tongue', ear_x-pick_tongue_dx, pick_tongue_y0, ear_x, pick_tongue_y1, pick_tongue_z0, pick_tongue_z1)[1]
-    head=box('head', ear_x-pick_head_dx, pick_ytip-pick_head_hy, ear_x, pick_ytip+pick_head_hy, pick_head_z0, pick_head_z1)[1]
-    lip=trimesh.util.concatenate([tongue, head])
-    return shank, hand, lip, elb
-# Half-annulus of the fold, bulging to +x. The y band is the tail width. Positive clearance is air.
-def _fold_clear(pts, wide):
-    bx=pts[:,0]-OX; by=H-OYT-pts[:,1]; bz=pts[:,2]
-    y0,y1=44.0-wide/2.0, 44.0+wide/2.0
-    zc=Zt+0.50+fpc_R
-    dx=bx-FPC_EDGE; dz=bz-zc
-    r=np.hypot(dx, dz)
-    d_pos=np.where(r<ri, ri-r, np.where(r>ro, r-ro, -np.minimum(r-ri, ro-r)))
-    az=np.abs(dz)
-    d_neg=np.where(az<ri, np.hypot(dx, az-ri), np.where(az>ro, np.hypot(dx, az-ro), -dx))
-    d2=np.where(dx>=0, d_pos, d_neg)
-    dy=np.maximum(np.maximum(y0-by, by-y1), 0.0)
-    return float(np.where(dy<=0, d2, np.where(d2<0, dy, np.hypot(d2, dy))).min())
-glass=box('glass', 29.46, 26.24, 108.46, 62.94, Zt+P['panel_gap'], Zt+P['panel_gap']+1.2)[1]
-# The housing +x face is j4_front. The ear's -x face is 0.10 mm in front of it.
+# Housing from the STEP: body y 36–52, not the 17.60 mm overall length. The silk mouth
+# is step_mouth past j4_front. 3.90 mm is the unlabelled side-view run, not DIM B.
+print('J4 housing y %.2f–%.2f, face x %.3f, mouth x %.2f, block in front of the face %.2f mm, side-view run %.2f mm'%(
+    j4_y0, j4_y1, j4_front, mouth_x, mouth_x-j4_front, j4_depth))
+if abs((j4_y1-j4_y0)-16.0)>1e-6 or abs((mouth_x-j4_front)-step_mouth)>0.02 or abs(j4_h-2.0)>1e-6:
+    seat_fail=True
+    print('J4 HOUSING FAIL')
 housing=box('j4 body', j4_front-j4_depth, j4_y0, j4_front, j4_y1, Zt, Zt+j4_h)[1]
-j2m=box('j2', 121.05-4.47, 56.7, 121.05+4.47, 64.0, Zt, Zt+3.26)[1]
-qglass=trimesh.proximity.ProximityQuery(glass)
-qshell=trimesh.proximity.ProximityQuery(shell)
-qhouse=trimesh.proximity.ProximityQuery(housing)
-qj2=trimesh.proximity.ProximityQuery(j2m)
-_CLEAR_KEYS=('carrier','fold','glass','j2','housing','shell')
-def _pose_pts(ang, psi, zlift, xshift, n=700, seed=1):
-    shank, hand, lip, elb=_seated(ang)
-    pts=[]
-    lip_pts=None
-    for i,m in enumerate((shank, hand, lip)):
-        raw=np.vstack([m.vertices, m.sample(n, seed=seed+i)])
-        moved=_xform(raw, elb, psi, zlift, xshift)
-        pts.append(moved)
-        if i==2:
-            lip_pts=_xform(m.vertices, elb, psi, zlift, xshift)
-    return np.vstack(pts), lip_pts
-def _clears(pts, wide):
-    return {
-        'carrier': -float(qcar.signed_distance(pts).max()),
-        'fold': _fold_clear(pts, wide),
-        'glass': -float(qglass.signed_distance(pts).max()),
-        'j2': -float(qj2.signed_distance(pts).max()),
-        'housing': -float(qhouse.signed_distance(pts).max()),
-        'shell': -float(qshell.signed_distance(pts).max()),
-    }
-def _accumulate(acc, c):
-    for k in _CLEAR_KEYS:
-        acc[k]=min(acc[k], c[k])
-def _path(ang, wide, shifts):
-    """Raised rotation, drop onto the face, then the +x pull. Returns clearances and lip poses."""
-    acc={k: 99.0 for k in _CLEAR_KEYS}
-    ymax=-1e9
-    lips=[]
-    for psi_deg in np.linspace(pick_swing, 0.0, 15):
-        pts, lip=_pose_pts(ang, math.radians(float(psi_deg)), pick_lift, 0.0, seed=1)
-        _accumulate(acc, _clears(pts, wide))
-        ymax=max(ymax, float((H-OYT-pts[:,1]).max()))
-    for i,zl in enumerate(np.linspace(pick_lift, 0.0, 7)):
-        pts, lip=_pose_pts(ang, 0.0, float(zl), 0.0, seed=20+i)
-        _accumulate(acc, _clears(pts, wide))
-        ymax=max(ymax, float((H-OYT-pts[:,1]).max()))
-    for i,shift in enumerate(shifts):
-        pts, lip=_pose_pts(ang, 0.0, 0.0, shift, seed=40+i)
-        _accumulate(acc, _clears(pts, wide))
-        ymax=max(ymax, float((H-OYT-pts[:,1]).max()))
-        lips.append((shift, lip))
-    return acc, ymax, lips
-def _bears_on_ear(lip, shift):
-    """The tool's +x face pulls on the ear's -x face. The lip stays on the -x side of that face."""
-    bx=lip[:,0]-OX; by=H-OYT-lip[:,1]; bz=lip[:,2]
-    face=ear_x+shift
-    on=abs(float(bx.max())-face)<=0.05 and float(bx.max())<=face+0.02
-    behind=float(bx.min())<face-0.02
-    y_ok=float(by.min())<pick_tongue_y1 and float(by.max())>pick_tongue_y0
-    z_ok=float(bz.min())<Zt+j4_h and float(bz.max())>Zt
-    return on and behind and y_ok and z_ok
-service_shifts=(0.0, stroke_lo, 0.5*(stroke_lo+stroke_hi), stroke_hi)
-elb=_elbow(pick_ang)
-print('J4 hook lean %.0f deg, tongue on the ear at (%.3f, %.3f), elbow (%.2f, %.2f), handle %.2f mm to x %.2f'%(
-    pick_ang, ear_x, pick_ytip, elb[0], elb[1], pick_hand, elb[0]+pick_hand))
-print('J4 insertion rotates %.0f deg about that elbow at +%.2f mm, then lowers into the slot and pulls +x from %.2f mm to %.2f mm'%(
-    pick_swing, pick_lift, stroke_lo, stroke_hi))
-sweep, tool_ymax, lips=_path(pick_ang, fpc_wide, service_shifts)
-print('J4 service sweep  carrier %6.2f  fold %6.2f  glass %6.2f  J2 %6.2f  housing %6.2f  (min 0.20, housing min 0)'%(
-    sweep['carrier'], sweep['fold'], sweep['glass'], sweep['j2'], sweep['housing']))
-print('J4 shell along that sweep %6.2f (shell is off in service; not a gate)'%sweep['shell'])
-neighbours_ok=min(sweep['carrier'], sweep['fold'], sweep['glass'], sweep['j2'])>=0.20 and sweep['housing']>=0.0
-contact_ok=all(_bears_on_ear(lip, shift) for shift, lip in lips)
-if not neighbours_ok or not contact_ok:
-    hook_fail=True
-    print('J4 PICK FAIL')
-if not contact_ok:
-    print('J4 TONGUE DOES NOT BEAR ON THE EAR')
-# 55° and 90° are clearance failures. An angle-band check does not stand in for that.
-for ang in (55.0, 90.0):
-    alt, _, _=_path(ang, fpc_wide, (0.0, stroke_hi))
-    alt_min=min(alt['carrier'], alt['fold'], alt['glass'], alt['j2'])
-    print('J4 hook at %.0f deg  carrier %6.2f  fold %6.2f  glass %6.2f  J2 %6.2f  housing %6.2f'%(
-        ang, alt['carrier'], alt['fold'], alt['glass'], alt['j2'], alt['housing']))
-    if alt_min>=0.20 and alt['housing']>=0.0:
-        hook_fail=True
-        print('J4 ANGLE %.0f DID NOT HIT ANYTHING'%ang)
-# Straight +x of the seated hook, continued past the assumed stroke. The stroke itself is
-# inside the service sweep above. This ear hook stays clear of the fold. The longer pull
-# has to run into J2.
-straight_j2=99.0
-for shift in (0.0, 2.0, 3.0, 4.0, 5.0, 6.0):
-    pts, _=_pose_pts(pick_ang, 0.0, 0.0, shift, n=500, seed=70)
-    straight_j2=min(straight_j2, _clears(pts, fpc_wide)['j2'])
-print('J4 straight +x of the seated hook, J2 clearance %6.2f (want <0)'%straight_j2)
-if straight_j2>=0.0:
-    hook_fail=True
-    print('J4 STRAIGHT PATH DID NOT HIT J2')
-# Free +x run: the largest shift that keeps 0.20 mm off the carrier, the fold, the glass, and J2.
-lo_s, hi_s=0.0, 8.0
-for _ in range(14):
-    mid=0.5*(lo_s+hi_s)
-    pts, _=_pose_pts(pick_ang, 0.0, 0.0, mid, n=500, seed=80)
-    c=_clears(pts, fpc_wide)
-    if min(c['carrier'], c['fold'], c['glass'], c['j2'])>=0.20 and c['housing']>=0.0:
-        lo_s=mid
-    else:
-        hi_s=mid
-pts, _=_pose_pts(pick_ang, 0.0, 0.0, lo_s+0.40, n=700, seed=90)
-probe=_clears(pts, fpc_wide)
-probe_min=min(probe['carrier'], probe['fold'], probe['glass'], probe['j2'])
-print('J4 free pull %.2f mm before clearance drops under 0.20; assumed stroke %.2f to %.2f mm; probe at +0.40 mm is %6.2f'%(
-    lo_s, stroke_lo, stroke_hi, probe_min))
-if stroke_hi>lo_s+1e-6 or probe_min>=0.20:
-    hook_fail=True
-    print('J4 TRAVEL FAIL')
-# Opening beside the fold. The tool's highest board-y in the sweep has to fit in it,
-# with 0.20 mm left at the post. A 6.35 mm opening is under that need.
-cv=carrier.vertices
-cbx=cv[:,0]-OX; cby=H-OYT-cv[:,1]; cbz=cv[:,2]
-fold_y1=44.0+fpc_wide/2.0
-post=(cbx>108.2)&(cbx<109.6)&(cby>fold_y1-0.01)&(cbz>Zt)&(cbz<Zt+P['panel_gap']+0.2)
-if not np.any(post):
-    hook_fail=True
-    print('J4 CARRIER OPENING MISSING')
-    gap=0.0
-else:
-    gap=float(cby[post].min())-fold_y1
-need=(tool_ymax-fold_y1)+0.20
-print('J4 carrier opening %.2f mm, hook needs %.2f mm (a 6.35 mm opening fails)'%(gap, need))
-if gap+1e-6<need or need<=6.35:
-    hook_fail=True
-    print('J4 CARRIER OPENING FAIL')
-print('locked lift pulls %.3f mm of tail per mm; the %.2f mm insertion has %.2f mm of lift before it is under %.2f mm'%(
-    math.pi/2, fpc_inserted(P['panel_gap']+PRINT_Z, 0.50),
-    (fpc_inserted(P['panel_gap']+PRINT_Z, 0.50)-FPC_MIN)/(math.pi/2), FPC_MIN))
-if hook_fail:
-    print('HOOK FAIL')
-# +x stop. Pull-out along x is 1 mm of tail per mm of slide (the straight run grows).
-# A post that bites the outline by xstop_bite still kisses after a 0.10 mm short print
-# if the bite is at least that. The tall-print insertion is the 3.11 mm row.
+# Finger on the slider. The display panel is held up, so it is not in this check.
+# The box sits on the housing and reaches past the silk mouth. Shut is a push toward -x.
+finger=box('finger', j4_front-1.5, 40.0, mouth_x+5.0, 48.0, Zt+j4_h+0.30, Zt+j4_h+8.0)[1]
+fpts=np.vstack([finger.vertices, _sample(finger, 1500)])
+finger_d=float(qcar.signed_distance(fpts).max())
+house_d=-float(trimesh.proximity.ProximityQuery(housing).signed_distance(fpts).max())
+print('J4 finger vs carrier %+.2f (want <0)  vs housing %.2f mm (want <1.0, it reaches the slider)'%(finger_d, house_d))
+if finger_d>-0.20 or house_d<0.0 or house_d>1.0:
+    seat_fail=True
+    print('J4 FINGER FAIL')
+# The seated carrier does not occupy the slider. The housing stays clear of the carrier.
+c_j4=mesh_clearance(carrier, housing, n=2000)
+print('carrier vs J4 housing %6.2f (want >0.40)'%c_j4)
+if c_j4<0.40:
+    seat_fail=True
+    print('CARRIER COVERS J4')
+# +x stop. Pull-out along x is 1 mm of tail per mm of slide.
 vcar=carrier.vertices
 right=(vcar[:,0]>OX+108.2)&(vcar[:,0]<OX+109.6)&(vcar[:,2]>Zpb+0.3)&(vcar[:,2]<Zin)
 if not np.any(right):
     print('X STOP MISSING')
-    hook_fail=True
+    seat_fail=True
     bite=0.0
 else:
     bite=(OX+FPC_EDGE)-float(vcar[right,0].min())
@@ -655,23 +468,87 @@ ins_slide=fpc_inserted(P['panel_gap']+PRINT_Z, 0.50)-worst_slide
 print('x stop bite %.3f mm, worst +x slide after a %.2f mm short print %.3f mm, inserted then %.2f mm'%(bite, PRINT_Z, worst_slide, ins_slide))
 if bite<xstop_bite-0.03 or ins_slide<FPC_MIN-1e-6:
     print('X STOP FAIL')
-    hook_fail=True
-# -x is the curtain at board x 29.0. That slide lengthens the tail.
-print('minus-x runs into the curtain %.2f mm away; that slide lengthens the inserted tail'% (29.46-29.0))
+    seat_fail=True
+print('minus-x lengthens the inserted tail. The curtain is %.2f mm from the outline and does not locate the panel'%(29.46-29.0))
+# Shell on and off. Pure z, through the snap climb. The panel and the fold stay clear,
+# so the shell cannot shift the panel or load the connector.
+def _fold_points():
+    y0=44.0-fpc_wide/2.0; y1=44.0+fpc_wide/2.0
+    R=(P['panel_gap']-0.50)/2.0
+    zc=Zt+0.50+R
+    pts=[]
+    for t in np.linspace(-np.pi/2, np.pi/2, 16):
+        for yy in np.linspace(y0, y1, 6):
+            for rr in (R-0.10, R+0.10):
+                bx=FPC_EDGE+rr*np.cos(t)
+                bz=zc+rr*np.sin(t)
+                X,Y=T(bx, yy)
+                pts.append((X, Y, bz))
+    # lower leg
+    x_end=mouth_x-(FPC_FREE-np.pi*R-(FPC_EDGE-mouth_x))
+    for bx in np.linspace(x_end, FPC_EDGE, 8):
+        for yy in np.linspace(y0, y1, 4):
+            X,Y=T(bx, yy)
+            pts.append((X, Y, Zt+0.50))
+    return np.array(pts)
+fold_pts=_fold_points()
+qpanel=trimesh.proximity.ProximityQuery(panel)
+shell_pts=np.vstack([shell.vertices, _sample(shell, 8000)])
+for dz in (0.0, 1.0, 2.0):
+    moved=shell_pts+np.array([0.0, 0.0, dz])
+    # also the thick-board case, which lifts the panel and the fold toward a seated shell
+    c_pan=-float(qpanel.signed_distance(moved).max())
+    c_pan_hi=-float(qpanel.signed_distance(moved-np.array([0.0, 0.0, pcb_tol])).max()) if dz==0.0 else c_pan
+    c_fold=-float(trimesh.proximity.ProximityQuery(shell).signed_distance(fold_pts-np.array([0.0, 0.0, dz])).max())
+    c_fold_hi=-float(trimesh.proximity.ProximityQuery(shell).signed_distance(fold_pts+np.array([0.0, 0.0, pcb_tol])).max()) if dz==0.0 else c_fold
+    worst=min(c_pan, c_pan_hi, c_fold, c_fold_hi)
+    print('shell lift %4.1f mm  panel %6.2f  panel+thick %6.2f  fold %6.2f  fold+thick %6.2f'%(
+        dz, c_pan, c_pan_hi, c_fold, c_fold_hi))
+    if worst<=0.10:
+        seat_fail=True
+        print('SHELL TOUCHES THE PANEL OR THE FOLD')
+# A shell dropped onto the panel fails this same test.
+dropped=shell_pts+np.array([0.0, 0.0, -1.0])
+c_drop=-float(qpanel.signed_distance(dropped).max())
+print('shell pushed 1 mm onto the panel %6.2f (want <0)'%c_drop)
+if c_drop>=0.0:
+    seat_fail=True
+    print('SHELL CONTACT NEGATIVE DID NOT FAIL')
 stack_face=0.16+0.10+0.10+0.15
 print('face recess %.2f mm, stack board+print+snap+standoff %.2f mm, margin %.2f mm'%(face_recess, stack_face, face_recess-stack_face))
 if face_recess<stack_face+0.10:
     print('FACE RECESS FAIL')
-    hook_fail=True
-if hook_fail:
-    print('HOOK FAIL')
+    seat_fail=True
+# The recess is a mesh fact, not only the constant. Over the middle of the panel the
+# shell's inner skin is face_recess behind Z_in.
+# Border of the panel, outside the window. The recess is air; the skin past it is solid.
+mid=T(31.0, 27.5)
+d_face=float(qshell.signed_distance([[mid[0], mid[1], Zin+0.30]])[0])
+d_skin=float(qshell.signed_distance([[mid[0], mid[1], Zin+face_recess+0.08]])[0])
+print('face over the panel border at +0.30 mm %+.2f (want <0)  past the recess %+.2f (want >0)'%(d_face, d_skin))
+if d_face>-0.02 or d_skin<0.02:
+    seat_fail=True
+    print('FACE RECESS MESH FAIL')
+if board_shell<0.05 or (have_board and pcb_shell<0.05):
+    seat_fail=True
+    print('SHELL TOUCHES THE BOARD')
+# A clamp post on a mounting hole is board contact. The gate rejects it.
+post=cyl('clamp post', 6.4, 6.4, 3.0, Zt+0.05, Zt+2.0)[1]
+c_post=mesh_clearance(board_slab, trimesh.util.concatenate([shell, post]), dz=pcb_tol, n=1500)
+print('clamp post on the shell vs board %6.2f (want <0)'%c_post)
+if c_post>=0.0:
+    seat_fail=True
+    print('CLAMP NEGATIVE DID NOT FAIL')
+if seat_fail:
+    print('SEAT FAIL')
 # Buttons. TS-1187A-B-A-B: H=1.5±0.05, drawing TRAVEL 0.2±0.1, spec table 0.25.
 # The sheet does not give an over-travel rating. The lip is the plastic stop.
-# The shell is fixed to the backplate. Clamp posts start 0.1 mm above a nominal
-# board, so they do not make the shell follow the board, and the board-thickness
-# term stays in the stack. Snap windows add ±0.10 mm when the shell is not seated
-# in the middle of the window. Moving the whole shell changes the gap and not the
-# travel, because the cone and the lip move together.
+# The shell is fixed to the backplate by the clips, not by the board. Board thickness
+# stays in the stack because the actuator is on the board and the shell z comes from
+# the snaps. Snap windows add ±0.10 mm when the shell is not seated in the middle of
+# the window. Moving the whole shell changes the gap and not the travel, because the
+# cone and the lip move together. The leaf is the captive button catch. It does not
+# hold the display panel.
 # Uniform draws: printer z ±0.10 on the gap, an independent ±0.10 on the cap-to-shell
 # travel (two prints), standoff ±0.15, board ±0.16, switch height ±0.05, seat ±0.10.
 SW_H_TOL=0.05
@@ -817,7 +694,7 @@ print('seated vs actuator %6.2f, vs tall+thick %6.2f, pressed (past the cover) %
 if c_act<0.30 or c_act_hi<=0.05:
     btn_fail=True
     print('ACTUATOR GAP FAIL')
-if interfere or pcb_shell<-0.05 or pcb_back<-0.05 or carrier_fail or btn_fail or hook_fail:
+if interfere or board_shell<0.05 or (have_board and pcb_shell<0.05) or pcb_back<-0.05 or carrier_fail or btn_fail or seat_fail:
     print('INTERFERE')
     sys.exit(1)
 print('FIT OK')

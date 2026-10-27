@@ -2,7 +2,7 @@
 // Units mm. Board coords: origin top-left, x right, y down (same as KiCad, board-relative).
 // Case coords: origin outer bottom-left of backplate, X right, Y up, Z out of wall (wall surface Z=0).
 // Three air zones: hot, middle, and sensor duct.
-part = "assembly";   // backplate | shell | carrier | caps | assembly | exploded | section | section_hooks | section_airflow
+part = "assembly";   // backplate | shell | carrier | caps | assembly | exploded | section | section_airflow
 explode = 0;         // used by "exploded"
 $fn = 48;
 
@@ -41,15 +41,17 @@ win_m = 0.5;                         // window margin around active area
 // GDEY029T94 tail and Jushuo AFC07-S24FCA-00. Drawing numbers; the fold is derived in case/ASSEMBLY.md.
 fpc_free = 14.40;                    // free length past the outline
 fpc_wide = 12.50;
-fpc_guide = 12.60;                   // drawing column for the applicable FPC width. Overall length is 17.60.
+fpc_guide = 12.60;                   // DIM B, the applicable FPC-width column. Overall length is 17.60.
 fpc_thick = 0.30;
 fpc_z_ret = 0.50;                    // lower leg. Side view shows 0.50±0.05; it is not labeled as the centerline
 mouth_x = 103.77;                    // J4 silk front face. Mouth faces +x
-j4_depth = 3.90;                     // solid run back from j4_front; the sheet's DIM B label is not a stroke
-j4_front = 102.675;                  // housing +x face
-ear_x = 102.775;                     // -x face of the block rear and the end ears, 0.10 mm in front of j4_front
-j4_len = 17.60;                      // overall length, centered on the tail
-j4_h = 2.00;                         // housing height above the PCB top
+j4_depth = 3.90;                     // unlabelled side-view run back from j4_front. Not DIM B, not a body depth, not a stroke
+j4_front = 102.675;                  // housing face 1.10 mm behind the silk mouth
+j4_y0 = 36.0;                        // housing body, not the 17.60 mm overall length
+j4_y1 = 52.0;
+j4_len = 17.60;                      // overall length, ears included, centered on the tail (board y 35.2–52.8)
+j4_h = 2.00;                         // titled housing height above the PCB top. The side view also shows 2.70 and 2.20
+step_mouth = 1.10;                   // silk mouth minus j4_front, from the STEP block in front of that face
 fpc_R = (panel_gap - fpc_z_ret) / 2;
 fpc_straight = panel[2] - mouth_x;
 fpc_arc = PI * fpc_R;
@@ -60,61 +62,43 @@ echo(str("FPC R=", fpc_R, " arc=", fpc_arc, " straight=", fpc_straight, " insert
 assert(fpc_ins > 3.0, "FPC tail insertion is short of the connector minimum");
 assert(fpc_ins_hi > 3.0, "a tall carrier print drops the FPC below 3.0 mm");
 assert(fpc_ins < 4.2, "FPC tail insertion is long");
-// 4.0 mm opto under the glass. A short carrier print must still leave 0.40 mm.
+// 4.0 mm opto under the display panel. A short carrier print must still leave 0.40 mm.
 assert(panel_gap - 0.10 - 4.0 >= 0.40, "panel gap does not clear the optos");
-// carrier hooks. Two per long edge; the FPC end stays open.
-// The land behind the glass has to clear a thick board (+0.16), a tall carrier
+// The display panel rests on the pads. Nothing hooks it and nothing releases it.
+// The land behind the panel has to clear a thick board (+0.16), a tall carrier
 // print (+0.10), a low snap seat (+0.10), and a tall standoff (+0.15): 0.51 mm.
 // 0.70 mm leaves 0.19 mm. The window chamfer starts further out, at Z_in+0.85.
 face_recess = 0.70;
-cl_t = 0.42;                         // hook beam, one perimeter at a 0.4 mm nozzle
-cl_gap = 0.25;                       // air between the beam and the glass edge. The pad does not fill this.
-cl_lip = 0.32;                       // how far the ledge crosses the glass edge
-cl_lip_h = 0.25;                     // flat shelf on the glass face. Its underside is that face, so a tool cannot get under it.
-cl_foot = 0.40;                      // only the bottom of the beam is tied to the pad
-cl_pocket = 1.10;                    // shell relief above the glass front
-cl_slot_w = 4.0;                     // tool window along the hook, centered on the 6 mm beam
-cl_slot_gap = 1.30;                  // opening a 1.0 mm blade fits through, with air on either side
-cl_slot_wall = 0.80;                 // outboard wall. The face toward the glass is what the blade pushes.
-cl_head = 2.10;                      // cl_slot_gap + cl_slot_wall
-cl_head_above = 0.65;                // head top. A +0.16 mm board still leaves air under the 1.10 mm pocket.
-cl_face_below = 0.40;                // vertical push face starts this far below the glass front
-cl_head_ang = 50;                    // underside of the head, from horizontal, so the head is not a flat overhang
-xstop_bite = 0.05;                   // +x posts cross the glass edge by this much, so a short print still stops the slide
-// Free length is the glass front minus the foot. E = 1.8 GPa. Strain = 1.5 t δ / L^2.
-// Relaxed shelf tips are panel_h - 2*cl_lip apart. The beams are cl_gap outside the outline.
-// Release holds both long edges out and lifts the glass straight up. There is no sideways
-// slide. Shoved against one beam, that lip still covers cl_lip + cl_gap; rel_air/2 is the
-// air left on that shelf. The outline is 36.70 mm. The datasheet gives that one width.
-// 36.50–36.90 is an assumption around it. The beam is bending, so the strain limit is the
-// Ultimaker PETG flexural strain, 3.6%, divided by 1.5.
-cl_L = (Z_in - (Z_pcb_t + cl_foot));
-cl_E = 1800;                         // N/mm^2
-cl_I = 6 * cl_t * cl_t * cl_t / 12;  // 6 mm wide beam
-cl_eps = 1.5 * cl_t * cl_lip / (cl_L * cl_L);
-cl_F = 3 * cl_E * cl_I * cl_lip / (cl_L * cl_L * cl_L);
+xstop_bite = 0.05;                   // +x posts cross the panel edge by this much, so a short print still stops the slide
+// The outline is 36.70 mm. The datasheet gives that one width.
+// 36.50–36.90 is an assumption around it.
 glass_lo = 36.50;
 glass_hi = 36.90;
 panel_h = 36.70;
-rel_air = 0.05;
+fence_air = 0.20;                    // air between a long-edge fence and the outline. The fence does not cross the face.
+fence_t = 0.80;
+// Backplate clips. The polygon apex is 0.80 mm outside the lip face; ±0.90 mm is the bump's z half-span, not the climb.
+// The shell inner face is clr off the lip, so the wall moves snap_bump - clr.
+// Free length is that wall from the bump up to the front face, which ties the four walls.
+// E = 1.8 GPa. Strain = 1.5 t δ / L^2. The 2.4% gate is the Ultimaker PETG flexural strain, 3.6%, divided by 1.5.
+// snap_w is the window the bump seats in, and the local width of wall that climbs it.
+snap_bump = 0.80;
+snap_z = 3.2;
+snap_w = 11;
 petg_eps = 0.024;
-shelf_span = panel_h - 2*cl_lip;
-rel_hold = cl_lip + cl_gap + rel_air/2;              // both edges, glass against one beam
-rel_slide = 0;                                       // lift, no sideways travel
-rel_eps = 1.5 * cl_t * rel_hold / (cl_L * cl_L);
-rel_F = 3 * cl_E * cl_I * rel_hold / (cl_L * cl_L * cl_L);
-echo(str("HOOK L=", cl_L, " lip_strain=", cl_eps, " lip_force_N=", cl_F,
-         " release_d=", rel_hold, " release_strain=", rel_eps, " release_force_N=", rel_F));
-assert(cl_L >= 5.0, "hook beam is too short");
+snap_E = 1800;                       // N/mm^2
+snap_defl = snap_bump - clr;
+snap_L = Z_in - snap_z;
+snap_I = snap_w * wall * wall * wall / 12;
+snap_eps = 1.5 * wall * snap_defl / (snap_L * snap_L);
+snap_F = 3 * snap_E * snap_I * snap_defl / (snap_L * snap_L * snap_L);
+echo(str("CLIP L=", snap_L, " defl=", snap_defl, " strain=", snap_eps, " force_N=", snap_F));
 assert(abs(panel_h - (panel[3] - panel[1])) < 1e-6, "panel_h is not the outline");
-assert(abs(cl_head - (cl_slot_gap + cl_slot_wall)) < 1e-6, "tool head is not the slot plus the wall");
-assert(cl_slot_gap >= 1.20, "tool slot is narrower than a 1.0 mm blade");
-assert(cl_head_above + 0.36 < cl_pocket, "tool head hits the shell pocket on a thick board");
-assert(cl_eps < petg_eps, "hook strain is past the PETG flexural limit");
-assert(cl_F < 8, "hook takes more than a finger");
-assert(rel_slide == 0, "release slide is not zero");
-assert(rel_eps < petg_eps, "release hold-out is past the PETG flexural limit");
-assert(rel_F < 8, "release hold-out takes more than a finger");
+assert(abs((mouth_x - j4_front) - step_mouth) < 0.02, "STEP mouth block is not 1.10 mm");
+assert(snap_defl > 0.20, "backplate bump does not reach the shell wall");
+assert(snap_L > 11, "backplate clip wall is too short");
+assert(snap_eps < petg_eps, "backplate clip strain is past the PETG flexural limit");
+assert(snap_F < 8, "backplate clip takes more than a finger");
 btn = [[112,30],[112,40],[112,50]];  // UP DOWN MODE
 pin = [[93,5]];                      // RESET pinhole only (BOOT is only useful with USB attached)
 led = [63.3,21.2];                   // D5 status LED -> light-pipe hole
@@ -232,8 +216,8 @@ module shell(pk=true){   // pk=false: preview only, pockets left solid (inlays s
         rbox(W,H,Z_out,4);
         translate([wall,wall,-1]) rbox(W-2*wall,H-2*wall,Z_in+1,1.2);   // r1.2: square PCB corners keep >=1 mm
       }
-      // PCB clamp posts at mounting holes
-      for(h=holes) translate([cx(h[0]),cy(h[1]),Z_pcb_t+0.1]) cylinder(d=6,h=Z_in-Z_pcb_t);
+      // The shell does not clamp the board. The locating pins keep the board, and the
+      // bumps on the backplate lip are the only clips.
       // thermal baffle around SHT40 island, open to the right wall
       translate([0,0,Z_pcb_t+baffle_gap]) linear_extrude(Z_in-Z_pcb_t-baffle_gap+0.01) difference(){
         translate([cx(baffle_x0),cy(island[3]+1.6)]) square([W-wall-cx(baffle_x0)+0.5, island[3]-island[1]+3.2]);
@@ -266,12 +250,16 @@ module shell(pk=true){   // pk=false: preview only, pockets left solid (inlays s
       translate([cx(aa[0])-win_m, cy(aa[3])-win_m, Z_in+0.85]) cube([aa[2]-aa[0]+2*win_m, aa[3]-aa[1]+2*win_m, 0.01]);
       translate([cx(aa[0])-win_m-1.6, cy(aa[3])-win_m-1.6, Z_out]) cube([aa[2]-aa[0]+2*win_m+3.2, aa[3]-aa[1]+2*win_m+3.2, 0.01]);
     }
-    // panel pocket clearance (FPC loop side)
-    translate([cx(panel[2]),cy(panel[3])+1,Z_pcb_t+0.5]) cube([4,panel[3]-panel[1]-2,Z_in-Z_pcb_t-0.5]);
-    // land behind the glass, so a thick board does not press the panel into the face.
-    // Stops at x 107.55: the button tubes (Ø8.6 at x 112) occupy the last 0.9 mm of the outline.
-    board_box(panel[0]-0.25, panel[1]-0.55, 107.55, panel[3]+0.55, Z_in-0.02, Z_in+face_recess);
-    hook_relief();
+    // The shell clears the display panel, including while it lifts off the backplate clips.
+    // The button tubes overlap the cable end of the outline. The cut runs down the tube
+    // so the lower wall does not sweep the panel on the way off. The catch stays on the
+    // partition side of each bore.
+    // +1.20 mm past the outline covers the cable-end posts. They stand in this pocket.
+    board_box(panel[0]-0.30, panel[1]-0.30, panel[2]+1.20, panel[3]+0.30, Z_pcb_t+0.50, Z_in-0.02);
+    // Fold pocket. The bend bulges past the outline, and the lower leg sits near the board.
+    board_box(panel[2]-0.40, 37.40, panel[2]+4.0, 50.60, Z_pcb_t+0.40, Z_in-0.02);
+    // Land behind the display panel, so a thick board does not bring the panel into the face.
+    board_box(panel[0]-0.30, panel[1]-0.55, panel[2]+0.40, panel[3]+0.55, Z_in-0.02, Z_in+face_recess);
     button_void();
     // RESET pinhole, LED light pipe
     for(p=pin) translate([cx(p[0]),cy(p[1]),Z_in-1]) cylinder(d=1.6,h=10);
@@ -451,99 +439,30 @@ module button_void() {
 }
 
 // ---------------- panel carrier ----------------
-// One PETG piece. Feet on the PCB, hooks up. The panel back lands at panel_gap.
-// dir = +1 puts the beam on the small-y side of the edge (the top of the panel).
-// The beam stands in the air beside the glass. Only cl_foot at the bottom bridges to the pad,
-// so the free length is Z_in - (Z_pcb_t + cl_foot). The 45° lead-in is above the shelf.
-// defl bends the beam outward about the foot. u is positive toward the glass.
-// The tool head is outboard of the beam: a 1.30 mm window, open at the top, and an
-// 0.80 mm wall whose inboard face faces the glass. A blade in the window pushes that face.
-function hook_u(z, defl) =
-  let(u_out = -(cl_gap + cl_t), z_foot = Z_pcb_t + cl_foot)
-  z >= Z_in ? u_out - defl : u_out - defl * (z - z_foot) / (Z_in - z_foot);
-module hook_extrude(x0, length, edge, dir, pts) {
-  translate([cx(x0), 0, 0]) rotate([0, 90, 0]) linear_extrude(length)
-    polygon([for (p = pts) [-p[1], cy(edge) - dir * p[0]]]);
-}
-module edge_hook(x0, x1, edge, dir, defl=0) {
-  u_out = -(cl_gap + cl_t);
-  u_beam = -cl_gap;
-  z_foot = Z_pcb_t + cl_foot;
-  z_top = Z_in + cl_lip_h + cl_lip;
-  z1 = Z_in + cl_head_above;
-  z_push0 = Z_in - cl_face_below;
-  z_outer0 = z_push0 - cl_slot_wall / tan(cl_head_ang);
-  z_brace = z_push0 - cl_slot_gap / tan(cl_head_ang);
-  uz = [
-    [u_out, Z_pcb_t],
-    [u_beam, Z_pcb_t],
-    [u_beam, z_foot],
-    [u_beam - defl, Z_in],
-    [cl_lip - defl, Z_in],
-    [cl_lip - defl, Z_in + cl_lip_h],
-    [-defl, z_top],
-    [u_out - defl, z_top],
-    [u_out, z_foot]
-  ];
-  // Brace slopes up from the beam to the push face; the wall's underside is the same angle.
-  head = [
-    [hook_u(z_brace, defl), z_brace],
-    [hook_u(z_push0, defl), z_push0],
-    [hook_u(z1, defl), z1],
-    [hook_u(z1, defl) - cl_head, z1],
-    [hook_u(z_push0, defl) - cl_head, z_outer0],
-    [hook_u(z_push0, defl) - cl_slot_gap, z_push0]
-  ];
-  // The cut starts above the brace joint. Sharing that edge leaves a non-manifold seam.
-  zs0 = z_push0 + 0.20;
-  zs1 = z1 + 0.50;
-  slot = [
-    [hook_u(zs0, defl) + 0.02, zs0],
-    [hook_u(Z_in, defl) + 0.02, Z_in],
-    [hook_u(zs1, defl) + 0.02, zs1],
-    [hook_u(zs1, defl) - cl_slot_gap - 0.02, zs1],
-    [hook_u(Z_in, defl) - cl_slot_gap - 0.02, Z_in],
-    [hook_u(zs0, defl) - cl_slot_gap - 0.02, zs0]
-  ];
-  difference() {
-    union() {
-      hook_extrude(x0, x1 - x0, edge, dir, uz);
-      hook_extrude(x0, x1 - x0, edge, dir, head);
-    }
-    hook_extrude((x0+x1)/2 - cl_slot_w/2, cl_slot_w, edge, dir, slot);
-  }
-}
-module hook_foot(x0, x1, edge, dir) {
-  u0 = -(cl_gap + cl_t);
-  u1 = 0.50;
-  y0 = edge + dir * u0;
-  y1 = edge + dir * u1;
-  board_box(x0, min(y0, y1), x1, max(y0, y1), Z_pcb_t, Z_pcb_t + cl_foot);
-}
+// One PETG piece. Feet on the PCB. The display panel rests on the pads at panel_gap.
+// Fences stand beside the long edges and stop short of the face. They do not hook the panel.
+// dir = +1 is the small-y side of the edge (the top of the panel). depth runs inboard.
 module support_pad(x0, x1, edge, dir, depth) {
-  // Inboard of the glass edge only. The beam's y is outboard, with cl_gap of air between.
   y_far = edge + dir * depth;
   board_box(x0, min(edge, y_far), x1, max(edge, y_far), Z_pcb_t, Z_panel_b);
 }
-module hook_pocket(x0, x1, edge, dir) {
-  // Shelf, beam, and the tool head. The bottom hooks land in the side wall;
-  // this cut is what keeps that wall off the head.
-  u_far = -(cl_gap + cl_t + cl_head);
-  y_far = edge + dir * u_far;
-  y_tip = edge + dir * cl_lip;
-  board_box(x0 - 0.45, min(y_far, y_tip) - 0.35, x1 + 0.45, max(y_far, y_tip) + 0.35,
-            Z_in - cl_face_below - cl_slot_gap / tan(cl_head_ang) - 0.30, Z_in + cl_pocket);
+// Wall beside a long edge. The low tie crosses under the outline so the fence and the pad
+// are one solid. The tie stays below the panel, and the fence does not cross the face.
+module edge_fence(x0, x1, edge, dir) {
+  z0 = Z_pcb_t;
+  z_fence = Z_in - 0.40;                 // 0.40 mm under the shell face; a thick board still leaves air
+  y_in = edge - dir * fence_air;         // face toward the panel
+  y_out = y_in - dir * fence_t;
+  board_box(x0, min(y_in, y_out), x1, max(y_in, y_out), z0, z_fence);
+  board_box(x0, min(y_in, edge + dir * 0.40), x1, max(y_in, edge + dir * 0.40), z0, z0 + 1.50);
 }
-module hook_relief() {
-  for (c = [[47.0, 53.0], [84.6, 90.6]]) hook_pocket(c[0], c[1], panel[1], +1);
-  for (c = [[49.6, 55.6], [76.0, 82.0]]) hook_pocket(c[0], c[1], panel[3], -1);
-}
-// Posts on the cable side of the glass. +x is the slide that shortens the tail in J4.
+// Posts on the cable side of the panel. +x is the slide that shortens the tail in J4.
 // Each post bites xstop_bite onto the outline and stands in the shell's FPC pocket.
 // The bands miss the button tubes (they meet the edge near y 30, 40, and 50) and
-// the bend bulge (y 37.75–50.25). -x runs into the curtain, 0.46 mm away, and that
-// direction lengthens the inserted tail.
-module glass_xstops() {
+// the bend bulge (y 37.75–50.25). -x lengthens the inserted tail. The seated tail
+// is already against the mouth, so that direction does not unload the connector.
+// The front curtain is 0.46 mm from this edge and is clearance, not a stop.
+module panel_xstops() {
   z1 = Z_in - 0.45;   // 0.45 mm under the inner face, so a +0.16 mm board still leaves >0.15 mm
   board_box(82.0, 33.20, panel[2], 34.30, Z_pcb_t, Z_panel_b);
   board_box(panel[2] - xstop_bite, 33.20, panel[2] + 0.80, 34.30, Z_panel_b - 0.40, z1);
@@ -553,7 +472,7 @@ module glass_xstops() {
   board_box(panel[2], 33.20, panel[2] + 0.80, 34.30, Z_pcb_t, Z_panel_b);
   board_box(panel[2], 60.40, panel[2] + 0.80, 61.70, Z_pcb_t, Z_panel_b);
 }
-module carrier(open_top=0) {
+module carrier() {
   z0 = Z_pcb_t;
   // left edge fence, 0.25 mm off the board, tied to the spine so the nozzle keeps the gap
   board_box(-0.80, 42.0, -0.25, 60.0, z0, z0 + 1.15);
@@ -561,45 +480,34 @@ module carrier(open_top=0) {
   for (y = [44.0, 51.0, 57.2])
     board_box(-0.80, y, 1.70, y + 1.8, z0 + 0.55, z0 + 1.15);
   // bottom rail. The middle span is the curtain crossing, held to 1.00 mm.
+  // One solid from the curtain to the right column. No hook notches.
   board_box(0.35, 63.15, 27.25, 63.60, z0, z0 + 1.50);
   board_box(27.15, 63.15, 29.55, 63.60, z0, z0 + 1.00);
-  // Full-height rail stops at each bottom hook. The beam sits outboard of y 63.19,
-  // and only the foot crosses that gap.
-  board_box(29.45, 63.15, 49.45, 63.60, z0, z0 + 1.50);
-  board_box(55.75, 63.15, 75.85, 63.60, z0, z0 + 1.50);
-  board_box(82.15, 63.15, 97.0, 63.60, z0, z0 + 1.50);
-  board_box(49.30, 63.15, 49.75, 63.60, z0, z0 + cl_foot);
-  board_box(55.45, 63.15, 55.90, 63.60, z0, z0 + cl_foot);
-  board_box(75.70, 63.15, 76.15, 63.60, z0, z0 + cl_foot);
-  board_box(81.85, 63.15, 82.30, 63.60, z0, z0 + cl_foot);
+  board_box(29.45, 63.15, 97.0, 63.60, z0, z0 + 1.50);
   board_box(36.0, 64.22, 96.0, 64.78, z0, z0 + 1.15);
   for (x = [40.0, 62.0, 88.0])
     board_box(x, 63.40, x + 2.2, 64.78, z0 + 0.55, z0 + 1.15);
-  // top-left hook down to the jog, then east of C42, then between the C43 leads
+  // spine down to the jog, then east of C42, then between the C43 leads
   board_box(49.00, 27.50, 51.40, 50.50, z0, z0 + 1.50);
   board_box(48.95, 49.50, 54.70, 52.50, z0, z0 + 1.50);
   board_box(52.20, 49.90, 54.60, 56.80, z0, z0 + 1.50);
   board_box(52.85, 56.60, 53.70, 59.40, z0, z0 + 1.50);
   board_box(49.55, 59.15, 55.65, 62.90, z0, z0 + 1.50);
-  // right column, passing to the right of J1 pin 5, up under the glass edge
+  // right column, passing to the right of J1 pin 5, up under the panel edge
   board_box(76.00, 27.60, 82.00, 56.55, z0, z0 + 1.50);
   board_box(78.55, 56.35, 79.90, 59.50, z0, z0 + 1.50);
   board_box(75.95, 59.25, 82.05, 62.90, z0, z0 + 1.50);
   support_pad(47.0, 53.0, panel[1], +1, 1.65);
-  hook_foot(47.0, 53.0, panel[1], +1);
-  edge_hook(47.0, 53.0, panel[1], +1, open_top);
   support_pad(76.0, 90.6, panel[1], +1, 1.65);
-  hook_foot(84.6, 90.6, panel[1], +1);
-  edge_hook(84.6, 90.6, panel[1], +1, open_top);
   support_pad(49.6, 55.6, panel[3], -1, 1.65);
-  hook_foot(49.6, 55.6, panel[3], -1);
-  edge_hook(49.6, 55.6, panel[3], -1, 0);
   support_pad(76.0, 82.0, panel[3], -1, 1.65);
-  hook_foot(76.0, 82.0, panel[3], -1);
-  edge_hook(76.0, 82.0, panel[3], -1, 0);
-  glass_xstops();
+  // Top fences sit clear of U7 (x to 40.2) and of the ESP32 module (x 66–84, y to 25.5).
+  edge_fence(42.0, 53.0, panel[1], +1);
+  edge_fence(84.6, 96.0, panel[1], +1);
+  edge_fence(49.6, 55.6, panel[3], -1);
+  edge_fence(76.0, 90.0, panel[3], -1);
+  panel_xstops();
 }
-// Shell pockets over the four ledges. The beams and the ledges stand proud of the inner face.
 module fpc() {
   zc = Z_pcb_t + fpc_z_ret + fpc_R;
   y0 = 44 - fpc_wide/2;
@@ -626,94 +534,13 @@ module pcb(){ color("darkgreen") translate([OX,cy(BH),Z_pcb_b]) difference(){ cu
   color("limegreen") translate([cx(term[0])-plug_w/2,cy(plug_y1),Z_pcb_b-plug_h]) cube([plug_w,plug_y1-plug_y0,plug_h]);      // 15EDGK plug (wire entry faces the hole)
   color("darkred") for(i=[0:4]) hull(){ translate([cx(term[0])-7+i*3.5,cy(plug_y0)+3,Z_pcb_b-5.5]) sphere(d=1.2); translate([W/2-8+i*4,H/2,-2]) sphere(d=1.2);} // wires
   color("gray") translate([cx(usb_x)-4.5,cy(BH),Z_pcb_t]) cube([9,7.3,3.2]);                    // USB-C flush with board edge
-  color("black") translate([cx(j4_front - j4_depth), cy(44 + j4_len/2), Z_pcb_t])
-    cube([j4_depth, j4_len, j4_h]);             // J4 housing, +x face at j4_front
+  color("black") translate([cx(j4_front - j4_depth), cy(j4_y1), Z_pcb_t])
+    cube([j4_depth, j4_y1 - j4_y0, j4_h]);      // J4 housing body, y 36–52, +x face at j4_front
   color("royalblue") translate([cx(bulk[0]),cy(bulk[1]),Z_pcb_b-bulk_h]) cylinder(d=8,h=bulk_h);       // C43 47uF/63V THT, back side
   color("orange") translate([cx(127),cy(32.7),Z_pcb_t]) cube([1.5,1.5,0.5]);                 // SHT40
 }
 module epd(){ color("white") translate([cx(panel[0]),cy(panel[3]),Z_panel_b]) cube([panel[2]-panel[0],panel[3]-panel[1],panel_t]);
   color([0.2,0.2,0.2]) translate([cx(aa[0]),cy(aa[3]),Z_in-0.05]) cube([aa[2]-aa[0],aa[3]-aa[1],0.1]); }
-// 1.0 mm blade in the first top hook's window, against the face that moves the beam outward.
-// defl shifts it with that hook. It is drawn after the section cut so the blade keeps its own colour.
-module release_blade(defl=0) {
-  u_push = -(cl_gap + cl_t) - cl_slot_gap - defl;
-  board_box(48.4, 26.24 + u_push, 51.6, 26.24 + u_push + 1.00,
-            Z_in - cl_face_below + 0.35, Z_in + cl_head_above + 0.70);
-}
-// Hook for the J4 slider. Open is +x. The tongue's +x face bears on the upper ear's -x face
-// at ear_x, in the 0.10 mm slot in front of j4_front. A lip on the mouth's +x side can only
-// push the slider shut. The shank is 0.80 mm wide and 0.45 mm thick, one piece of feeler
-// stock with the handle. The handle is the 5.0 mm of that strip past the elbow, held in
-// the fingers. The head is the bent end, filed to 0.34 mm in x and 0.56 mm in y,
-// and it stays above the housing. The tongue is filed to pick_tongue_dx so 0.02 mm of air
-// remains against j4_front. Insertion holds the tool pick_lift above this seated pose and
-// rotates it about the elbow from pick_swing degrees up to this lean, then lowers the tongue
-// into the slot. The seated pose is what this module draws. A longer straight +x pull runs
-// into J2. The stroke is an assumption, stroke_lo to stroke_hi, not a drawing callout.
-pick_ang = 50;
-pick_ytip = 52.525;
-pick_L = 9;
-pick_w = 0.80;
-pick_hand = 5.0;
-pick_inset = 0.70;
-pick_z0 = 20.75;
-pick_z1 = 21.20;
-pick_tongue_dx = 0.08;
-pick_tongue_y0 = 52.25;
-pick_tongue_y1 = 52.80;
-pick_tongue_z0 = 20.35;
-pick_tongue_z1 = 20.60;
-pick_head_dx = 0.34;
-pick_head_hy = 0.28;
-pick_head_z0 = 20.62;
-pick_head_z1 = 21.06;
-pick_swing = -28;
-pick_lift = 0.60;
-stroke_lo = 0.85;
-stroke_hi = 1.30;
-assert(abs((ear_x - j4_front) - 0.10) < 1e-6, "ear slot");
-assert(abs(pick_tongue_dx - (ear_x - j4_front - 0.02)) < 1e-6, "tongue air");
-module board_rod(x0, y0, x1, y1, w, z0, z1) {
-  ang = atan2(y1 - y0, x1 - x0);
-  len = norm([x1 - x0, y1 - y0]);
-  translate([cx(x0), cy(y0), z0])
-    rotate([0, 0, -ang])
-      translate([0, -w/2, 0])
-        cube([len, w, z1 - z0]);
-}
-module j4_pick(shift=0) {
-  x_tip = ear_x + shift;
-  y_tip = pick_ytip;
-  x_elb = x_tip + pick_L * cos(pick_ang);
-  y_elb = y_tip + pick_L * sin(pick_ang);
-  x_s = x_tip + pick_inset * cos(pick_ang);
-  y_s = y_tip + pick_inset * sin(pick_ang);
-  board_rod(x_s, y_s, x_elb, y_elb, pick_w, pick_z0, pick_z1);
-  board_rod(x_elb, y_elb, x_elb + pick_hand, y_elb, pick_w, pick_z0, pick_z1);
-  board_box(x_tip - pick_tongue_dx, pick_tongue_y0, x_tip, pick_tongue_y1, pick_tongue_z0, pick_tongue_z1);
-  board_box(x_tip - pick_head_dx, y_tip - pick_head_hy, x_tip, y_tip + pick_head_hy, pick_head_z0, pick_head_z1);
-}
-// Keep only the neighbourhood of the first top hook, so a section shows the window and the shelves.
-module release_keep() {
-  translate([cx(46), cy(31), 18.4]) cube([8, cy(22.2) - cy(31), 8.2]);
-}
-// Slab on the release cut. Intersection keeps a colour; a difference on this plane does not.
-module release_slab(x0, x1) {
-  intersection() {
-    children();
-    release_keep();
-    translate([x0, -1, -30]) cube([x1 - x0, H + 2, 80]);
-  }
-}
-module j4_cut() {
-  difference() {
-    intersection() {
-      children();
-      translate([cx(96), cy(66), 16]) cube([46, cy(36) - cy(66), 12]);
-    }
-    translate([-5, -5, 22.50]) cube([220, 120, 40]);
-  }
-}
 
 module flipP(){ translate([0,H,Z_out]) rotate([180,0,0]) children(); }
 if(part=="backplate") backplate();
@@ -728,34 +555,6 @@ else if(part=="assembly"){ color("lightgray") backplate(); pcb(); color("wheat")
 else if(part=="exploded"){ color("lightgray") backplate(); translate([0,0,22]){ pcb(); color("wheat") carrier(); epd(); fpc(); } translate([0,0,64]){ color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); color("orange") cap_placed(btn_flare); } }
 else if(part=="section") difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); fpc(); color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); color("orange") cap_placed(btn_flare); }
   translate([-1,-1,-30]) cube([W+2, cy(40), 80]); }   // cut through the DOWN button centre (board y=40), the panel, and the FPC
-else if(part=="section_hooks") difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); fpc(); color("white") shell(false); color("orange") cap_placed(btn_flare); }
-  translate([-1,-1,-30]) cube([W+2, cy(panel[1]+1.3)+1, 80]); }   // cut through the top hooks and the support pads
-// Removal. The shell is off. The cut is the middle of the first top hook (board x = 50), through the tool window.
-// section_release_out holds that edge out by rel_hold. The glass is not slid: the release is a lift.
-else if(part=="section_release") { difference(){ intersection(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); fpc(); } release_keep(); }
-  translate([cx(50), -1, -30]) cube([W, H+2, 80]); }
-  color("crimson") release_blade(); }
-else if(part=="section_release_out") {
-  // Pads and glass are separate slabs, so the tan does not take the blue.
-  color([0.62, 0.40, 0.18]) release_slab(cx(49.6), cx(50.0)) carrier(rel_hold);
-  color([0.25, 0.48, 0.82]) release_slab(cx(50.05), cx(50.45)) translate([0, rel_slide, 0])
-    translate([cx(panel[0]), cy(panel[3]), Z_panel_b]) cube([panel[2]-panel[0], panel[3]-panel[1], panel_t]);
-  color("crimson") release_blade(rel_hold); }
-// J4, shell off, glass seated. The cut is the gap under the glass (z = 22.50), seen from above,
-// so the lean through the 10.15 mm opening is in the picture. The blue frame is the glass outline.
-else if(part=="section_j4") {
-  color("lightgray") j4_cut() backplate();
-  j4_cut() pcb();
-  color("wheat") j4_cut() carrier();
-  color("goldenrod") j4_cut() fpc();
-  // The outline sits under the shank so the hook stays in view.
-  color([0.25, 0.48, 0.82]) difference() {
-    translate([cx(panel[0]), cy(panel[3]), 20.40]) cube([panel[2]-panel[0], panel[3]-panel[1], 0.12]);
-    translate([cx(panel[0]) + 0.7, cy(panel[3]) + 0.7, 20.28])
-      cube([panel[2]-panel[0] - 1.4, panel[3]-panel[1] - 1.4, 0.40]);
-  }
-  color("crimson") j4_pick();
-}
 else if(part=="section_j1") difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); color("white") shell(false); }
   translate([-1,-1,-30]) cube([W+2, cy(58)+1, 80]); }   // cut along the J1 pin row / C43 centre (board y=58)
 else if(part=="section_j1x") difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); color("white") shell(false); }
