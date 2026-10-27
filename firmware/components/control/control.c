@@ -39,18 +39,10 @@ void CtrlFeedSensor(Ctrl *pC, const CtrlInput *pIn, U64 nowMs)
 {
     if (!pIn->valid)
     {
-        /* One gap of at most two sample periods does not wipe a recovery that is in progress. */
-        bool recent = pC->haveTemp && nowMs >= pC->lastValidAt && (nowMs - pC->lastValidAt) <= CTRL_MISS_WINDOW_MS;
-        if (recent && !pC->missTolerated)
-            pC->missTolerated = true;
-        else
-        {
-            pC->goodStreak = 0;
-            pC->missTolerated = false;
-        }
+        /* A missed cycle restarts the recovery count. In-cycle retries already absorb one bad transfer. */
+        pC->goodStreak = 0;
         return; /* timeout logic in CtrlStep handles a dead sensor */
     }
-    pC->missTolerated = false;
     if (pIn->temp < pC->p.tempMin || pIn->temp > pC->p.tempMax)
     {
         pC->fault = kCtrlFaultTempRange;

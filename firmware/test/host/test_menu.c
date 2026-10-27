@@ -589,16 +589,42 @@ static void ZigbeeHoldToPair(void)
     CHECK_EQ(s_m.st, kMsList);
 }
 
+/** FNV-1a over the frame. Two cursor positions that look the same hash the same. */
+static U32 FrameSum(const GfxFb *pFb)
+{
+    U32 h = 2166136261u;
+    for (int i = 0; i < EPD_FB_SIZE; i++)
+    {
+        h ^= pFb->buf[i];
+        h *= 16777619u;
+    }
+    return h;
+}
+
+/** Write the frame as a plain PBM (P1). Defined with the other previews. */
+static void WritePbm(const GfxFb *pFb, const char *pName);
+
 /**
  * Device info leads with firmware and the sensor counters, then raw temperature, humidity and uptime.
- * Up/Down scrolls; the counters follow the context.
+ * It is a list: four rows visible, cursor drawn, Up/Down scrolls the rest into view.
  */
 static void InfoScreen(void)
 {
+    const char *name[] = {
+        "menu_info_row0.pbm",
+        "menu_info_row1.pbm",
+        "menu_info_row2.pbm",
+        "menu_info_row3.pbm",
+        "menu_info_row4.pbm",
+        "menu_info_row5.pbm",
+        "menu_info_row6.pbm",
+    };
     MenuView v;
+    U32 sum[7];
     Reset();
     s_c.sensorOk = 12;
-    s_c.sensorI2c = 3;
+    s_c.sensorMeas = 3;
+    s_c.sensorReset = 1;
     s_c.sensorCrc = 1;
     s_c.sensorRetry = 4;
     s_c.sensorRst = 5;
@@ -607,14 +633,14 @@ static void InfoScreen(void)
     Sel();
     CHECK_EQ(s_m.st, kMsInfo);
     MenuGetView(&s_m, &s_c, &v);
-    CHECK_EQ(v.kind, kViewText);
+    CHECK_EQ(v.kind, kViewList);
     CHECK_EQ(v.nRows, 7);
     CHECK(!strcmp(v.label[0], "Firmware"));
     CHECK(!strcmp(v.value[0], "0.2.0"));
     CHECK(!strcmp(v.label[1], "Sensor ok/err"));
-    CHECK(!strcmp(v.value[1], "12/4"));
-    CHECK(!strcmp(v.label[2], "I2C/CRC"));
-    CHECK(!strcmp(v.value[2], "3/1"));
+    CHECK(!strcmp(v.value[1], "12/5"));
+    CHECK(!strcmp(v.label[2], "Meas/rst/CRC"));
+    CHECK(!strcmp(v.value[2], "3/1/1"));
     CHECK(!strcmp(v.label[3], "Retry/rst/gap"));
     CHECK(!strcmp(v.value[3], "4/5/2"));
     CHECK(!strcmp(
@@ -623,29 +649,58 @@ static void InfoScreen(void)
         "C"));
     CHECK(!strcmp(v.value[5], "45.12%"));
     CHECK(!strcmp(v.value[6], "2d 03:07"));
-    /* A full U32 must survive the format. The first row's second number is I2C plus CRC. */
+    /* Every cursor position is a different frame, and the inverted row is actually drawn. */
+    for (int sel = 0; sel < 7; sel++)
+    {
+        static GfxFb s_fb;
+        DisplayModel m;
+        int local = sel < 4 ? sel : 3;
+        int y = 23 + local * 20;
+        MenuGetView(&s_m, &s_c, &v);
+        CHECK_EQ(v.kind, kViewList);
+        CHECK_EQ(v.sel, sel);
+        memset(&m, 0, sizeof m);
+        m.view = v;
+        DisplayRender(&s_fb, &m);
+        WritePbm(&s_fb, name[sel]);
+        sum[sel] = FrameSum(&s_fb);
+        CHECK(GfxGet(&s_fb, 2, y));
+        CHECK(!GfxGet(&s_fb, 2, sel == 0 ? 43 : 23));
+        if (sel + 1 < 7)
+            Down();
+    }
+    for (int i = 0; i < 7; i++)
+        for (int j = i + 1; j < 7; j++)
+            CHECK(sum[i] != sum[j]);
+    Down();
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK_EQ(v.sel, 6);
+    /* A full U32 must survive the format. The ok/err total saturates instead of wrapping. */
     s_c.sensorOk = 0xffffffffu;
-    s_c.sensorI2c = 0xffffffffu;
-    s_c.sensorCrc = 0;
+    s_c.sensorMeas = 0xffffffffu;
+    s_c.sensorReset = 0xffffffffu;
+    s_c.sensorCrc = 0xffffffffu;
     s_c.sensorRetry = 0xffffffffu;
     s_c.sensorRst = 0xffffffffu;
     s_c.sensorGap = 0xffffffffu;
     MenuGetView(&s_m, &s_c, &v);
     CHECK(!strcmp(v.value[1], "4294967295/4294967295"));
-    CHECK(!strcmp(v.value[2], "4294967295/0"));
+    CHECK(!strcmp(v.value[2], "4294967295/4294967295/4294967295"));
     CHECK(!strcmp(v.value[3], "4294967295/4294967295/4294967295"));
-    CHECK_EQ(v.sel, 0);
+    /* Leave and reopen so the cursor starts at the top again. Four Downs reach raw temp. */
+    Sel();
+    CHECK_EQ(s_m.st, kMsList);
+    Sel();
+    CHECK_EQ(s_m.st, kMsInfo);
     Down();
     Down();
     Down();
     Down();
     MenuGetView(&s_m, &s_c, &v);
-    CHECK_EQ(v.sel, 4); /* raw temp has scrolled into the window */
+    CHECK_EQ(v.sel, 4);
     Up();
     MenuGetView(&s_m, &s_c, &v);
     CHECK_EQ(v.sel, 3);
-    Sel();
-    CHECK_EQ(s_m.st, kMsList);
 }
 
 /**

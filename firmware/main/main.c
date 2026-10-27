@@ -28,7 +28,6 @@
 #include "nvs_flash.h"
 #include "sdkconfig.h"
 #include "sensor.h"
-#include "sensor_cycle.h"
 #include "sensor_stuck.h"
 #include "settings.h"
 #include "schedule.h"
@@ -464,7 +463,8 @@ static MenuCtx BuildMenuCtx(const Persist *pP, U64 now)
         .rawRh = s_raw.rhC100,
         .uptimeS = (U32)(now / 1000),
         .sensorOk = st.ok,
-        .sensorI2c = st.i2cErr,
+        .sensorMeas = st.measErr,
+        .sensorReset = st.resetErr,
         .sensorCrc = st.crcErr,
         .sensorRetry = st.retries,
         .sensorRst = st.busResets,
@@ -616,6 +616,41 @@ static U8 BootCountRw(int op)
     return n;
 }
 
+/* A flapping sensor must not emit EVT sensor on every 2 s cycle. */
+#define SENSOR_LOG_EDGE_MS      10000u
+#define SENSOR_LOG_HEARTBEAT_MS 60000u
+
+/**
+ * Log the sensor counters. `fail` is this cycle's outcome (no reading). `now` is monotonic ms.
+ * The first call always logs. A later change of `fail` logs once the previous line is
+ * SENSOR_LOG_EDGE_MS old. The minute line logs even when `fail` has not changed. `fail` is
+ * stored either way, so a flap that was not logged is still the edge the next sample sees.
+ */
+static void LogSensorStats(bool fail, U64 now)
+{
+    static bool s_fail, s_init;
+    static U64 s_logAt;
+    bool edge = s_init && fail != s_fail;
+    bool heartbeat = s_init && now >= s_logAt && now - s_logAt >= SENSOR_LOG_HEARTBEAT_MS;
+    bool edgeDue = edge && now >= s_logAt && now - s_logAt >= SENSOR_LOG_EDGE_MS;
+    s_fail = fail;
+    if (!s_init)
+        s_init = true;
+    else if (!heartbeat && !edgeDue)
+        return;
+    SensorStats st;
+    SensorStatsGet(&st);
+    EVT("EVT sensor ok=%lu meas=%lu rsterr=%lu crc=%lu retry=%lu rst=%lu gap=%lu",
+        (unsigned long)st.ok,
+        (unsigned long)st.measErr,
+        (unsigned long)st.resetErr,
+        (unsigned long)st.crcErr,
+        (unsigned long)st.retries,
+        (unsigned long)st.busResets,
+        (unsigned long)st.failRunMax);
+    s_logAt = now;
+}
+
 /* ---------------- main loop ---------------- */
 
 /**
@@ -663,26 +698,7 @@ static void AppTask(void *pArg)
             }
             if (frozen)
                 rd.valid = false; /* a frozen sensor is no sensor: failsafe */
-            {
-                static bool s_fail, s_failInit;
-                static U64 s_sensorLogAt;
-                bool fail = !rd.valid;
-                if (!s_failInit || fail != s_fail || now - s_sensorLogAt >= 60000)
-                {
-                    SensorStats st;
-                    SensorStatsGet(&st);
-                    EVT("EVT sensor ok=%lu i2c=%lu crc=%lu retry=%lu rst=%lu gap=%lu",
-                        (unsigned long)st.ok,
-                        (unsigned long)st.i2cErr,
-                        (unsigned long)st.crcErr,
-                        (unsigned long)st.retries,
-                        (unsigned long)st.busResets,
-                        (unsigned long)st.failRunMax);
-                    s_fail = fail;
-                    s_failInit = true;
-                    s_sensorLogAt = now;
-                }
-            }
+            LogSensorStats(!rd.valid, now);
             CtrlInput in = {.valid = rd.valid, .temp = rd.tempC100};
             CtrlFeedSensor(&ctl, &in, now);
             s_raw = rd;
@@ -810,7 +826,7 @@ static void AppTask(void *pArg)
         DisplayModel dm;
         memset(&dm, 0, sizeof dm);
         dm.tempValid = zs.tempValid;
-        dm.sensorStarting = !ctl.haveTemp && now >= boot && now - boot < SENSOR_START_MS;
+        dm.sensorStarting = DisplaySensorStarting(o.fault, now, boot);
         /* quantise so sensor noise does not cause refreshes */
         dm.temp = (I16)((rd.tempC100 + (rd.tempC100 >= 0 ? 5 : -5)) / 10 * 10);
         dm.rhValid = rd.valid;

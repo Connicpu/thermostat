@@ -63,7 +63,7 @@ typedef struct
     CtrlSettings s;
     bool w, y, g, waiting;
     CtrlFault fault;
-    bool sensorStarting; /* boot, no reading yet: "Starting sensor..." instead of SENSOR FAIL */
+    bool sensorStarting; /* sensor-timeout fault, still inside 10 s of boot: "Starting sensor..." */
     LinkState link;
     bool fahrenheit;
     CtrlBoostKind boost; /* kBoostNone = no boost line */
@@ -103,8 +103,8 @@ void FormatHhmm(char *pOut, int n, U16 minuteOfDay);
 void DisplayRender(GfxFb *pFb, const DisplayModel *pM);
 
 /**
- * The home screen's running-state word. While sensorStarting (no reading yet, still inside the
- * boot grace) this is "Starting sensor...", which the renderer draws in the temperature area
+ * The home screen's running-state word. While sensorStarting (sensor-timeout fault, still inside
+ * the first 10 s) this is "Starting sensor...", which the renderer draws in the temperature area
  * because it does not fit the right-hand column. Otherwise a fault is CtrlFaultStr(), and a
  * clear controller is Idle, Heating, Cooling, Waiting or Fan from the outputs.
  *

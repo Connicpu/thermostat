@@ -4,6 +4,7 @@
 #pragma once
 #include "core.h"
 #include <stdbool.h>
+#include "control.h"
 
 /* Background slot. One interval for the clock and for sensor/link/running changes. */
 #define DISPLAY_BG_UNKNOWN_MS   (3u * 60u * 1000u) /* clock not synced yet */
@@ -22,8 +23,10 @@
 /* App-task health check. The display task must loop at least this often. */
 #define DISPLAY_STALL_MS (30u * 1000u)
 
-/* Before the first valid SHT40 sample, the screen says "Starting sensor..." for this long
- * after boot, then SENSOR FAIL. Outputs stay off the whole time (the controller is in failsafe). */
+/* "Starting sensor..." while the controller is still in sensor-timeout failsafe, but only for
+ * this long after boot. The fault clearing ends the line sooner. A temperature on its own does
+ * not: the first good reading sets haveTemp while the fault stays until three consecutive goods.
+ * Outputs stay off the whole time the controller is in failsafe. */
 #define SENSOR_START_MS (10u * 1000u)
 
 /**
@@ -93,3 +96,16 @@ bool DisplayRefreshIsFull(bool first, bool epochChanged, int partials, U64 nowMs
  * Returns true when the display task should be reported stalled.
  */
 bool DisplayHeartbeatStalled(U64 aliveMs, U64 nowMs);
+
+/**
+ * Whether the home screen should say "Starting sensor..." instead of a temperature and SENSOR FAIL.
+ *
+ * True only while `fault` is kCtrlFaultSensorTimeout and `nowMs` is still inside SENSOR_START_MS
+ * of `bootMs`. The fault clearing (three consecutive good readings) ends it early. So does the
+ * 10 s mark, even if the fault is still set: at exactly SENSOR_START_MS the line is gone.
+ * kCtrlFaultNone and kCtrlFaultTempRange both end it. `nowMs` before `bootMs` does not count.
+ * A temperature reading is not an input: the first good sample does not end the line by itself.
+ *
+ * Returns true when the starting line should be drawn.
+ */
+bool DisplaySensorStarting(CtrlFault fault, U64 nowMs, U64 bootMs);

@@ -69,3 +69,13 @@ bool DisplayHeartbeatStalled(U64 aliveMs, U64 nowMs)
 {
     return nowMs > aliveMs && nowMs - aliveMs >= DISPLAY_STALL_MS;
 }
+
+/** See display_policy.h. */
+bool DisplaySensorStarting(CtrlFault fault, U64 nowMs, U64 bootMs)
+{
+    if (fault != kCtrlFaultSensorTimeout)
+        return false;
+    if (nowMs < bootMs)
+        return false;
+    return nowMs - bootMs < SENSOR_START_MS;
+}
