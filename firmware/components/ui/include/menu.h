@@ -15,8 +15,9 @@
  * Zigbee screen: hold M (1.5 s, kBtnEvHold) to pair. After any hold action
  * the rest of that M hold is swallowed until release.
  * Clear safe mode is listed only while safe mode is on, just before Back.
- * M opens a confirm screen: M again clears the boot-loop counter and restarts,
- * any other key returns to the list, and the 10 s timeout leaves the menu. */
+ * M opens a confirm screen (title and three lines, "Clear safe mode, restart?"): M again clears the boot-loop
+ * counter and restarts, any other key returns to the list, and the 10 s timeout
+ * leaves the menu without clearing. */
 #pragma once
 #include "core.h"
 #include <stdbool.h>

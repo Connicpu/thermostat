@@ -464,8 +464,72 @@ static MenuCtx BuildMenuCtx(const Persist *pP, U64 now)
     };
 }
 
-/** Read, increment, clear or set the boot-loop counter. See the definition below. */
-static U8 BootCountRw(int op);
+/**
+ * Read/modify the boot-loop counter (NVS namespace "boot", key "n").
+ *
+ * Counts boots that did not reach BOOT_STABLE_MS of uptime. Whatever keeps resetting the chip
+ * (watchdog, panic, brown-out), after BOOT_LOOP_LIMIT of them the thermostat stays up in safe
+ * mode instead: outputs off, STWD100 not armed, the fault on screen and on Zigbee. Deliberate
+ * software restarts (ESP_RST_SW: OTA reboot/rollback, factory reset, safe-mode retry, clearing
+ * safe mode from the menu) are not counted. Power-on resets ARE counted, because an STWD100
+ * reset pulls CHIP_EN and reports as ESP_RST_POWERON, so 5 quick power cycles also enter safe
+ * mode (it ends by itself after SAFE_MODE_RETRY_MS). The counter lives in its own NVS namespace
+ * and survives a factory reset.
+ *
+ * `op` is 1 = increment (saturating), 0 = clear, -1 = read only, 0x100|n = set to n.
+ *
+ * Returns the counter after the operation. Returns -1 when NVS cannot be opened or a write does
+ * not commit, so a successful clear (0) is distinct from NVS being unavailable.
+ */
+static int BootCountRw(int op)
+{
+    nvs_handle_t h;
+    U8 n = 0;
+    if (!s_nvsOk || nvs_open("boot", NVS_READWRITE, &h) != ESP_OK)
+        return -1;
+    if (nvs_get_u8(h, "n", &n) != ESP_OK)
+        n = 0;
+    if (op >= 0x100)
+        n = (U8)(op & 0xFF);
+    else if (op == 1)
+        n = (U8)(n < 255 ? n + 1 : 255);
+    else if (op == 0)
+        n = 0;
+    if (op != -1)
+    {
+        esp_err_t e = nvs_set_u8(h, "n", n);
+        if (e == ESP_OK)
+            e = nvs_commit(h);
+        nvs_close(h);
+        return e == ESP_OK ? (int)n : -1;
+    }
+    nvs_close(h);
+    return n;
+}
+
+/**
+ * Write the settings now when force is set, otherwise once SAVE_DELAY_MS has passed since the
+ * change. A failed write stays dirty and is tried again a minute later.
+ */
+static void SaveSettings(bool force)
+{
+    U64 now = NowMs();
+    xSemaphoreTake(s_mtx, portMAX_DELAY);
+    bool save = s_dirty && (force || now >= s_dirtyAt + SAVE_DELAY_MS);
+    if (save)
+        s_dirty = false;
+    Persist snap = s_persist;
+    xSemaphoreGive(s_mtx);
+    if (save && s_nvsOk && !SettingsSave(&snap))
+    {
+        /* write failed (flash full / worn / error): keep running, retry in a minute */
+        EVT("EVT fault nvs write: settings not saved, retrying");
+        xSemaphoreTake(s_mtx, portMAX_DELAY);
+        s_dirty = true;
+        s_dirtyAt = now + 60000 - SAVE_DELAY_MS;
+        xSemaphoreGive(s_mtx);
+    }
+}
 
 /**
  * Carry out a menu action (app task): settings edits, boost commands (queued), pairing, factory
@@ -527,11 +591,17 @@ static bool ApplyMenuAction(const MenuAction *pA)
     case kMaFactoryReset:
         FactoryReset();
         break;
-    case kMaClearSafeMode: /* next boot is a normal one; further resets fill the counter again */
-        ESP_LOGW(kTag, "EVT safe mode: cleared from the menu");
-        BootCountRw(0);
+    case kMaClearSafeMode: /* counter back to 0, pending settings written, then a normal boot */
+    {
+        int n = BootCountRw(0);
+        if (n == 0)
+            ESP_LOGW(kTag, "EVT safe mode: cleared from the menu");
+        else
+            ESP_LOGW(kTag, "EVT safe mode: clear not saved");
+        SaveSettings(true);
         esp_restart();
         break;
+    }
     default:
         break;
     }
@@ -577,44 +647,6 @@ static void LedUpdate(U64 now, const CtrlOutput *pO, LinkState link)
     else
         on = false; /* keep heat off the sensor */
     UiLed(on);
-}
-
-/* ---------------- boot-loop guard ---------------- */
-
-/**
- * Read/modify the boot-loop counter (NVS namespace "boot", key "n").
- *
- * Counts boots that did not reach BOOT_STABLE_MS of uptime. Whatever keeps resetting the chip
- * (watchdog, panic, brown-out), after BOOT_LOOP_LIMIT of them the thermostat stays up in safe
- * mode instead: outputs off, STWD100 not armed, the fault on screen and on Zigbee. Deliberate
- * software restarts (ESP_RST_SW: OTA reboot/rollback, factory reset, safe-mode retry, clearing
- * safe mode from the menu) are not counted. Power-on resets ARE counted, because an STWD100
- * reset pulls CHIP_EN and reports as ESP_RST_POWERON, so 5 quick power cycles also enter safe
- * mode (it ends by itself after SAFE_MODE_RETRY_MS). The counter lives in its own NVS namespace
- * and survives a factory reset.
- *
- * `op` is 1 = increment (saturating), 0 = clear, -1 = read only, 0x100|n = set to n.
- *
- * Returns the counter after the operation; 0 if NVS is unavailable.
- */
-static U8 BootCountRw(int op)
-{
-    nvs_handle_t h;
-    U8 n = 0;
-    if (!s_nvsOk || nvs_open("boot", NVS_READWRITE, &h) != ESP_OK)
-        return 0;
-    if (nvs_get_u8(h, "n", &n) != ESP_OK)
-        n = 0;
-    if (op >= 0x100)
-        n = (U8)(op & 0xFF);
-    else if (op == 1)
-        n = (U8)(n < 255 ? n + 1 : 255);
-    else if (op == 0)
-        n = 0;
-    if (op != -1 && nvs_set_u8(h, "n", n) == ESP_OK)
-        nvs_commit(h);
-    nvs_close(h);
-    return n;
 }
 
 /* ---------------- main loop ---------------- */
@@ -848,21 +880,7 @@ static void AppTask(void *pArg)
         DisplayPost(&dm, urgent);
 
         /* 6. persistence */
-        xSemaphoreTake(s_mtx, portMAX_DELAY);
-        bool save = s_dirty && now >= s_dirtyAt + SAVE_DELAY_MS;
-        if (save)
-            s_dirty = false;
-        Persist snap = s_persist;
-        xSemaphoreGive(s_mtx);
-        if (save && s_nvsOk && !SettingsSave(&snap))
-        {
-            /* write failed (flash full / worn / error): keep running, retry in a minute */
-            EVT("EVT fault nvs write: settings not saved, retrying");
-            xSemaphoreTake(s_mtx, portMAX_DELAY);
-            s_dirty = true;
-            s_dirtyAt = now + 60000 - SAVE_DELAY_MS;
-            xSemaphoreGive(s_mtx);
-        }
+        SaveSettings(false);
 
         /* 7. LED / identify */
         if (s_identifyS && now - lastIdentTick >= 1000)
@@ -998,8 +1016,10 @@ void app_main(void)
 #endif
 
     esp_reset_reason_t rr = esp_reset_reason();
-    U8 boots = BootCountRw(rr == ESP_RST_SW ? -1 : 1);
-    EVT("EVT boot reason=%d count=%u", (int)rr, boots);
+    int boots = BootCountRw(rr == ESP_RST_SW ? -1 : 1);
+    if (boots < 0)
+        boots = 0; /* NVS unavailable: do not treat the failure as a full counter */
+    EVT("EVT boot reason=%d count=%u", (int)rr, (unsigned)boots);
     s_safeMode = boots >= BOOT_LOOP_LIMIT;
     if (s_safeMode)
         EVT("EVT safe mode: %u resets without %d min of stable uptime", boots, BOOT_STABLE_MS / 60000);

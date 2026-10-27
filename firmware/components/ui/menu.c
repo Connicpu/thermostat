@@ -69,13 +69,11 @@ static MenuItem MainItem(const MenuCtx *pC, U8 i)
     return (MenuItem)i;
 }
 
-/** Returns the visible row of a main-list item. Clear safe mode maps onto Back when it is hidden. */
+/** Returns the visible row of a main-list item. Items past Clear safe mode shift up when it is hidden. */
 static U8 MainRow(const MenuCtx *pC, U8 item)
 {
     if (!pC->safeMode && item > kMiClearSafe)
         return (U8)(item - 1);
-    if (!pC->safeMode && item == kMiClearSafe)
-        return (U8)(kMiBack - 1);
     return item;
 }
 
@@ -357,8 +355,6 @@ MenuAction MenuOnKey(Menu *pM, const MenuCtx *pC, MenuKey k, BtnEvent ev, U64 no
     {
     case kMsList:
     {
-        if (!pC->safeMode && pM->cursor == kMiClearSafe)
-            pM->cursor = kMiBack;
         U8 n = MainCount(pC);
         U8 row = MainRow(pC, pM->cursor);
         if (row >= n)
@@ -555,7 +551,7 @@ MenuAction MenuOnKey(Menu *pM, const MenuCtx *pC, MenuKey k, BtnEvent ev, U64 no
     case kMsClearSafe:
         if (sel)
             return GoHome(pM, kMaClearSafeMode, 0);
-        /* UP, DOWN, the combo, or holding M: back to the list, counter unchanged. */
+        /* UP, DOWN, the combo, or holding M returns to the list and leaves the counter as it is. */
         pM->st = kMsList;
         return Redraw();
     default:
@@ -680,8 +676,6 @@ void MenuGetView(const Menu *pM, const MenuCtx *pC, MenuView *pV)
             Row(pV, "Clear safe mode", "");
         Row(pV, "Back", "");
         pV->sel = MainRow(pC, pM->cursor);
-        if (pV->sel >= pV->nRows)
-            pV->sel = (U8)(pV->nRows - 1);
         break;
     case kMsBoost:
         pV->kind = kViewList;
@@ -806,8 +800,7 @@ void MenuGetView(const Menu *pM, const MenuCtx *pC, MenuView *pV)
     case kMsClearSafe:
         pV->kind = kViewWarning;
         snprintf(pV->title, sizeof pV->title, "SAFE MODE");
-        Row(pV, "Clear safe mode and", NULL);
-        Row(pV, "restart?", NULL);
+        Row(pV, "Clear safe mode, restart?", NULL);
         Row(pV, "M confirms", NULL);
         Row(pV, "Other key cancels", NULL);
         return;
