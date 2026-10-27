@@ -19,10 +19,11 @@ esp_err_t DisplayInit(void);
  * the control task's watchdog kick is unaffected.
  *
  * The model is copied and compared with memcmp(); unchanged content is ignored unless urgent.
- * urgent=true (the user pressed a button): the task is woken and refreshes URGENT_SETTLE_MS
- * (400 ms) after the last urgent post. Otherwise the clock and sensor/link/running changes share
- * one background slot: the next local-minute rollover once pM->clockKnown (about 60 s, from the
- * extrapolated minute, not a free-running 60 s timer), or at most one refresh per 3 min while the
+ * urgent=true (a button, or a sensor-fault / "Starting sensor..." edge): the task is woken and
+ * refreshes URGENT_SETTLE_MS (400 ms) after the last urgent post. Otherwise the clock and
+ * sensor/link/running changes share one background slot: the next local-minute rollover once
+ * pM->clockKnown (about 60 s, from the extrapolated minute, not a free-running 60 s timer), or at
+ * most one refresh per 3 min while the
  * clock is unknown. A full (de-ghosting) refresh runs when 3 h have passed AND 40 partials have
  * been shown (the later of the two), or at 6 h, after a failed refresh (retried a few seconds
  * later while the model is still dirty, not held for the next minute), and whenever

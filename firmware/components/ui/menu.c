@@ -630,6 +630,28 @@ static const char *LinkName(LinkState l)
     }
 }
 
+/**
+ * One Device info counter. Up to 99999 is the full decimal, which is the widest token that still
+ * fits three-across beside "Meas/rst/CRC" on the 296 px panel. Past that, a short form no wider
+ * than "99999": "100k".."999k", "1.0M".."9.9M", "10M".."999M", "1.0B".."99.9B", then whole billions.
+ * The ok/err sum of three full U32s is about 12.8B, so the tenths run past 10B.
+ */
+static void FmtCount(char *pOut, size_t n, U64 v)
+{
+    if (v <= 99999ull)
+        snprintf(pOut, n, "%lu", (unsigned long)v);
+    else if (v < 1000000ull)
+        snprintf(pOut, n, "%luk", (unsigned long)(v / 1000ull));
+    else if (v < 10000000ull)
+        snprintf(pOut, n, "%lu.%luM", (unsigned long)(v / 1000000ull), (unsigned long)((v / 100000ull) % 10ull));
+    else if (v < 1000000000ull)
+        snprintf(pOut, n, "%luM", (unsigned long)(v / 1000000ull));
+    else if (v < 100000000000ull)
+        snprintf(pOut, n, "%lu.%luB", (unsigned long)(v / 1000000000ull), (unsigned long)((v / 100000000ull) % 10ull));
+    else
+        snprintf(pOut, n, "%luB", (unsigned long)(v / 1000000000ull));
+}
+
 /** Append a label/value row to the view (value may be NULL); ignored when VIEW_MAX_ROWS are used. */
 static void Row(MenuView *pV, const char *pL, const char *pVal)
 {
@@ -819,32 +841,25 @@ void MenuGetView(const Menu *pM, const MenuCtx *pC, MenuView *pV)
         return;
     case kMsInfo:
     {
-        /* "%lu/%lu/%lu" of three full U32s is 32 characters plus the NUL. */
-        char c[33];
+        char one[6], two[6], three[6], row[18];
         U64 err = (U64)pC->sensorMeas + (U64)pC->sensorReset + (U64)pC->sensorCrc;
         pV->kind = kViewList;
         snprintf(pV->title, sizeof pV->title, "Device info");
         Row(pV, "Firmware", pC->pFwVersion);
-        if (err > 0xffffffffull)
-            err = 0xffffffffull;
-        snprintf(c, sizeof c, "%lu/%lu", (unsigned long)pC->sensorOk, (unsigned long)err);
-        Row(pV, "Sensor ok/err", c);
-        snprintf(
-            c,
-            sizeof c,
-            "%lu/%lu/%lu",
-            (unsigned long)pC->sensorMeas,
-            (unsigned long)pC->sensorReset,
-            (unsigned long)pC->sensorCrc);
-        Row(pV, "Meas/rst/CRC", c);
-        snprintf(
-            c,
-            sizeof c,
-            "%lu/%lu/%lu",
-            (unsigned long)pC->sensorRetry,
-            (unsigned long)pC->sensorRst,
-            (unsigned long)pC->sensorGap);
-        Row(pV, "Retry/rst/gap", c);
+        FmtCount(one, sizeof one, pC->sensorOk);
+        FmtCount(two, sizeof two, err);
+        snprintf(row, sizeof row, "%s/%s", one, two);
+        Row(pV, "Sensor ok/err", row);
+        FmtCount(one, sizeof one, pC->sensorMeas);
+        FmtCount(two, sizeof two, pC->sensorReset);
+        FmtCount(three, sizeof three, pC->sensorCrc);
+        snprintf(row, sizeof row, "%.5s/%.5s/%.5s", one, two, three);
+        Row(pV, "Meas/rst/CRC", row);
+        FmtCount(one, sizeof one, pC->sensorRetry);
+        FmtCount(two, sizeof two, pC->sensorRst);
+        FmtCount(three, sizeof three, pC->sensorGap);
+        snprintf(row, sizeof row, "%.5s/%.5s/%.5s", one, two, three);
+        Row(pV, "Retry/rst/gap", row);
         if (pC->rawValid)
         {
             int t = pC->rawTemp, a = t < 0 ? -t : t;

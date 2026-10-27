@@ -1,5 +1,6 @@
 /* display.c - e-paper refresh policy.
- * - Button-driven changes: partial refresh ~400 ms after the last change.
+ * - Button-driven changes, and a sensor-fault or "Starting sensor..." edge: partial refresh
+ *   ~400 ms after the last such change.
  * - One background slot, shared by the clock and by sensor/link/running changes:
  *   the next local minute once the Zigbee clock is known, else at most one
  *   refresh per 3 min. No separate clock-only path.
@@ -157,6 +158,9 @@ static void DisplayTask(void *pArg)
         s_prev = s_fb;
         lastRefresh = NowMs();
         NotePaintedMinute(&m, &paintedMinute);
+        /* After a successful show, so a model update that never reaches the glass is not logged. */
+        if (m.view.kind == kViewHome || m.view.kind == kViewHomeBanner)
+            ESP_LOGI(kTag, "EVT panel %s", DisplayRunWord(m.fault, m.sensorStarting, m.w, m.y, m.g, m.waiting));
         if (full)
         {
             lastFull = lastRefresh;

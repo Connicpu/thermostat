@@ -720,6 +720,23 @@ static U32 FrameSum(const GfxFb *pFb)
 static void WritePbm(const GfxFb *pFb, const char *pName);
 
 /**
+ * The value is drawn right-aligned, ending 10 px in from the panel. It has to start to the right
+ * of the label, or the 32-character counter row runs off the 296 px glass and covers the label.
+ */
+static void RowFits(const MenuView *pV, int i)
+{
+    int labelEnd, valueW, valueX;
+    if (!pV->value[i][0])
+        return;
+    labelEnd = 10 + GfxTextWidth(&kFontSmall, pV->label[i]);
+    valueW = GfxTextWidth(&kFontSmall, pV->value[i]);
+    valueX = GFX_W - 10 - valueW;
+    CHECK(valueX >= 0);
+    CHECK(valueX + valueW <= GFX_W - 10);
+    CHECK(valueX >= labelEnd + 4);
+}
+
+/**
  * Device info leads with firmware and the sensor counters, then raw temperature, humidity and uptime.
  * It is a list: four rows visible, cursor drawn, Up/Down scrolls the rest into view.
  */
@@ -739,8 +756,8 @@ static void InfoScreen(void)
     Reset();
     s_c.sensorOk = 12;
     s_c.sensorMeas = 3;
-    s_c.sensorReset = 1;
-    s_c.sensorCrc = 1;
+    s_c.sensorReset = 7;
+    s_c.sensorCrc = 9;
     s_c.sensorRetry = 4;
     s_c.sensorRst = 5;
     s_c.sensorGap = 2;
@@ -753,9 +770,15 @@ static void InfoScreen(void)
     CHECK(!strcmp(v.label[0], "Firmware"));
     CHECK(!strcmp(v.value[0], "0.2.0"));
     CHECK(!strcmp(v.label[1], "Sensor ok/err"));
-    CHECK(!strcmp(v.value[1], "12/5"));
+    CHECK(!strcmp(v.value[1], "12/19"));
     CHECK(!strcmp(v.label[2], "Meas/rst/CRC"));
-    CHECK(!strcmp(v.value[2], "3/1/1"));
+    CHECK(!strcmp(v.value[2], "3/7/9"));
+    /* Up on the top row stays put. A missing guard wraps the U8 cursor to the bottom. */
+    CHECK_EQ(s_m.scursor, 0);
+    Up();
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK_EQ(s_m.scursor, 0);
+    CHECK_EQ(v.sel, 0);
     CHECK(!strcmp(v.label[3], "Retry/rst/gap"));
     CHECK(!strcmp(v.value[3], "4/5/2"));
     CHECK(!strcmp(
@@ -790,7 +813,34 @@ static void InfoScreen(void)
     Down();
     MenuGetView(&s_m, &s_c, &v);
     CHECK_EQ(v.sel, 6);
-    /* A full U32 must survive the format. The ok/err total saturates instead of wrapping. */
+    /* The view clamps sel, so an off-by-one that walks scursor to INFO_ROWS still looks selected. */
+    CHECK_EQ(s_m.scursor, 6);
+    /* 99999 is still the full decimal. One more digit is abbreviated, and a full U32 (and the
+     * ok/err sum of three of them, which is past 2^32) stays on the panel beside its label. */
+    s_c.sensorOk = 99999u;
+    s_c.sensorMeas = 99999u;
+    s_c.sensorReset = 99999u;
+    s_c.sensorCrc = 99999u;
+    s_c.sensorRetry = 99999u;
+    s_c.sensorRst = 99999u;
+    s_c.sensorGap = 99999u;
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK(!strcmp(v.value[1], "99999/299k"));
+    CHECK(!strcmp(v.value[2], "99999/99999/99999"));
+    CHECK(!strcmp(v.value[3], "99999/99999/99999"));
+    for (int i = 0; i < v.nRows; i++)
+        RowFits(&v, i);
+    s_c.sensorOk = 100000u;
+    s_c.sensorMeas = 100000u;
+    s_c.sensorReset = 1000000u;
+    s_c.sensorCrc = 10000000u;
+    s_c.sensorRetry = 999999u;
+    s_c.sensorRst = 9999999u;
+    s_c.sensorGap = 1000000000u;
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK(!strcmp(v.value[1], "100k/11M"));
+    CHECK(!strcmp(v.value[2], "100k/1.0M/10M"));
+    CHECK(!strcmp(v.value[3], "999k/9.9M/1.0B"));
     s_c.sensorOk = 0xffffffffu;
     s_c.sensorMeas = 0xffffffffu;
     s_c.sensorReset = 0xffffffffu;
@@ -799,9 +849,11 @@ static void InfoScreen(void)
     s_c.sensorRst = 0xffffffffu;
     s_c.sensorGap = 0xffffffffu;
     MenuGetView(&s_m, &s_c, &v);
-    CHECK(!strcmp(v.value[1], "4294967295/4294967295"));
-    CHECK(!strcmp(v.value[2], "4294967295/4294967295/4294967295"));
-    CHECK(!strcmp(v.value[3], "4294967295/4294967295/4294967295"));
+    CHECK(!strcmp(v.value[1], "4.2B/12.8B"));
+    CHECK(!strcmp(v.value[2], "4.2B/4.2B/4.2B"));
+    CHECK(!strcmp(v.value[3], "4.2B/4.2B/4.2B"));
+    for (int i = 0; i < v.nRows; i++)
+        RowFits(&v, i);
     /* Leave and reopen so the cursor starts at the top again. Four Downs reach raw temp. */
     Sel();
     CHECK_EQ(s_m.st, kMsList);
