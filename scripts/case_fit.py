@@ -291,8 +291,12 @@ else:
     print('carrier stays clear of the FPC bulge')
 # Hooks. The beam is free beside the glass; only cl_foot ties it to the pad.
 # E = 1.8 GPa. ε = 1.5 t δ / L^2, F = 3 E I δ / L^3, I = w t^3 / 12, w = 6 mm.
+# The tool slot is at the shelf, where the moment is smallest. It does not change
+# L, t, or δ, so the same F is the force to hold one hook out for removal.
 cl_t=scad_num('cl_t'); cl_gap=scad_num('cl_gap'); cl_lip=scad_num('cl_lip')
 cl_lip_h=scad_num('cl_lip_h'); cl_foot=scad_num('cl_foot')
+cl_slot_w=scad_num('cl_slot_w'); cl_slot_h=scad_num('cl_slot_h'); cl_slot_d=scad_num('cl_slot_d')
+xstop_bite=scad_num('xstop_bite'); face_recess=scad_num('face_recess')
 Zin=Zt+P['panel_gap']+1.2
 cl_L=Zin-(Zt+cl_foot)
 cl_E=1800.0
@@ -319,15 +323,67 @@ for x0,x1,edge,dire in ((47.0,53.0,26.24,1),(84.6,90.6,26.24,1),(49.6,55.6,62.94
     if d_beam<0.05 or d_gap>-0.05 or d_foot<0.05:
         hook_fail=True
         print('  HOOK NOT FREE')
+    # Slot: air in the outer face, ligament still solid. u increases toward the glass.
+    u_outer=-(cl_gap+cl_t)
+    d_slot=float(qcar.signed_distance([_at(u_outer+cl_slot_d/2, Zin)])[0])
+    d_lig=float(qcar.signed_distance([_at(u_outer+cl_slot_d+0.12, Zin)])[0])
+    print('  slot x %.1f air %+.2f (want <0)  ligament %+.2f (want >0)'%(0.5*(x0+x1), d_slot, d_lig))
+    if d_slot>-0.05 or d_lig<0.05:
+        hook_fail=True
+        print('  HOOK SLOT MISSING')
+# Glass cannot rise while all four shelves overlap it. Release is both hooks of one
+# long edge, held out by cl_lip, then a sideways slide past the other edge's shelves.
+hooks=((47.0,53.0,26.24,1),(84.6,90.6,26.24,1),(49.6,55.6,62.94,-1),(76.0,82.0,62.94,-1))
+top=[h for h in hooks if h[3]>0]
+bot=[h for h in hooks if h[3]<0]
+def _span(group):
+    c=[0.5*(a+b) for a,b,_,_ in group]
+    return max(c)-min(c)
+top_span=_span(top); bot_span=_span(bot)
+print('release: deflect %.2f mm at the shelf, %.2f N each hook, %.2f N for the pair'%(cl_lip, cl_F, 2*cl_F))
+print('release spans: top edge %.1f mm, bottom edge %.1f mm (both hooks of that edge)'%(top_span, bot_span))
+print('release slide: more than %.2f mm toward the freed edge, then the glass can rise'%(cl_lip))
+# The top pair is the 33–38 mm edge. The bottom pair is shorter and still a pair.
+if cl_lip<0.32-1e-6 or top_span<33 or top_span>38:
+    hook_fail=True
+    print('RELEASE SPAN FAIL')
+if hook_fail:
+    print('HOOK FAIL')
+# +x stop. Pull-out along x is 1 mm of tail per mm of slide (the straight run grows).
+# A post that bites the outline by xstop_bite still kisses after a 0.10 mm short print
+# if the bite is at least that. The tall-print insertion is the 3.11 mm row.
+vcar=carrier.vertices
+right=(vcar[:,0]>OX+108.2)&(vcar[:,0]<OX+109.6)&(vcar[:,2]>Zpb+0.3)&(vcar[:,2]<Zin)
+if not np.any(right):
+    print('X STOP MISSING')
+    hook_fail=True
+    bite=0.0
+else:
+    bite=(OX+FPC_EDGE)-float(vcar[right,0].min())
+worst_slide=max(0.0, PRINT_Z-bite)
+ins_slide=fpc_inserted(P['panel_gap']+PRINT_Z, 0.50)-worst_slide
+print('x stop bite %.3f mm, worst +x slide after a %.2f mm short print %.3f mm, inserted then %.2f mm'%(bite, PRINT_Z, worst_slide, ins_slide))
+if bite<xstop_bite-0.03 or ins_slide<FPC_MIN-1e-6:
+    print('X STOP FAIL')
+    hook_fail=True
+# -x is the curtain at board x 29.0. That slide lengthens the tail.
+print('minus-x runs into the curtain %.2f mm away; that slide lengthens the inserted tail'% (29.46-29.0))
+stack_face=0.16+0.10+0.10+0.15
+print('face recess %.2f mm, stack board+print+snap+standoff %.2f mm, margin %.2f mm'%(face_recess, stack_face, face_recess-stack_face))
+if face_recess<stack_face+0.10:
+    print('FACE RECESS FAIL')
+    hook_fail=True
 if hook_fail:
     print('HOOK FAIL')
 # Buttons. TS-1187A-B-A-B: H=1.5±0.05, drawing TRAVEL 0.2±0.1, spec table 0.25.
+# The sheet does not give an over-travel rating. The lip is the plastic stop.
 # The shell is fixed to the backplate. Clamp posts start 0.1 mm above a nominal
 # board, so they do not make the shell follow the board, and the board-thickness
-# term stays in the stack. Snap windows add about ±0.1 mm if the shell is not
-# seated in the middle of the window; that play is not in the numbers below.
+# term stays in the stack. Snap windows add ±0.10 mm when the shell is not seated
+# in the middle of the window. Moving the whole shell changes the gap and not the
+# travel, because the cone and the lip move together.
 # Uniform draws: printer z ±0.10 on the gap, an independent ±0.10 on the cap-to-shell
-# travel (two prints), standoff ±0.15, board ±0.16.
+# travel (two prints), standoff ±0.15, board ±0.16, switch height ±0.05, seat ±0.10.
 SW_H_TOL=0.05
 leaf_t=scad_num('leaf_t'); leaf_L=scad_num('leaf_L'); leaf_defl=scad_num('leaf_defl')
 leaf_free=scad_num('leaf_free') if False else leaf_L-scad_num('leaf_root')
@@ -363,31 +419,39 @@ for yb in (30, 40, 50):
     cz_s=catch_face(seated_caps, c); cz_p=catch_face(pressed_caps, c)
     print('  y=%g gap %5.2f travel %5.2f stroke %5.2f thick+tall rest %5.2f catch seated z %.2f pressed z %.2f'%(yb, gap, travel, stroke, rest_hi, cz_s if cz_s is not None else -1, cz_p if cz_p is not None else -1))
     gaps.append(gap); travels.append(travel)
-    if not (0.45<=gap<=0.52 and 1.15<=travel<=1.28 and rest_hi>0.05 and cz_s is not None):
+    if not (0.60<=gap<=0.70 and 1.45<=travel<=1.55 and rest_hi>0.05 and cz_s is not None):
         btn_fail=True
         print('  BUTTON STROKE FAIL')
     if cz_s is None or abs((cz_s-cz_p)-travel)>0.08:
         btn_fail=True
         print('  CATCH DOES NOT TRAVEL WITH THE CAP')
 g0=float(np.mean(gaps)); t0=float(np.mean(travels))
-# Tolerance stack. Shell fixed, so the board term is in.
+# Tolerance stack. Shell fixed, so the board term is in. Switch height and the
+# snap-seat play are in the same stack. Positive seat is the shell sitting high.
+SW_STACK=0.05
+SEAT=0.10
 rng=np.random.default_rng(1)
 N=200000
 ez=rng.uniform(-0.10,0.10,N); et=rng.uniform(-0.10,0.10,N)
 es=rng.uniform(-0.15,0.15,N); eb=rng.uniform(-0.16,0.16,N)
-gap_s=g0+ez-es-eb
+esw=rng.uniform(-SW_STACK,SW_STACK,N); ese=rng.uniform(-SEAT,SEAT,N)
+gap_s=g0+ez-es-eb-esw+ese
 stroke_s=(t0+et)-gap_s
 p_closed=float(np.mean(gap_s<=0)*100)
 p_short=float(np.mean(stroke_s<0.20)*100)
-worst_gap=g0-0.10-0.15-0.16
-worst_stroke=(t0-0.10)-(g0+0.10+0.15+0.16)
+worst_gap=g0-0.10-0.15-0.16-SW_STACK-SEAT
+worst_stroke=(t0-0.10)-(g0+0.10+0.15+0.16+SW_STACK+SEAT)
 print('tolerance uniform: P(gap<=0)=%.2f%%  P(stroke<0.20)=%.2f%%  worst gap %.2f  worst stroke %.2f'%(p_closed, p_short, worst_gap, worst_stroke))
-# Sensitivity, not the gate: ± taken as 1σ, board left out. That is the stack that
-# lands near a 1% stroke risk at these nominals. The gate below keeps the board in.
+# Past the switch's own travel the lip is still  this far away. The sheet states
+# no over-travel rating, so this is a plastic stop beyond bottom-out, not a rated one.
+# Spec-table travel is 0.25 mm. The drawing's 0.2±0.1 mm is the other figure.
+over=t0-g0-0.25
+print('plastic stop is %.2f mm past the spec-table 0.25 mm bottom-out; the sheet gives no over-travel rating'%(over))
+# Sensitivity, not the gate: ± taken as 1σ, board left out.
 def _phi(z):
     return 0.5*(1+math.erf(z/math.sqrt(2)))
-sig_gap=math.sqrt(0.10**2+0.15**2)          # printer and standoff, no board
-sig_stroke=math.sqrt(0.10**2+0.10**2+0.15**2)
+sig_gap=math.sqrt(0.10**2+0.15**2+SW_STACK**2+SEAT**2)   # no board
+sig_stroke=math.sqrt(0.10**2+0.10**2+0.15**2+SW_STACK**2+SEAT**2)
 print('sensitivity, ± as 1σ and the board left out: P(gap<=0)=%.1f%%  P(stroke<0.20)=%.1f%%'%(_phi((0-g0)/sig_gap)*100, _phi((0.20-(t0-g0))/sig_stroke)*100))
 if p_closed>1.0 or p_short>2.0 or worst_gap<=0.05 or worst_stroke<0.20:
     btn_fail=True
