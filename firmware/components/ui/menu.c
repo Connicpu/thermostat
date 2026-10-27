@@ -819,7 +819,8 @@ void MenuGetView(const Menu *pM, const MenuCtx *pC, MenuView *pV)
         return;
     case kMsInfo:
     {
-        char c[16];
+        /* "%lu/%lu/%lu" of three full U32s is 32 characters plus the NUL. */
+        char c[33];
         pV->kind = kViewText;
         snprintf(pV->title, sizeof pV->title, "Device info");
         Row(pV, "Firmware", pC->pFwVersion);

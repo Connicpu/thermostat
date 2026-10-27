@@ -738,6 +738,17 @@ static void InfoScreen(void)
         "C"));
     CHECK(!strcmp(v.value[5], "45.12%"));
     CHECK(!strcmp(v.value[6], "2d 03:07"));
+    /* A full U32 must survive the format. The first row's second number is I2C plus CRC. */
+    s_c.sensorOk = 0xffffffffu;
+    s_c.sensorI2c = 0xffffffffu;
+    s_c.sensorCrc = 0;
+    s_c.sensorRetry = 0xffffffffu;
+    s_c.sensorRst = 0xffffffffu;
+    s_c.sensorGap = 0xffffffffu;
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK(!strcmp(v.value[1], "4294967295/4294967295"));
+    CHECK(!strcmp(v.value[2], "4294967295/0"));
+    CHECK(!strcmp(v.value[3], "4294967295/4294967295/4294967295"));
     CHECK_EQ(v.sel, 0);
     Down();
     Down();
