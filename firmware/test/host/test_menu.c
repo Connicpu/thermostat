@@ -4,6 +4,7 @@
 #include "menu.h"
 #include "buttons.h"
 #include "gfx.h"
+#include <stdio.h>
 #include <string.h>
 
 static Menu s_m;
@@ -84,12 +85,13 @@ static void NavigationWrapsAndBack(void)
     Reset();
     Sel();
     CHECK_EQ(s_m.cursor, kMiMode);
-    Up(); /* wraps to the last row */
+    Up(); /* wraps to Back; Clear safe mode is not listed */
     CHECK_EQ(s_m.cursor, kMiBack);
     Down();
     CHECK_EQ(s_m.cursor, kMiMode);
-    for (int i = 0; i < kMiBack; i++)
+    for (int i = 0; i < kMiCount && s_m.cursor != kMiBack; i++)
         Down();
+    CHECK_EQ(s_m.cursor, kMiBack);
     MenuAction a = Sel();
     CHECK(MenuIsHome(&s_m));
     CHECK(a.fullRefresh);
@@ -562,6 +564,108 @@ static void BoostCancelOnlyWhenActive(void)
 }
 
 /**
+ * Clear safe mode is listed only while safe mode is on, just before Back. M opens the confirm
+ * screen; M again emits kMaClearSafeMode, and any other key or the 10 s timeout leaves the counter alone.
+ */
+static void ClearSafeModeConfirm(void)
+{
+    MenuView v;
+    char q[40];
+    Reset();
+    Sel();
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK_EQ(v.nRows, kMiCount - 1);
+    CHECK(!strcmp(v.label[v.nRows - 2], "Device info"));
+    CHECK(!strcmp(v.label[v.nRows - 1], "Back"));
+    for (int i = 0; i < v.nRows; i++)
+        CHECK(strcmp(v.label[i], "Clear safe mode") != 0);
+    Up();
+    CHECK_EQ(s_m.cursor, kMiBack);
+
+    s_c.safeMode = true;
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK_EQ(v.nRows, kMiCount);
+    CHECK(!strcmp(v.label[kMiClearSafe], "Clear safe mode"));
+    CHECK(!strcmp(v.label[kMiBack], "Back"));
+    CHECK_EQ(v.sel, kMiBack); /* still on Back; the new row is the one above it */
+    Up();
+    CHECK_EQ(s_m.cursor, kMiClearSafe);
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK_EQ(v.sel, kMiClearSafe);
+    CHECK(!strcmp(v.label[v.sel], "Clear safe mode"));
+
+    Sel();
+    CHECK_EQ(s_m.st, kMsClearSafe);
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK_EQ(v.kind, kViewWarning);
+    snprintf(q, sizeof q, "%s %s", v.label[0], v.label[1]);
+    CHECK(!strcmp(q, "Clear safe mode and restart?"));
+
+    CHECK_EQ(Up().kind, kMaNone);
+    CHECK_EQ(s_m.st, kMsList);
+    CHECK_EQ(s_m.cursor, kMiClearSafe);
+    Sel();
+    CHECK_EQ(Down().kind, kMaNone);
+    CHECK_EQ(s_m.st, kMsList);
+    Sel();
+    CHECK_EQ(Key(kMenuKeyM, kBtnEvHold).kind, kMaNone);
+    CHECK_EQ(s_m.st, kMsList);
+    CHECK(!s_m.swallowM);
+    Sel();
+    CHECK_EQ(Key(kMenuKeyCombo, kBtnEvPress).kind, kMaNone);
+    CHECK_EQ(s_m.st, kMsList);
+    CHECK_EQ(s_m.cursor, kMiClearSafe);
+
+    /* safe mode ending while that row is selected: it is drawn as Back, and the next key treats it as Back */
+    s_c.safeMode = false;
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK_EQ(v.nRows, kMiCount - 1);
+    CHECK(!strcmp(v.label[v.nRows - 1], "Back"));
+    CHECK_EQ(v.sel, v.nRows - 1);
+    for (int i = 0; i < v.nRows; i++)
+        CHECK(strcmp(v.label[i], "Clear safe mode") != 0);
+    Down();
+    CHECK_EQ(s_m.cursor, kMiMode);
+    s_c.safeMode = true;
+    for (int i = 0; i < kMiCount && s_m.cursor != kMiBack; i++)
+        Down();
+    CHECK_EQ(s_m.cursor, kMiBack);
+    Up();
+    CHECK_EQ(s_m.cursor, kMiClearSafe);
+    s_c.safeMode = false;
+    MenuAction a = Sel(); /* the hidden row is Back, so M leaves the menu */
+    CHECK(MenuIsHome(&s_m));
+    CHECK_EQ(a.kind, kMaNone);
+
+    s_c.safeMode = true;
+    Sel(); /* opening the menu starts at Mode */
+    for (int i = 0; i < kMiClearSafe; i++)
+        Down();
+    CHECK_EQ(s_m.cursor, kMiClearSafe);
+    Sel();
+    CHECK_EQ(MenuTick(&s_m, s_t + MENU_TIMEOUT_MS - 1).kind, kMaNone);
+    CHECK_EQ(s_m.st, kMsClearSafe);
+    a = MenuTick(&s_m, s_t + MENU_TIMEOUT_MS);
+    CHECK(MenuIsHome(&s_m));
+    CHECK_EQ(a.kind, kMaNone);
+    CHECK(a.fullRefresh);
+
+    Sel();
+    for (int i = 0; i < kMiClearSafe; i++)
+        Down();
+    CHECK_EQ(s_m.cursor, kMiClearSafe);
+    Down();
+    CHECK_EQ(s_m.cursor, kMiBack);
+    Up();
+    CHECK_EQ(s_m.cursor, kMiClearSafe);
+    Sel();
+    a = Sel();
+    CHECK_EQ(a.kind, kMaClearSafeMode);
+    CHECK(MenuIsHome(&s_m));
+    CHECK(a.fullRefresh);
+}
+
+/**
  * Holding M on the Zigbee screen pairs once and swallows the rest of that hold; a short M just goes back.
  */
 static void ZigbeeHoldToPair(void)
@@ -838,7 +942,8 @@ static void RenderMenuPreviews(void)
     Sel();
     MenuView v;
     MenuGetView(&s_m, &s_c, &v);
-    CHECK_EQ(v.nRows, kMiCount);
+    CHECK_EQ(v.nRows, kMiCount - 1); /* Clear safe mode is hidden */
+    CHECK(!strcmp(v.label[v.nRows - 1], "Back"));
 }
 
 /** Run every menu test; exit status 1 if any failed (tinytest DONE()). */
@@ -860,6 +965,7 @@ int main(void)
     RUN(EditUnits);
     RUN(BoostTargetAndTimed);
     RUN(BoostCancelOnlyWhenActive);
+    RUN(ClearSafeModeConfirm);
     RUN(ZigbeeHoldToPair);
     RUN(InfoScreen);
     RUN(ModeHoldTimings);

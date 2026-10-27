@@ -55,6 +55,30 @@ static MenuBoostItem BoostItem(const MenuCtx *pC, U8 i)
     return (MenuBoostItem)i;
 }
 
+/** Returns how many main-list rows are shown. Clear safe mode is only listed while it is on. */
+static U8 MainCount(const MenuCtx *pC)
+{
+    return (U8)(pC->safeMode ? kMiCount : kMiCount - 1);
+}
+
+/** Returns the main-list item at visible row i. The row before Back is Clear safe mode only while it is on. */
+static MenuItem MainItem(const MenuCtx *pC, U8 i)
+{
+    if (!pC->safeMode && i >= kMiClearSafe)
+        return (MenuItem)(i + 1);
+    return (MenuItem)i;
+}
+
+/** Returns the visible row of a main-list item. Clear safe mode maps onto Back when it is hidden. */
+static U8 MainRow(const MenuCtx *pC, U8 item)
+{
+    if (!pC->safeMode && item > kMiClearSafe)
+        return (U8)(item - 1);
+    if (!pC->safeMode && item == kMiClearSafe)
+        return (U8)(kMiBack - 1);
+    return item;
+}
+
 /** Returns an action of kind k with value v that also asks for a redraw. */
 static MenuAction Act(MenuActionKind k, I32 v)
 {
@@ -320,30 +344,46 @@ MenuAction MenuOnKey(Menu *pM, const MenuCtx *pC, MenuKey k, BtnEvent ev, U64 no
     pM->lastKeyMs = now;
     if (MenuIsHome(pM))
         return KeyHome(pM, k, ev);
-    if (k == kMenuKeyCombo)
+    /* UP+DOWN together is not a menu move, except on the safe-mode confirm where any other key cancels. */
+    if (k == kMenuKeyCombo && pM->st != kMsClearSafe)
         return (MenuAction){0};
     const bool updown = (k == kMenuKeyUp || k == kMenuKeyDown) && (ev == kBtnEvPress || ev == kBtnEvRepeat);
     const int dir = k == kMenuKeyUp ? 1 : -1;
     const bool sel = k == kMenuKeyM && ev == kBtnEvPress;
-    if (!updown && !sel && !(k == kMenuKeyM && ev == kBtnEvHold))
+    if (!updown && !sel && !(k == kMenuKeyM && ev == kBtnEvHold) && k != kMenuKeyCombo)
         return (MenuAction){0};
 
     switch (pM->st)
     {
     case kMsList:
+    {
+        if (!pC->safeMode && pM->cursor == kMiClearSafe)
+            pM->cursor = kMiBack;
+        U8 n = MainCount(pC);
+        U8 row = MainRow(pC, pM->cursor);
+        if (row >= n)
+            row = (U8)(n - 1);
         if (updown)
         {
-            pM->cursor = (U8)((pM->cursor + kMiCount - dir) % kMiCount);
+            row = (U8)((row + n - dir) % n);
+            pM->cursor = (U8)MainItem(pC, row);
             return Redraw();
         } /* UP = previous row */
         if (sel)
         {
+            pM->cursor = (U8)MainItem(pC, row);
             if (pM->cursor == kMiBack)
                 return GoHome(pM, kMaNone, 0);
+            if (pM->cursor == kMiClearSafe)
+            {
+                pM->st = kMsClearSafe;
+                return Redraw();
+            }
             OpenItem(pM, pC);
             return Redraw();
         }
         break;
+    }
     case kMsEditMode:
         if (updown)
         {
@@ -512,6 +552,12 @@ MenuAction MenuOnKey(Menu *pM, const MenuCtx *pC, MenuKey k, BtnEvent ev, U64 no
             return Redraw();
         }
         break;
+    case kMsClearSafe:
+        if (sel)
+            return GoHome(pM, kMaClearSafeMode, 0);
+        /* UP, DOWN, the combo, or holding M: back to the list, counter unchanged. */
+        pM->st = kMsList;
+        return Redraw();
     default:
         break;
     }
@@ -630,8 +676,12 @@ void MenuGetView(const Menu *pM, const MenuCtx *pC, MenuView *pV)
         Row(pV, "Units", pU);
         Row(pV, "Zigbee", LinkName(pC->link));
         Row(pV, "Device info", "");
+        if (pC->safeMode)
+            Row(pV, "Clear safe mode", "");
         Row(pV, "Back", "");
-        pV->sel = pM->cursor;
+        pV->sel = MainRow(pC, pM->cursor);
+        if (pV->sel >= pV->nRows)
+            pV->sel = (U8)(pV->nRows - 1);
         break;
     case kMsBoost:
         pV->kind = kViewList;
@@ -752,6 +802,14 @@ void MenuGetView(const Menu *pM, const MenuCtx *pC, MenuView *pV)
         Row(pV, "Status", LinkName(pC->link));
         Row(pV, "Hold M: pair", "");
         snprintf(pV->hint, sizeof pV->hint, "M: back");
+        return;
+    case kMsClearSafe:
+        pV->kind = kViewWarning;
+        snprintf(pV->title, sizeof pV->title, "SAFE MODE");
+        Row(pV, "Clear safe mode and", NULL);
+        Row(pV, "restart?", NULL);
+        Row(pV, "M confirms", NULL);
+        Row(pV, "Other key cancels", NULL);
         return;
     case kMsInfo:
     {
