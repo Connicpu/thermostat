@@ -51,6 +51,12 @@ static const char *kTag = "app";
 /* Structured lines for the HOOTL scenario runner / field logs: "EVT <what> ...". */
 #define EVT(...) ESP_LOGI("evt", __VA_ARGS__)
 
+/* Fault and Starting-sensor edges paint on the button path. The bucket stops a flapping
+ * sensor from partial-refreshing on every edge: three paints are on hand at boot, and one
+ * token returns every 60 s. The bucket never holds more than the burst. */
+static const int kEdgePaintBurst = 3;
+static const U64 kEdgePaintRefillMs = 60000;
+
 static bool s_nvsOk;            /* settings can be persisted */
 static bool s_safeMode;         /* boot loop detected: outputs held off */
 static bool s_outputsOk = true; /* HvacOutputsInit() succeeded */
@@ -388,6 +394,8 @@ static void FactoryReset(void)
     dm.pBanner = "FACTORY RESET";
     dm.fullEpoch = (U8)(s_fullEpoch + 1);
     DisplayPost(&dm, true);
+    /* Sampled while dm is live: this frame is the deepest the app task reaches. */
+    EVT("EVT stack factory free=%u", (unsigned)uxTaskGetStackHighWaterMark(NULL));
     for (int i = 0; i < 12; i++)
     { /* ~3 s for the panel to show it; keep the dogs fed */
         vTaskDelay(pdMS_TO_TICKS(250));
@@ -457,7 +465,7 @@ static MenuCtx BuildMenuCtx(const Persist *pP, U64 now)
         .sched = pP->sched,
         .fahrenheit = pP->fahrenheit,
         .link = ZbThermostatLink(),
-        .pFwVersion = FW_VERSION,
+        .pFwVersion = esp_app_get_description()->version,
         .rawValid = s_raw.valid,
         .rawTemp = s_raw.tempC100,
         .rawRh = s_raw.rhC100,
@@ -824,6 +832,8 @@ static void AppTask(void *pArg)
         /* 5. display */
         static char s_otaBanner[24];
         static int s_paintFault = -1, s_paintStarting = -1;
+        static int s_edgeTokens = kEdgePaintBurst;
+        static U64 s_edgeTokenMs; /* boot: the first minute does not mint a fourth token */
         int starting = DisplaySensorStarting(o.fault, now, boot) ? 1 : 0;
         /* The glass otherwise waits for the clock minute or the 3 min slot. Either edge paints
          * on the button path: the starting line falling off at 10 s (fault unchanged), a fault
@@ -836,7 +846,23 @@ static void AppTask(void *pArg)
         }
         else if (s_paintFault != (int)o.fault || s_paintStarting != starting)
         {
-            urgent = true;
+            /* One token per edge, refilled one per kEdgePaintRefillMs and capped at the burst.
+             * A plain hold-off from the previous paint would drop the fault that follows the
+             * starting line inside the same minute. The latches move even with an empty bucket,
+             * so the next loop does not treat this same edge as new. */
+            U64 step = (now - s_edgeTokenMs) / kEdgePaintRefillMs;
+            if (step > 0)
+            {
+                int add = step > (U64)kEdgePaintBurst ? kEdgePaintBurst : (int)step;
+                int sum = s_edgeTokens + add;
+                s_edgeTokens = sum > kEdgePaintBurst ? kEdgePaintBurst : sum;
+                s_edgeTokenMs += step * kEdgePaintRefillMs;
+            }
+            if (s_edgeTokens > 0)
+            {
+                urgent = true;
+                s_edgeTokens--;
+            }
             s_paintFault = (int)o.fault;
             s_paintStarting = starting;
         }
@@ -899,6 +925,18 @@ static void AppTask(void *pArg)
             dm.pBanner = "Storage fault: not saved";
         }
         DisplayPost(&dm, urgent);
+        static bool s_stackBootLogged, s_stackInfoLogged;
+        if (!s_stackBootLogged && now >= 1000)
+        {
+            s_stackBootLogged = true;
+            EVT("EVT stack boot free=%u", (unsigned)uxTaskGetStackHighWaterMark(NULL));
+        }
+        /* Device info's rows are built above, on this same frame. */
+        if (s_menu.st == kMsInfo && !s_stackInfoLogged)
+        {
+            s_stackInfoLogged = true;
+            EVT("EVT stack info free=%u", (unsigned)uxTaskGetStackHighWaterMark(NULL));
+        }
 
         /* 6. persistence */
         xSemaphoreTake(s_mtx, portMAX_DELAY);
@@ -1086,9 +1124,9 @@ void app_main(void)
         ESP_LOGE(kTag, "EVT fault buttons init (Zigbee control only)");
 
     /* Local control first: it never waits for Zigbee.
-     * 5248 B. AppTask and FactoryReset each hold a DisplayModel; main's 4096 B frame had 52 B
+     * AppTask and FactoryReset each hold a DisplayModel. The app task's 4096 B stack had 52 B
      * free at factory reset, and the wide counter column overflowed it. esp32sim high-water
-     * mark with the sensor absent: boot 1668 B free, Device info 1668 B, factory reset 1092 B. */
+     * mark with the sensor absent: boot 1652 B free, factory reset 1076 B. */
     if (xTaskCreate(AppTask, "app", 5248, NULL, 6, NULL) != pdPASS)
     {
         ESP_LOGE(kTag, "app task: out of memory");

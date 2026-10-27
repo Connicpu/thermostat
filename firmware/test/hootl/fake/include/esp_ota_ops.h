@@ -16,6 +16,12 @@ typedef enum
 } esp_ota_img_states_t;
 #define OTA_SIZE_UNKNOWN           0xffffffff
 #define OTA_WITH_SEQUENTIAL_WRITES 0xfffffffe
+/** Application description. HOOTL fills version only; the menu reads that field. */
+typedef struct
+{
+    char version[32];
+} esp_app_desc_t;
+const esp_app_desc_t *esp_app_get_description(void);
 const esp_partition_t *esp_ota_get_running_partition(void);
 const esp_partition_t *esp_ota_get_next_update_partition(const esp_partition_t *start);
 esp_err_t esp_ota_get_state_partition(const esp_partition_t *p, esp_ota_img_states_t *st);

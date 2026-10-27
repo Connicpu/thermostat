@@ -591,8 +591,8 @@ static const char *LinkName(LinkState l)
 /**
  * One Device info counter. Up to 99999 is the full decimal, which is the widest token that still
  * fits three-across beside "Meas/rst/CRC" on the 296 px panel. Past that, a short form no wider
- * than "99999": "100k".."999k", "1.0M".."9.9M", "10M".."999M", "1.0B".."99.9B", then whole billions.
- * The ok/err sum of three full U32s is about 12.8B, so the tenths run past 10B.
+ * than "99999": "100k".."999k", "1.0M".."9.9M", "10M".."999M", "1.0B".."99.9B".
+ * Each counter is a U32. The ok/err sum of three full ones is about 12.8B, inside that last form.
  */
 static void FmtCount(char *pOut, size_t n, U64 v)
 {
@@ -604,10 +604,28 @@ static void FmtCount(char *pOut, size_t n, U64 v)
         snprintf(pOut, n, "%lu.%luM", (unsigned long)(v / 1000000ull), (unsigned long)((v / 100000ull) % 10ull));
     else if (v < 1000000000ull)
         snprintf(pOut, n, "%luM", (unsigned long)(v / 1000000ull));
-    else if (v < 100000000000ull)
-        snprintf(pOut, n, "%lu.%luB", (unsigned long)(v / 1000000000ull), (unsigned long)((v / 100000000ull) % 10ull));
     else
-        snprintf(pOut, n, "%luB", (unsigned long)(v / 1000000000ull));
+        snprintf(pOut, n, "%lu.%luB", (unsigned long)(v / 1000000000ull), (unsigned long)((v / 100000000ull) % 10ull));
+}
+
+/**
+ * Firmware value for the 17-character column (the buffer holds 18 with the NUL). A short semver
+ * is copied whole. A longer app version drops the leading X.Y.Z and its hyphen, so
+ * 0.3.0-g7c9d421-dirty is shown as g7c9d421-dirty. A suffix that still does not fit keeps its tail.
+ */
+static void FmtVersion(char *pOut, size_t n, const char *pVer)
+{
+    const char *pText = pVer ? pVer : "";
+    size_t len = strlen(pText);
+    if (n > 1 && len + 1 > n)
+    {
+        const char *pDash = strchr(pText, '-');
+        if (pDash && pDash[1] && strlen(pDash + 1) + 1 <= n)
+            pText = pDash + 1;
+        else
+            pText += len - (n - 1);
+    }
+    snprintf(pOut, n, "%s", pText);
 }
 
 /** Append a label/value row to the view (value may be NULL); ignored when VIEW_MAX_ROWS are used. */
@@ -790,11 +808,12 @@ void MenuGetView(const Menu *pM, const MenuCtx *pC, MenuView *pV)
         return;
     case kMsInfo:
     {
-        char one[6], two[6], three[6], row[18];
+        char one[6], two[6], three[6], row[18], ver[18];
         U64 err = (U64)pC->sensorMeas + (U64)pC->sensorReset + (U64)pC->sensorCrc;
         pV->kind = kViewList;
         snprintf(pV->title, sizeof pV->title, "Device info");
-        Row(pV, "Firmware", pC->pFwVersion);
+        FmtVersion(ver, sizeof ver, pC->pFwVersion);
+        Row(pV, "Firmware", ver);
         FmtCount(one, sizeof one, pC->sensorOk);
         FmtCount(two, sizeof two, err);
         snprintf(row, sizeof row, "%s/%s", one, two);
