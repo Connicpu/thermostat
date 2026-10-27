@@ -750,6 +750,26 @@ def sensor_refill_waits(s):
     return check
 
 
+@scenario("sensor_edge_token_returns_when_glass_matches", until=540 * SEC, timeout=180)
+def sensor_token_return(s):
+    """Clock set at 45 s. Out of range and back, held out of range at 240 s, healthy again at
+    250 s. A token charged for a frame the glass already shows comes back, so the OK at 254 s
+    paints on the button path. The refresh is underway by 254.5 s. Six refreshes after 230 s:
+    that recovery and the five minute rollovers through about 526 s."""
+    s.clock(45 * SEC, 8, 0)
+    _flap_range_until(s, 240 * SEC)
+    s.temp(250 * SEC, 2100)
+
+    def check(r):
+        ok = r.expect(r"EVT ctrl fault=OK", after=250 * SEC, before=255 * SEC)
+        r.expect(r"EPD refresh", after=ok, before=254 * SEC + 500)
+        r.expect(r"EVT panel Idle", after=ok, before=256 * SEC)
+        n = r.count(r"EPD refresh", after=230 * SEC)
+        r.check(n == 6, f"{n} refreshes after 230 s, want 6")
+
+    return check
+
+
 @scenario("sensor_log_heartbeat_not_every_edge_window", until=70 * SEC)
 def sensor_log_heartbeat(s):
     """EVT sensor is the first sample and the minute heartbeat. A healthy sensor does not log
