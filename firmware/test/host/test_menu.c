@@ -589,7 +589,8 @@ static void BoostCancelOnlyWhenActive(void)
 static void ClearSafeModeConfirm(void)
 {
     MenuView v;
-    char q[40];
+    /* Two labels, a space, and the NUL. Each label slot is 28 bytes, so 27 characters each. */
+    char q[sizeof v.label[0] + sizeof v.label[1]];
     Reset();
     Sel();
     MenuGetView(&s_m, &s_c, &v);
