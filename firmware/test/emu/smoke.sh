@@ -96,14 +96,14 @@ check_log() {
     return "$rc"
 }
 
-# App-task stack free (bytes) after the boot frame, with the sensor absent. 5248 B leaves
-# 1652 B. A 4608 B stack would leave 1012 B, and 4096 B about 500 B, so a floor of 1400
-# fails both. Factory reset is a second DisplayModel on that same task (1076 B free on
-# 5248 B). Its floor of 800 fails those sizes too: about 436 B, or an overflow. Device
-# info is built on the app-task frame the boot sample already includes. `run` holds MODE
-# from the home screen and requires `EVT stack factory`.
+# App-task stack free (bytes) on the 10 s boot log, sensor absent. 5248 B leaves 1652 B.
+# A 4608 B stack would leave 1012 B, and 4096 B about 500 B, so a floor of 1400 fails both.
+# This log does not open the menu. Device info is not measured: a MODE/DOWN script does not
+# reach that screen in esp32sim, and the boot frame already builds the same app-task rows.
+# Factory reset is a second DisplayModel (1076 B free). `run` measures it with hold_factory,
+# floor 800, which fails a 4608 B stack (~436 B) and a 4096 B stack (overflow).
 check_stack() {
-    local log=$1 clean line free rc=0
+    local log=$1 clean line free
     clean=$(mktemp); tmpfiles+=("$clean")
     sed 's/\x1b\[[0-9;]*m//g; s/\r$//' "$log" > "$clean"
     line=$(grep -E 'EVT stack boot free=[0-9]+' "$clean" | head -n 1 || true)
@@ -114,24 +114,10 @@ check_stack() {
     free=$(printf '%s\n' "$line" | sed -E 's/.*free=([0-9]+).*/\1/')
     if [ "$free" -ge 1400 ]; then
         echo "ok   stack boot free=${free} B (need >= 1400)"
-    else
-        echo "FAIL stack: ${free} B free at boot, need >= 1400 (4096 or 4608 B app stack)"
-        rc=1
+        return 0
     fi
-    for kind in info factory; do
-        line=$(grep -E "EVT stack ${kind} free=[0-9]+" "$clean" | head -n 1 || true)
-        [ -n "$line" ] || continue
-        free=$(printf '%s\n' "$line" | sed -E 's/.*free=([0-9]+).*/\1/')
-        local floor=1400
-        [ "$kind" = factory ] && floor=800
-        if [ "$free" -ge "$floor" ]; then
-            echo "ok   stack ${kind} free=${free} B (need >= ${floor})"
-        else
-            echo "FAIL stack: ${free} B free at ${kind}, need >= ${floor}"
-            rc=1
-        fi
-    done
-    return "$rc"
+    echo "FAIL stack: ${free} B free at boot, need >= 1400 (4096 or 4608 B app stack)"
+    return 1
 }
 
 # Hold MODE for 16 s from the home screen so FactoryReset runs. That frame is a second

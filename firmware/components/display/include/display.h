@@ -21,16 +21,31 @@ esp_err_t DisplayInit(void);
  * The model is copied and compared with memcmp(); unchanged content is ignored unless urgent.
  * urgent=true (a button, or a sensor-fault / "Starting sensor..." edge): the task is woken and
  * refreshes URGENT_SETTLE_MS (400 ms) after the last urgent post. The app task spends a token
- * before posting those sensor edges (3 on hand, one returned every 60 s). Otherwise the clock and
- * sensor/link/running changes share one background slot: the next local-minute rollover once
- * pM->clockKnown (about 60 s, from the extrapolated minute, not a free-running 60 s timer), or at
- * most one refresh per 3 min while the
- * clock is unknown. A full (de-ghosting) refresh runs when 3 h have passed AND 40 partials have
+ * before posting those sensor edges (3 on hand, one returned every 60 s) and calls
+ * DisplayNoteEdgeSpend() for that token. A frame this task skips because it matches the glass
+ * gives the token back. Otherwise the clock and sensor/link/running changes share one background
+ * slot: the next local-minute rollover once pM->clockKnown (about 60 s, from the extrapolated
+ * minute, not a free-running 60 s timer), or at most one refresh per 3 min while the clock is
+ * unknown. A full (de-ghosting) refresh runs when 3 h have passed AND 40 partials have
  * been shown (the later of the two), or at 6 h, after a failed refresh (retried a few seconds
  * later while the model is still dirty, not held for the next minute), and whenever
  * pM->fullEpoch changes; all other refreshes are partial. A no-op before DisplayInit().
  */
 void DisplayPost(const DisplayModel *pM, bool urgent);
+
+/**
+ * Charge one sensor-edge token to the urgent frame about to be posted. If that frame matches the
+ * glass, the display task counts the token as returned instead of shown. Button posts do not call
+ * this. A no-op before DisplayInit().
+ */
+void DisplayNoteEdgeSpend(void);
+
+/**
+ * How many sensor-edge tokens have been returned because the urgent frame matched the glass.
+ * The count only grows. The app task reads it and puts those tokens back in the bucket.
+ * Returns 0 before DisplayInit().
+ */
+U32 DisplayEdgeNops(void);
 
 /**
  * Returns the monotonic time (ms since boot) at which the display task last ran its loop (every

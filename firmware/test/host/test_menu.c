@@ -879,6 +879,24 @@ static void InfoScreen(void)
     s_c.pFwVersion = "0.3.0-abcdefghijklmnopqrstuvwxyz";
     MenuGetView(&s_m, &s_c, &v);
     CHECK(!strcmp(v.value[0], "jklmnopqrstuvwxyz"));
+    /* 18 characters, no hyphen: the column keeps the last 17, not the first 17. */
+    s_c.pFwVersion = "abcdefghijklmnopqr";
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK(!strcmp(v.value[0], "bcdefghijklmnopqr"));
+    /* A 17-character suffix fills the column exactly. */
+    s_c.pFwVersion = "0.3.0-abcdefghijklmnopq";
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK(!strcmp(v.value[0], "abcdefghijklmnopq"));
+    /* A short string that ends in a hyphen is the whole version, not an empty suffix. */
+    s_c.pFwVersion = "0.3.0-";
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK(!strcmp(v.value[0], "0.3.0-"));
+    s_c.pFwVersion = NULL;
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK(!strcmp(v.value[0], ""));
+    s_c.pFwVersion = "";
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK(!strcmp(v.value[0], ""));
     s_c.pFwVersion = "0.2.0";
     /* Leave and reopen so the cursor starts at the top again. Four Downs reach raw temp. */
     Sel();

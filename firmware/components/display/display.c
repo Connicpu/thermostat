@@ -2,6 +2,8 @@
  * - Button-driven changes: partial refresh ~400 ms after the last one.
  * - A sensor-fault or "Starting sensor..." edge the app task has a token for uses that
  *   same path. The app task's bucket is 3 tokens, with one token back every 60 s.
+ *   A frame that matches the glass returns the token. The app retries a pending edge
+ *   when a token is available.
  * - One background slot, shared by the clock and by sensor/link/running changes:
  *   the next local minute once the Zigbee clock is known, else at most one
  *   refresh per 3 min. No separate clock-only path.
@@ -20,9 +22,9 @@
 #define URGENT_SETTLE_MS 400
 
 /**
- * Display state. s_mtx guards s_model, s_dirty, s_urgent and s_urgentAt (shared with DisplayPost());
- * s_alive is the task's heartbeat (ms); s_fb/s_prev are only touched by the display task (current
- * frame and last frame shown, for partial updates and skip-if-unchanged).
+ * Display state. s_mtx guards s_model, s_dirty, s_urgent, s_urgentAt, s_edgeSpends and s_edgeNops
+ * (shared with DisplayPost()); s_alive is the task's heartbeat (ms); s_fb/s_prev are only touched
+ * by the display task (current frame and last frame shown, for partial updates and skip-if-unchanged).
  */
 static const char *kTag = "display";
 static SemaphoreHandle_t s_mtx;
@@ -30,6 +32,8 @@ static TaskHandle_t s_task;
 static DisplayModel s_model;
 static bool s_dirty, s_urgent;
 static U64 s_urgentAt;
+static int s_edgeSpends;
+static U32 s_edgeNops;
 static volatile U64 s_alive;
 static GfxFb s_fb, s_prev;
 
@@ -43,6 +47,42 @@ U64 DisplayLastAliveMs(void)
 bool DisplayRunning(void)
 {
     return s_task != NULL;
+}
+
+/** See display.h. */
+void DisplayNoteEdgeSpend(void)
+{
+    if (!s_mtx)
+        return;
+    xSemaphoreTake(s_mtx, portMAX_DELAY);
+    s_edgeSpends++;
+    xSemaphoreGive(s_mtx);
+}
+
+/** See display.h. */
+U32 DisplayEdgeNops(void)
+{
+    if (!s_mtx)
+        return 0;
+    U32 n;
+    xSemaphoreTake(s_mtx, portMAX_DELAY);
+    n = s_edgeNops;
+    xSemaphoreGive(s_mtx);
+    return n;
+}
+
+/**
+ * `spends` sensor-edge tokens were charged to the urgent frame just rendered. The glass already
+ * showed it, so the panel was not updated. Count those tokens as returned. A frame that was shown,
+ * or that failed and will be retried, is not passed here.
+ */
+static void ReturnEdgeSpends(int spends)
+{
+    if (spends <= 0 || !s_mtx)
+        return;
+    xSemaphoreTake(s_mtx, portMAX_DELAY);
+    s_edgeNops += (U32)spends;
+    xSemaphoreGive(s_mtx);
 }
 
 /** Copy the model under the mutex, wake the task if urgent. See display.h. */
@@ -102,6 +142,7 @@ static void DisplayTask(void *pArg)
 
         DisplayModel m;
         bool go = false;
+        int edgeSpends = 0;
         xSemaphoreTake(s_mtx, portMAX_DELAY);
         if (s_urgent)
             go = s_dirty && now - s_urgentAt >= URGENT_SETTLE_MS;
@@ -118,6 +159,11 @@ static void DisplayTask(void *pArg)
         if (go)
         {
             m = s_model;
+            if (s_urgent)
+            {
+                edgeSpends = s_edgeSpends;
+                s_edgeSpends = 0;
+            }
             s_dirty = s_urgent = false;
         }
         xSemaphoreGive(s_mtx);
@@ -131,8 +177,10 @@ static void DisplayTask(void *pArg)
         epoch = m.fullEpoch;
         if (!first && !wantFull && memcmp(&s_fb, &s_prev, sizeof s_fb) == 0)
         {
-            /* Clock known and the minute did not change the glass (time dropped behind a long
+            /* Already on the glass. A sensor-edge token charged to this frame is returned.
+             * Clock known and the minute did not change the glass (time dropped behind a long
              * banner): remember the minute so the next loop does not spin. */
+            ReturnEdgeSpends(edgeSpends);
             if (m.clockKnown)
             {
                 lastRefresh = now;

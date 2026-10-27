@@ -474,8 +474,7 @@ def _flap_refreshes(r, want):
 @scenario("sensor_flap_dead_alive_refresh_budget", until=10 * MIN, timeout=300)
 def sensor_flap_dead(s):
     """No clock. The sensor NAKs for 15.3 s, then answers for 6.1 s, and that pair repeats.
-    Each death and recovery is an edge. The token bucket keeps the glass near one partial a
-    minute instead of painting every edge."""
+    Each death and recovery is an edge. The token bucket paints 13 times in 10 min."""
     s.temp(0, 2100)
     dead, alive = 15300, 6100
     t = 0
@@ -487,21 +486,267 @@ def sensor_flap_dead(s):
     def check(r):
         r.check(r.count(r"EVT ctrl fault=SENSOR FAIL") >= 10, "sensor kept dying")
         r.check(r.count(r"EVT ctrl fault=OK") >= 10, "sensor kept recovering")
-        _flap_refreshes(r, 10)
+        _flap_refreshes(r, 13)
     return check
 
 
 @scenario("sensor_flap_out_of_range_refresh_budget", until=10 * MIN, timeout=300)
 def sensor_flap_range(s):
     """No clock. One sample outside 0–45 °C, then three good samples, on an 8 s period.
-    That is two edges every 8 s. The token bucket keeps the glass near one partial a minute."""
+    That is two edges every 8 s. The token bucket paints 13 times in 10 min."""
     s.temp(0, 9000)
     for t in range(0, 10 * MIN, 2000):
         s.temp(t, 9000 if (t // 2000) % 4 == 0 else 2100)
     def check(r):
         r.check(r.count(r"EVT ctrl fault=TEMP RANGE") >= 20, "range fault kept recurring")
         r.check(r.count(r"EVT ctrl fault=OK") >= 20, "range fault kept clearing")
-        _flap_refreshes(r, 12)
+        _flap_refreshes(r, 13)
+    return check
+
+
+def _flap_dead_until(s, end, hold=True):
+    """NAK 15.3 s, answer 6.1 s, repeating. `hold` leaves the sensor healthy at `end`."""
+    s.temp(0, 2100)
+    dead, alive = 15300, 6100
+    t = 0
+    while t < end:
+        s.set(t, "sht.mode", 1)
+        if t + dead < end:
+            s.set(t + dead, "sht.mode", 0)
+        t += dead + alive
+    if hold:
+        s.set(end, "sht.mode", 0)
+
+
+def _flap_range_until(s, end, hold=True):
+    """One sample outside 0–45 °C, then three good samples, on an 8 s period.
+    `hold` leaves the temperature out of range at `end`."""
+    s.temp(0, 9000)
+    t = 0
+    while t < end:
+        s.temp(t, 9000 if (t // 2000) % 4 == 0 else 2100)
+        t += 2000
+    if hold:
+        s.temp(end, 9000)
+
+
+def _partials(r, want):
+    n = r.count(r"EPD refresh .*mode=0xff")
+    r.check(n == want, f"{n} partials in 60 min, want {want}")
+
+
+def _glass_at(r, t):
+    word = None
+    for pt, line in r.find_all(r"EVT panel "):
+        if pt > t:
+            break
+        word = line.split("EVT panel ", 1)[-1].strip()
+    return word
+
+
+def _stale_ms(r, t_state, word):
+    """How long the glass still showed something else after `t_state`. None if it never caught up."""
+    if _glass_at(r, t_state) == word:
+        return 0
+    hit = r.find(r"EVT panel " + word, after=t_state)
+    if hit is None:
+        return None
+    return hit - t_state
+
+
+def _register_stale_flaps():
+    """Cut each flap across one token period. The glass has to match within a minute."""
+    bound = 60 * SEC
+    # Cuts cover one token period after the burst, including the holds that leave the glass
+    # stale the longest (dead/alive held healthy at 121 s, out of range held at 127 s).
+    for clock in (False, True):
+        tag = "clk" if clock else "noclk"
+        when = "Zigbee clock set" if clock else "No clock"
+        for end_s in list(range(110, 166, 5)) + [121, 127]:
+            end = end_s * SEC
+            until = end + 90 * SEC
+
+            @scenario(
+                f"sensor_stale_dead_healthy_{tag}_{end_s}",
+                until=until,
+                timeout=180,
+                doc=f"Dead/alive flap held healthy at this phase. The glass shows Idle within a minute "
+                f"of the sensor recovering. {when}.",
+            )
+            def dead(s, end=end, clock=clock, bound=bound):
+                if clock:
+                    s.clock(0, 8, 0)
+                _flap_dead_until(s, end)
+
+                def check(r):
+                    r.check(r.count(r"EVT ctrl fault=SENSOR FAIL") >= 3, "sensor kept dying")
+                    last = r.find_all(r"EVT ctrl fault=")[-1]
+                    r.check("fault=OK" in last[1], f"ended on {last[1]}")
+                    stale = _stale_ms(r, last[0], "Idle")
+                    r.check(stale is not None, "glass never showed Idle after the sensor recovered")
+                    r.check(stale <= bound, f"glass stale {stale} ms after healthy, bound {bound} ms")
+
+                return check
+
+            @scenario(
+                f"sensor_stale_range_{tag}_{end_s}",
+                until=until,
+                timeout=180,
+                doc=f"Out-of-range flap held in TEMP RANGE at this phase. The glass shows TEMP RANGE "
+                f"within a minute of the fault. {when}.",
+            )
+            def ranged(s, end=end, clock=clock, bound=bound):
+                if clock:
+                    s.clock(0, 8, 0)
+                _flap_range_until(s, end)
+
+                def check(r):
+                    r.check(r.count(r"EVT ctrl fault=TEMP RANGE") >= 3, "range fault kept recurring")
+                    last = r.find_all(r"EVT ctrl fault=")[-1]
+                    r.check("TEMP RANGE" in last[1], f"ended on {last[1]}")
+                    stale = _stale_ms(r, last[0], "TEMP RANGE")
+                    r.check(stale is not None, "glass never showed TEMP RANGE after the fault")
+                    r.check(stale <= bound, f"glass stale {stale} ms after TEMP RANGE, bound {bound} ms")
+
+                return check
+
+
+_register_stale_flaps()
+
+
+@scenario("sensor_partials_healthy_no_clock", until=60 * MIN, timeout=180)
+def sensor_partials_healthy_nc(s):
+    """No clock, sensor healthy. The boot frame is full. One partial clears the starting line,
+    and nothing else is dirty, so the 3 min slot does not run."""
+    s.temp(0, 2100)
+
+    def check(r):
+        _partials(r, 1)
+
+    return check
+
+
+@scenario("sensor_partials_dead_no_clock", until=60 * MIN, timeout=180)
+def sensor_partials_dead_nc(s):
+    """No clock. Dead for 15.3 s and alive for 6.1 s, for an hour. The bucket's burst and then
+    one partial a minute is 62 partials."""
+    _flap_dead_until(s, 60 * MIN, hold=False)
+
+    def check(r):
+        _partials(r, 62)
+
+    return check
+
+
+@scenario("sensor_partials_range_no_clock", until=60 * MIN, timeout=180)
+def sensor_partials_range_nc(s):
+    """No clock. Out of range and back, for an hour. Same bucket, 62 partials."""
+    _flap_range_until(s, 60 * MIN, hold=False)
+
+    def check(r):
+        _partials(r, 62)
+
+    return check
+
+
+@scenario("sensor_partials_healthy_clock", until=60 * MIN, timeout=180)
+def sensor_partials_healthy_clk(s):
+    """Clock set, sensor healthy. The starting-line clear plus the local-minute rollover is
+    61 partials in the first hour."""
+    s.clock(0, 8, 0)
+    s.temp(0, 2100)
+
+    def check(r):
+        _partials(r, 61)
+
+    return check
+
+
+@scenario("sensor_partials_dead_clock", until=60 * MIN, timeout=180)
+def sensor_partials_dead_clk(s):
+    """Clock set. The minute rollover and the edge bucket both paint. A dead/alive flap is
+    122 partials in 60 min."""
+    s.clock(0, 8, 0)
+    _flap_dead_until(s, 60 * MIN, hold=False)
+
+    def check(r):
+        _partials(r, 122)
+
+    return check
+
+
+@scenario("sensor_partials_range_clock", until=60 * MIN, timeout=180)
+def sensor_partials_range_clk(s):
+    """Clock set. An out-of-range flap is 122 partials in 60 min, the same addition of the
+    minute rollover and the edge bucket."""
+    s.clock(0, 8, 0)
+    _flap_range_until(s, 60 * MIN, hold=False)
+
+    def check(r):
+        _partials(r, 122)
+
+    return check
+
+
+@scenario("sensor_edge_bucket_caps_at_burst", until=260 * SEC, timeout=300)
+def sensor_bucket_cap(s):
+    """No clock. The starting clear spends one token. After three quiet minutes the refill is
+    still capped at 3. Four range edges then paint three of them immediately; the fourth waits
+    for the next token."""
+    s.temp(0, 2100)
+    s.temp(190 * SEC, 9000)
+    s.temp(192 * SEC, 2100)
+    s.temp(204 * SEC, 9000)
+    s.temp(206 * SEC, 2100)
+
+    def check(r):
+        n = r.count(r"EVT panel ", after=185 * SEC, before=230 * SEC)
+        r.check(n == 3, f"{n} paints from four edges, want 3 (bucket capped at the burst)")
+        r.expect(r"EVT panel Idle", after=230 * SEC, before=250 * SEC)
+
+    return check
+
+
+@scenario("sensor_starting_edge_spends_a_token", until=80 * SEC, timeout=180)
+def sensor_starting_spends(s):
+    """No clock. The sensor is absent through the starting window, then healthy, dead, and
+    healthy again inside the first minute. The starting line dropping off spends a token, so
+    the second clear waits for the 60 s refill."""
+    s.temp(0, 2100)
+    s.set(0, "sht.mode", 6)
+    s.set(12 * SEC, "sht.mode", 0)
+    s.set(24 * SEC, "sht.mode", 1)
+    s.set(42 * SEC, "sht.mode", 0)
+
+    def check(r):
+        r.expect(r"EVT panel Starting sensor", before=5 * SEC)
+        drop = r.expect(r"EVT panel SENSOR FAIL", after=10 * SEC, before=13 * SEC)
+        r.expect(r"EVT panel Idle", after=drop, before=30 * SEC)
+        fault = r.expect(r"EVT ctrl fault=SENSOR FAIL", after=24 * SEC, before=45 * SEC)
+        r.expect(r"EVT panel SENSOR FAIL", after=fault, before=fault + 3 * SEC)
+        ok = r.expect(r"EVT ctrl fault=OK", after=42 * SEC, before=55 * SEC)
+        r.never(r"EVT panel Idle", after=ok, before=60 * SEC)
+        r.expect(r"EVT panel Idle", after=60 * SEC, before=65 * SEC)
+
+    return check
+
+
+@scenario("sensor_edge_refill_waits_60s", until=70 * SEC, timeout=180)
+def sensor_refill_waits(s):
+    """No clock. The starting clear and two range edges spend the burst. A further range fault
+    stays off the glass until the 60 s refill, then paints."""
+    s.temp(0, 2100)
+    s.temp(8 * SEC, 9000)
+    s.temp(10 * SEC, 2100)
+    s.temp(16 * SEC, 9000)
+
+    def check(r):
+        idle = r.expect(r"EVT panel Idle", before=12 * SEC)
+        ranged = r.expect(r"EVT panel TEMP RANGE", after=idle, before=20 * SEC)
+        cleared = r.expect(r"EVT panel Idle", after=ranged, before=25 * SEC)
+        r.never(r"EVT panel TEMP RANGE", after=cleared, before=59 * SEC)
+        r.expect(r"EVT panel TEMP RANGE", after=59 * SEC, before=65 * SEC)
+
     return check
 
 

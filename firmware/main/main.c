@@ -52,9 +52,11 @@ static const char *kTag = "app";
 #define EVT(...) ESP_LOGI("evt", __VA_ARGS__)
 
 /* Fault and Starting-sensor edges paint on the button path. The bucket stops a flapping
- * sensor from partial-refreshing on every edge: three paints are on hand at boot, and one
- * token returns every 60 s. The bucket never holds more than the burst. */
-static const int kEdgePaintBurst = 3;
+ * sensor from partial-refreshing on every edge. EDGE_PAINT_BURST paints are on hand at boot,
+ * and one token returns every 60 s. The bucket never holds more than the burst. A pending
+ * edge waits for a token. An urgent frame that matches the glass gives its token back. */
+#define EDGE_PAINT_BURST 3
+static const int kEdgePaintBurst = EDGE_PAINT_BURST;
 static const U64 kEdgePaintRefillMs = 60000;
 
 static bool s_nvsOk;            /* settings can be persisted */
@@ -887,9 +889,23 @@ static void AppTask(void *pArg)
         /* 5. display */
         static char s_otaBanner[24];
         static int s_paintFault = -1, s_paintStarting = -1;
-        static int s_edgeTokens = kEdgePaintBurst;
+        static int s_edgeTokens = EDGE_PAINT_BURST;
         static U64 s_edgeTokenMs; /* boot: the first minute does not mint a fourth token */
+        static U32 s_edgeNopsSeen;
         int starting = DisplaySensorStarting(o.fault, now, boot) ? 1 : 0;
+        /* A frame the panel skips, because it already matches the glass, is not a paint.
+         * Put the token back. The latches stay: that state is already showing. */
+        {
+            U32 nops = DisplayEdgeNops();
+            U32 delta = nops - s_edgeNopsSeen;
+            s_edgeNopsSeen = nops;
+            int back = delta > (U32)kEdgePaintBurst ? kEdgePaintBurst : (int)delta;
+            int room = kEdgePaintBurst - s_edgeTokens;
+            if (back > room)
+                back = room;
+            if (back > 0)
+                s_edgeTokens += back;
+        }
         /* The glass otherwise waits for the clock minute or the 3 min slot. Either edge paints
          * on the button path: the starting line falling off at 10 s (fault unchanged), a fault
          * that appears after that window (starting line already gone), or both together when a
@@ -901,10 +917,12 @@ static void AppTask(void *pArg)
         }
         else if (s_paintFault != (int)o.fault || s_paintStarting != starting)
         {
-            /* One token per edge, refilled one per kEdgePaintRefillMs and capped at the burst.
-             * A plain hold-off from the previous paint would drop the fault that follows the
-             * starting line inside the same minute. The latches move even with an empty bucket,
-             * so the next loop does not treat this same edge as new. */
+            /* One token per edge that changes the latches. A token comes back every
+             * kEdgePaintRefillMs, and the bucket never holds more than the burst. The latches
+             * move only when a token is spent, so an empty bucket leaves the edge pending and
+             * the next loop retries it as soon as a token returns. A plain hold-off from the
+             * previous paint would drop the fault that follows the starting line inside the
+             * same minute. */
             U64 step = (now - s_edgeTokenMs) / kEdgePaintRefillMs;
             if (step > 0)
             {
@@ -917,9 +935,10 @@ static void AppTask(void *pArg)
             {
                 urgent = true;
                 s_edgeTokens--;
+                s_paintFault = (int)o.fault;
+                s_paintStarting = starting;
+                DisplayNoteEdgeSpend();
             }
-            s_paintFault = (int)o.fault;
-            s_paintStarting = starting;
         }
         DisplayModel dm;
         memset(&dm, 0, sizeof dm);
