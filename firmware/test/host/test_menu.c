@@ -704,23 +704,50 @@ static void ZigbeeHoldToPair(void)
     CHECK_EQ(s_m.st, kMsList);
 }
 
-/** Device info shows firmware, raw temperature/humidity and uptime, formatted. */
+/**
+ * Device info leads with firmware and the sensor counters, then raw temperature, humidity and uptime.
+ * Up/Down scrolls; the counters follow the context.
+ */
 static void InfoScreen(void)
 {
+    MenuView v;
     Reset();
+    s_c.sensorOk = 12;
+    s_c.sensorI2c = 3;
+    s_c.sensorCrc = 1;
+    s_c.sensorRetry = 4;
+    s_c.sensorRst = 5;
+    s_c.sensorGap = 2;
     GotoItem(kMiInfo);
     Sel();
     CHECK_EQ(s_m.st, kMsInfo);
-    MenuView v;
     MenuGetView(&s_m, &s_c, &v);
     CHECK_EQ(v.kind, kViewText);
+    CHECK_EQ(v.nRows, 7);
+    CHECK(!strcmp(v.label[0], "Firmware"));
     CHECK(!strcmp(v.value[0], "0.2.0"));
+    CHECK(!strcmp(v.label[1], "Sensor ok/err"));
+    CHECK(!strcmp(v.value[1], "12/4"));
+    CHECK(!strcmp(v.label[2], "I2C/CRC"));
+    CHECK(!strcmp(v.value[2], "3/1"));
+    CHECK(!strcmp(v.label[3], "Retry/rst/gap"));
+    CHECK(!strcmp(v.value[3], "4/5/2"));
     CHECK(!strcmp(
-        v.value[1],
+        v.value[4],
         "22.63\x7f"
         "C"));
-    CHECK(!strcmp(v.value[2], "45.12%"));
-    CHECK(!strcmp(v.value[3], "2d 03:07"));
+    CHECK(!strcmp(v.value[5], "45.12%"));
+    CHECK(!strcmp(v.value[6], "2d 03:07"));
+    CHECK_EQ(v.sel, 0);
+    Down();
+    Down();
+    Down();
+    Down();
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK_EQ(v.sel, 4); /* raw temp has scrolled into the window */
+    Up();
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK_EQ(v.sel, 3);
     Sel();
     CHECK_EQ(s_m.st, kMsList);
 }

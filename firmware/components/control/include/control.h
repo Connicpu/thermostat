@@ -76,6 +76,11 @@ extern "C"
 #define CTRL_SWING_MAX     100 /* 1.0 °C */
 #define CTRL_SWING_DEFAULT 50  /* 0.5 °C */
 
+/* The app reads the SHT40 every 2 s. One isolated miss is tolerated for the recovery
+ * streak only while the previous good sample is still inside two of those periods. */
+#define CTRL_SENSOR_PERIOD_MS 2000u
+#define CTRL_MISS_WINDOW_MS   (2u * CTRL_SENSOR_PERIOD_MS)
+
 /* Sensible defaults for a single-stage gas furnace + AC. */
 #define CTRL_PARAMS_DEFAULT()             \
     {                                     \
@@ -84,7 +89,7 @@ extern "C"
         .maxSp = 3200,                    \
         .tempMin = 0,                     \
         .tempMax = 4500,                  \
-        .sensorTimeoutMs = 30000,         \
+        .sensorTimeoutMs = 15000,         \
         .recoverSamples = 3,              \
         .compMinOffMs = 5u * 60u * 1000u, \
         .compMinOnMs = 3u * 60u * 1000u,  \
@@ -205,6 +210,7 @@ extern "C"
         bool haveTemp;
         CtrlFault fault;
         U8 goodStreak;
+        bool missTolerated; /* the previous feed was one isolated miss; the next miss resets the streak */
     } Ctrl;
 
     /**
@@ -232,10 +238,13 @@ extern "C"
     /**
  * Feed one sensor read attempt, valid or not. Call on every attempt.
  *
- * An invalid reading only resets the recovery streak. A dead sensor is detected by the timeout
- * in CtrlStep(). A reading outside tempMin..tempMax raises kCtrlFaultTempRange. A plausible
- * reading refreshes the timeout, and while in failsafe it counts towards the recoverSamples
- * consecutive good readings needed to clear the fault.
+ * A dead sensor is detected by the timeout in CtrlStep(). A reading outside tempMin..tempMax
+ * raises kCtrlFaultTempRange and clears the recovery streak. A plausible reading refreshes the
+ * timeout, and while in failsafe it counts towards the recoverSamples good readings needed to
+ * clear the fault. One invalid sample does not clear that streak when a good reading is still
+ * inside CTRL_MISS_WINDOW_MS (two sample periods) and the previous sample was not itself a
+ * tolerated miss. The next invalid sample does. Misses do not refresh the timeout, so a run of
+ * them still reaches sensorTimeoutMs.
  *
  * `pC` is the controller; `pIn` is the sample (temp in 0.01 °C); `nowMs` is monotonic time, ms.
  */

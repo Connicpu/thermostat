@@ -4,34 +4,30 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "esp_err.h"
-
-/**
- * One SHT40 measurement.
- * valid: false on I2C or CRC error (the other fields are then 0).
- * tempC100: temperature in 0.01 °C, with the caller's offset already applied.
- * rhC100: relative humidity in 0.01 %RH (0..10000).
- */
-typedef struct
-{
-    bool valid;
-    I16 tempC100; /* calibrated (offset applied) */
-    U16 rhC100;
-} SensorReading;
+#include "sensor_cycle.h"
 
 /**
  * Create the I2C0 master bus (SDA/SCL from board.h, external 4.7 kΩ pull-ups, 100 kHz), add the
- * SHT40 at 0x44 and send it a soft reset (then wait 2 ms).
+ * SHT40 at 0x44 and soft-reset it. The soft reset is tried SENSOR_ATTEMPTS times, because the
+ * sensor often does not ACK in the first moments after power-up. A reset that is ACKed is
+ * followed by a 2 ms settle. Bus or device creation is not retried: that is the driver, not the
+ * sensor.
  *
- * Returns ESP_OK, or the error from bus/device creation (SensorRead() then returns invalid
- * readings).
+ * Returns ESP_OK once the device is on the bus (even if every soft reset NACKed; SensorRead()
+ * keeps trying). Returns the error from bus or device creation, after which SensorRead() returns
+ * invalid readings.
  */
 esp_err_t SensorInit(void);
 
 /**
- * Take one high-repeatability measurement. Blocks ~10 ms (vTaskDelay; tMEAS is 8.3 ms max).
+ * Take one high-repeatability measurement, trying up to SENSOR_ATTEMPTS times about
+ * SENSOR_RETRY_GAP_MS apart. Between attempts the bus is reset and the sensor is soft-reset;
+ * an ACKed reset settles for SENSOR_RESET_SETTLE_MS before that gap. The cycle is valid if any
+ * attempt succeeds. A failed cycle is logged at warning level ("I2C error" and/or "CRC error").
+ * Call from one task only.
  *
- * On an I2C error the bus is reset and the sensor soft-reset, and valid=false is returned. On a
- * CRC error valid=false is returned (logged at warning level). Call from one task only.
+ * Blocks for the 10 ms measurement wait on each attempt that gets a command through, plus the
+ * gap between attempts. It does not loop past SENSOR_ATTEMPTS.
  *
  * `tempOffsetC100` is added to the temperature, in 0.01 °C (fixed + user calibration).
  *

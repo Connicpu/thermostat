@@ -1,21 +1,60 @@
 #include "core.h"
 #include "sensor.h"
-#include "sht40_parse.h"
+#include "sensor_cycle.h"
 #include "board.h"
 #include "driver/i2c_master.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#define SHT40_ADDR       0x44
-#define SHT40_MEAS_HIGH  0xFD
-#define SHT40_SOFT_RESET 0x94
+#define SHT40_ADDR 0x44
 
 static const char *kTag = "sht40";
 static i2c_master_bus_handle_t s_bus;
 static i2c_master_dev_handle_t s_dev;
+static SensorStats s_stats;
 
-/** Bring up I2C0 and the SHT40 (soft reset). See sensor.h. */
+/** Transmit one buffer to the SHT40. Returns 0 on success. */
+static int Tx(void *pCtx, const U8 *pBuf, size_t n)
+{
+    (void)pCtx;
+    return i2c_master_transmit(s_dev, pBuf, n, SENSOR_I2C_TIMEOUT_MS) == ESP_OK ? 0 : -1;
+}
+
+/** Receive one buffer from the SHT40. Returns 0 on success. */
+static int Rx(void *pCtx, U8 *pBuf, size_t n)
+{
+    (void)pCtx;
+    return i2c_master_receive(s_dev, pBuf, n, SENSOR_I2C_TIMEOUT_MS) == ESP_OK ? 0 : -1;
+}
+
+/** Reset the I2C master. */
+static void BusReset(void *pCtx)
+{
+    (void)pCtx;
+    i2c_master_bus_reset(s_bus);
+}
+
+/** Wait `ms` milliseconds. The cycle only asks for the short measure and retry gaps. */
+static void Delay(void *pCtx, U32 ms)
+{
+    (void)pCtx;
+    vTaskDelay(pdMS_TO_TICKS(ms));
+}
+
+/** The bus seam bound to the device created by SensorInit(). */
+static SensorBus Bus(void)
+{
+    return (SensorBus){.pCtx = NULL, .tx = Tx, .rx = Rx, .busReset = BusReset, .delayMs = Delay};
+}
+
+/** See sensor_cycle.h. */
+void SensorStatsGet(SensorStats *pOut)
+{
+    *pOut = s_stats;
+}
+
+/** Bring up I2C0 and the SHT40 (soft reset, retried). See sensor.h. */
 esp_err_t SensorInit(void)
 {
     i2c_master_bus_config_t bc = {
@@ -26,6 +65,7 @@ esp_err_t SensorInit(void)
         .glitch_ignore_cnt = 7,
         .flags.enable_internal_pullup = false, /* 4.7k on board */
     };
+    SensorBus bus;
     esp_err_t err = i2c_new_master_bus(&bc, &s_bus);
     if (err != ESP_OK)
         return err;
@@ -35,39 +75,34 @@ esp_err_t SensorInit(void)
         .scl_speed_hz = 100000,
     };
     err = i2c_master_bus_add_device(s_bus, &dc, &s_dev);
-    if (err == ESP_OK)
-    {
-        U8 c = SHT40_SOFT_RESET;
-        i2c_master_transmit(s_dev, &c, 1, 50);
-        vTaskDelay(pdMS_TO_TICKS(2));
-    }
-    return err;
+    if (err != ESP_OK)
+        return err;
+    bus = Bus();
+    if (SensorSoftReset(&bus, &s_stats) != 0)
+        ESP_LOGW(kTag, "soft reset not acked");
+    return ESP_OK;
 }
 
-/** Measure, check CRC, apply the offset; on I2C error reset bus and sensor. See sensor.h. */
+/** Measure with retries. See sensor.h. */
 SensorReading SensorRead(I16 offset)
 {
     SensorReading r = {0};
-    U8 cmd = SHT40_MEAS_HIGH, f[6];
+    SensorStats before;
+    SensorBus bus;
     if (!s_dev)
-        return r;
-    if (i2c_master_transmit(s_dev, &cmd, 1, 50) != ESP_OK)
-        goto fail;
-    vTaskDelay(pdMS_TO_TICKS(10)); /* tMEAS high repeatability 8.3 ms max */
-    if (i2c_master_receive(s_dev, f, sizeof f, 50) != ESP_OK)
-        goto fail;
-    if (!Sht40Parse(f, &r.tempC100, &r.rhC100))
     {
-        ESP_LOGW(kTag, "CRC error");
+        if (s_stats.failRun < 0xFFFFFFFFu)
+            s_stats.failRun++;
+        if (s_stats.failRun > s_stats.failRunMax)
+            s_stats.failRunMax = s_stats.failRun;
         return r;
     }
-    r.tempC100 = (I16)(r.tempC100 + offset);
-    r.valid = true;
-    return r;
-fail:
-    ESP_LOGW(kTag, "I2C error");
-    i2c_master_bus_reset(s_bus);
-    cmd = SHT40_SOFT_RESET;
-    i2c_master_transmit(s_dev, &cmd, 1, 50);
+    before = s_stats;
+    bus = Bus();
+    r = SensorCycle(&bus, &s_stats, offset);
+    if (s_stats.i2cErr != before.i2cErr)
+        ESP_LOGW(kTag, "I2C error");
+    if (s_stats.crcErr != before.crcErr)
+        ESP_LOGW(kTag, "CRC error");
     return r;
 }

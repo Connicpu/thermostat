@@ -4,8 +4,9 @@
 #include <stdio.h>
 #include <string.h>
 
-#define SP_MIN 1000
-#define SP_MAX 3200
+#define SP_MIN    1000
+#define SP_MAX    3200
+#define INFO_ROWS 7 /* firmware, three sensor-counter rows, raw T, raw RH, uptime */
 
 static const CtrlMode kModes[] = {kCtrlModeOff, kCtrlModeHeat, kCtrlModeCool};
 #define N_MODES ((int)(sizeof kModes / sizeof kModes[0]))
@@ -152,6 +153,7 @@ static void OpenItem(Menu *pM, const MenuCtx *pC)
         break;
     case kMiInfo:
         pM->st = kMsInfo;
+        pM->scursor = 0;
         break;
     default:
         break;
@@ -542,6 +544,17 @@ MenuAction MenuOnKey(Menu *pM, const MenuCtx *pC, MenuKey k, BtnEvent ev, U64 no
         }
         break;
     case kMsInfo:
+        if (updown)
+        {
+            if (dir > 0)
+            {
+                if (pM->scursor > 0)
+                    pM->scursor--;
+            }
+            else if (pM->scursor + 1 < INFO_ROWS)
+                pM->scursor++;
+            return Redraw();
+        }
         if (sel)
         {
             pM->st = kMsList;
@@ -806,9 +819,22 @@ void MenuGetView(const Menu *pM, const MenuCtx *pC, MenuView *pV)
         return;
     case kMsInfo:
     {
+        char c[16];
         pV->kind = kViewText;
         snprintf(pV->title, sizeof pV->title, "Device info");
         Row(pV, "Firmware", pC->pFwVersion);
+        snprintf(c, sizeof c, "%lu/%lu", (unsigned long)pC->sensorOk, (unsigned long)(pC->sensorI2c + pC->sensorCrc));
+        Row(pV, "Sensor ok/err", c);
+        snprintf(c, sizeof c, "%lu/%lu", (unsigned long)pC->sensorI2c, (unsigned long)pC->sensorCrc);
+        Row(pV, "I2C/CRC", c);
+        snprintf(
+            c,
+            sizeof c,
+            "%lu/%lu/%lu",
+            (unsigned long)pC->sensorRetry,
+            (unsigned long)pC->sensorRst,
+            (unsigned long)pC->sensorGap);
+        Row(pV, "Retry/rst/gap", c);
         if (pC->rawValid)
         {
             int t = pC->rawTemp, a = t < 0 ? -t : t;
@@ -839,7 +865,8 @@ void MenuGetView(const Menu *pM, const MenuCtx *pC, MenuView *pV)
             (unsigned long)(s / 3600 % 24),
             (unsigned long)(s / 60 % 60));
         Row(pV, "Uptime", b);
-        snprintf(pV->hint, sizeof pV->hint, "M: back");
+        pV->sel = pM->scursor < pV->nRows ? pM->scursor : (U8)(pV->nRows - 1);
+        snprintf(pV->hint, sizeof pV->hint, "Up/Down: scroll   M: back");
         return;
     }
     }

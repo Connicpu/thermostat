@@ -351,7 +351,7 @@ def sensor_fault(name, mode, doc, extra=None, recover=True):
     return fn
 
 
-sensor_fault("nak", 1, "SHT40 stops ACKing: failsafe (all off incl. Fan ON) within the 30 s timeout; recovers")
+sensor_fault("nak", 1, "SHT40 stops ACKing: failsafe (all off incl. Fan ON) within the 15 s timeout; recovers")
 sensor_fault("bus_stuck_timeout", 2, "I2C bus stuck (every transfer times out): failsafe, bus resets, recovery")
 sensor_fault("crc_error", 3, "every reading fails CRC: failsafe; recovery after 3 good readings")
 sensor_fault("intermittent_100pct", 5, "intermittent NAK at 100%", extra=lambda s: s.set(0, "sht.p", 100))
@@ -359,7 +359,7 @@ sensor_fault("intermittent_100pct", 5, "intermittent NAK at 100%", extra=lambda 
 
 @scenario("sht40_intermittent_30pct_keeps_control", until=30 * MIN, seed=7)
 def sht_intermittent(s):
-    """30% of transfers NAK (seeded): readings still arrive well within the 30 s timeout, control continues."""
+    """30% of transfers NAK (seeded): readings still arrive well within the 15 s timeout, control continues."""
     heating(s)
     s.set(0, "sht.p", 30)
     s.set(1 * MIN, "sht.mode", 5)
