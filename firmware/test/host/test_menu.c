@@ -772,10 +772,10 @@ static void InfoScreen(void)
     s_c.pFwVersion = "0.3.0-abcdefghijklmnopq";
     MenuGetView(&s_m, &s_c, &v);
     CHECK(!strcmp(v.value[0], "abcdefghijklmnopq"));
-    /* A short string that ends in a hyphen is the whole version, not an empty suffix. */
-    s_c.pFwVersion = "0.3.0-";
+    /* 20 characters and a trailing hyphen: the suffix is empty, so the column keeps the last 17. */
+    s_c.pFwVersion = "abcdefghijklmnopqrs-";
     MenuGetView(&s_m, &s_c, &v);
-    CHECK(!strcmp(v.value[0], "0.3.0-"));
+    CHECK(!strcmp(v.value[0], "defghijklmnopqrs-"));
     s_c.pFwVersion = NULL;
     MenuGetView(&s_m, &s_c, &v);
     CHECK(!strcmp(v.value[0], ""));
