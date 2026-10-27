@@ -114,7 +114,8 @@ typedef struct
     U32 uptimeS;
     bool safeMode;   /* boot-loop safe mode: outputs held off, banner on screen */
     U32 sensorOk;    /* measurement cycles that returned a reading */
-    U32 sensorI2c;   /* failed I2C transfers */
+    U32 sensorMeas;  /* measurement transmits or receives that failed */
+    U32 sensorReset; /* soft-reset NACKs and failed bus resets */
     U32 sensorCrc;   /* frames with a bad CRC */
     U32 sensorRetry; /* extra attempts after the first */
     U32 sensorRst;   /* I2C bus resets */
@@ -163,7 +164,7 @@ typedef struct
     MenuState st;
     U8 cursor;  /* main list */
     U8 bcursor; /* boost list (index into visible items) */
-    U8 scursor; /* schedule list: SchedItem, kSchedItCount = Back */
+    U8 scursor; /* schedule list (SchedItem) and device-info row; both screens reset it on open */
     I32 edit;   /* value being edited */
     U64 lastKeyMs;
     bool swallowM; /* ignore M events until the current hold is released */

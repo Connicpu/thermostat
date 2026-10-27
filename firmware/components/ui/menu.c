@@ -6,7 +6,7 @@
 
 #define SP_MIN    1000
 #define SP_MAX    3200
-#define INFO_ROWS 7 /* firmware, three sensor-counter rows, raw T, raw RH, uptime */
+#define INFO_ROWS 7 /* firmware, three sensor-counter rows, raw T, raw RH, uptime; four visible */
 
 static const CtrlMode kModes[] = {kCtrlModeOff, kCtrlModeHeat, kCtrlModeCool};
 #define N_MODES ((int)(sizeof kModes / sizeof kModes[0]))
@@ -821,13 +821,22 @@ void MenuGetView(const Menu *pM, const MenuCtx *pC, MenuView *pV)
     {
         /* "%lu/%lu/%lu" of three full U32s is 32 characters plus the NUL. */
         char c[33];
-        pV->kind = kViewText;
+        U64 err = (U64)pC->sensorMeas + (U64)pC->sensorReset + (U64)pC->sensorCrc;
+        pV->kind = kViewList;
         snprintf(pV->title, sizeof pV->title, "Device info");
         Row(pV, "Firmware", pC->pFwVersion);
-        snprintf(c, sizeof c, "%lu/%lu", (unsigned long)pC->sensorOk, (unsigned long)(pC->sensorI2c + pC->sensorCrc));
+        if (err > 0xffffffffull)
+            err = 0xffffffffull;
+        snprintf(c, sizeof c, "%lu/%lu", (unsigned long)pC->sensorOk, (unsigned long)err);
         Row(pV, "Sensor ok/err", c);
-        snprintf(c, sizeof c, "%lu/%lu", (unsigned long)pC->sensorI2c, (unsigned long)pC->sensorCrc);
-        Row(pV, "I2C/CRC", c);
+        snprintf(
+            c,
+            sizeof c,
+            "%lu/%lu/%lu",
+            (unsigned long)pC->sensorMeas,
+            (unsigned long)pC->sensorReset,
+            (unsigned long)pC->sensorCrc);
+        Row(pV, "Meas/rst/CRC", c);
         snprintf(
             c,
             sizeof c,

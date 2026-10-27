@@ -600,9 +600,26 @@ static void DisplayStallIgnoresHeartbeatAheadOfSample(void)
 }
 
 /**
- * For the first 10 s with no reading the run-state word is "Starting sensor...", drawn on the left
- * where it fits. After that, or once a fault is showing for real, the word is SENSOR FAIL and it
- * fits the right column.
+ * "Starting sensor..." follows the sensor-timeout fault, and stops at 10 s even if that fault remains.
+ * A cleared fault or a temperature-range fault ends it inside the 10 s. The clock is the literal
+ * 10000 ms, not the macro, so a shorter window fails here.
+ */
+static void SensorStartingFollowsFaultOrTenSeconds(void)
+{
+    CHECK(DisplaySensorStarting(kCtrlFaultSensorTimeout, 0, 0));
+    CHECK(DisplaySensorStarting(kCtrlFaultSensorTimeout, 9999, 0));
+    CHECK(!DisplaySensorStarting(kCtrlFaultSensorTimeout, 10000, 0));
+    CHECK(!DisplaySensorStarting(kCtrlFaultNone, 4000, 0));
+    CHECK(!DisplaySensorStarting(kCtrlFaultTempRange, 1000, 0));
+    CHECK(DisplaySensorStarting(kCtrlFaultSensorTimeout, 15999, 6000));
+    CHECK(!DisplaySensorStarting(kCtrlFaultSensorTimeout, 16000, 6000));
+    CHECK(!DisplaySensorStarting(kCtrlFaultSensorTimeout, 1000, 2000));
+}
+
+/**
+ * For the first 10 s with the sensor-timeout fault the run-state word is "Starting sensor...", drawn
+ * on the left where it fits. After that, or once the fault has cleared, the word is SENSOR FAIL
+ * (or the running state) and it fits the right column.
  */
 static void StartingSensorWordAndWidth(void)
 {
@@ -644,6 +661,7 @@ int main(void)
     RUN(ClockBannerClash);
     RUN(RefreshPolicy);
     RUN(DisplayStallIgnoresHeartbeatAheadOfSample);
+    RUN(SensorStartingFollowsFaultOrTenSeconds);
     RUN(StartingSensorWordAndWidth);
     DONE();
 }

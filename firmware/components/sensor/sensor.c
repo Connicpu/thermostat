@@ -28,11 +28,11 @@ static int Rx(void *pCtx, U8 *pBuf, size_t n)
     return i2c_master_receive(s_dev, pBuf, n, SENSOR_I2C_TIMEOUT_MS) == ESP_OK ? 0 : -1;
 }
 
-/** Reset the I2C master. */
-static void BusReset(void *pCtx)
+/** Reset the I2C master. Returns 0 when the driver accepts the reset. */
+static int BusReset(void *pCtx)
 {
     (void)pCtx;
-    i2c_master_bus_reset(s_bus);
+    return i2c_master_bus_reset(s_bus) == ESP_OK ? 0 : -1;
 }
 
 /** Wait `ms` milliseconds. The cycle only asks for the short measure and retry gaps. */
@@ -48,7 +48,7 @@ static SensorBus Bus(void)
     return (SensorBus){.pCtx = NULL, .tx = Tx, .rx = Rx, .busReset = BusReset, .delayMs = Delay};
 }
 
-/** See sensor_cycle.h. */
+/** See sensor.h. */
 void SensorStatsGet(SensorStats *pOut)
 {
     *pOut = s_stats;
@@ -91,16 +91,13 @@ SensorReading SensorRead(I16 offset)
     SensorBus bus;
     if (!s_dev)
     {
-        if (s_stats.failRun < 0xFFFFFFFFu)
-            s_stats.failRun++;
-        if (s_stats.failRun > s_stats.failRunMax)
-            s_stats.failRunMax = s_stats.failRun;
+        SensorStatsNoteFail(&s_stats);
         return r;
     }
     before = s_stats;
     bus = Bus();
     r = SensorCycle(&bus, &s_stats, offset);
-    if (s_stats.i2cErr != before.i2cErr)
+    if (s_stats.measErr != before.measErr || s_stats.resetErr != before.resetErr)
         ESP_LOGW(kTag, "I2C error");
     if (s_stats.crcErr != before.crcErr)
         ESP_LOGW(kTag, "CRC error");

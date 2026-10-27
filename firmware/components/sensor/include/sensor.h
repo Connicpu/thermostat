@@ -34,3 +34,11 @@ esp_err_t SensorInit(void);
  * Returns the reading; check .valid.
  */
 SensorReading SensorRead(I16 tempOffsetC100);
+
+/**
+ * Copy the counters kept by SensorRead() and SensorInit(). The pure cycle updates whatever
+ * SensorStats the caller passes; on the device that is the one this returns.
+ *
+ * `pOut` receives the copy.
+ */
+void SensorStatsGet(SensorStats *pOut);
