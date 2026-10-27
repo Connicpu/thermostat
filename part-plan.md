@@ -82,7 +82,7 @@ The authoritative BOM is fab/thermostat-v3-BOM-JLC.csv, with prices and stock in
 ## Installation notes
 1. Turn off power to the furnace/air handler (24 VAC transformer) before touching the wires.
 2. Mount the backplate on the drywall with the anchors, pulling the R, C, W, Y and G wires through the centred hole.
-3. **Seal the wire hole**, behind and around the wires, with putty, foam or a cable grommet. Wall-cavity drafts otherwise blow over the SHT40 and skew the reading. Typical thermostat installs call for this too.
+3. **Close the wire hole** with a printed PETG plug around the cable, the same material as the case. Wall-cavity drafts otherwise blow over the SHT40 and skew the reading.
 4. Wire the 15EDGK plug: R, C, W, Y, G left to right, as printed on the back silk under J1. Then plug the board in and close the case.
 5. Never connect USB while the 24 VAC plug is in, because board GND is the bridge's negative node. Flash on the bench.
 

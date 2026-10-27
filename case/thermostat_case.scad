@@ -67,13 +67,18 @@ assert(panel_gap - 0.10 - 4.0 >= 0.40, "panel gap does not clear the optos");
 // The display panel rests on the pads. Nothing hooks it and nothing releases it.
 // The land behind the panel has to clear a thick board (+0.16), a tall carrier
 // print (+0.10), a low snap seat (+0.10), and a tall standoff (+0.15): 0.51 mm.
-// 0.70 mm leaves 0.19 mm. The window chamfer starts further out, at Z_in+0.85.
+// 0.70 mm leaves 0.19 mm before the skin touches. That same 0.70 mm is how far
+// the panel can rise on a nominal stack, and 1.21 mm on the loose stack.
+// The locked tail allows about 0.07 mm of rise on a tall print before the
+// inserted length drops under 3.0 mm. The shell does not close that gap:
+// a hold-down on the shell is a separate decision. See case/ASSEMBLY.md.
+// The window chamfer starts further out, at Z_in+0.85.
 face_recess = 0.70;
-xstop_bite = 0.05;                   // +x posts cross the panel edge by this much, so a short print still stops the slide
+xstop_bite = 0.05;                   // +x posts cross the panel edge by this much, so a short print stops the slide
 // The outline is 36.70 mm. The datasheet gives that one width.
 // 36.50–36.90 is an assumption around it.
-glass_lo = 36.50;
-glass_hi = 36.90;
+panel_lo = 36.50;
+panel_hi = 36.90;
 panel_h = 36.70;
 fence_air = 0.20;                    // air between a long-edge fence and the outline. The fence does not cross the face.
 fence_t = 0.80;
@@ -471,6 +476,11 @@ module panel_xstops() {
   // The post footprint continues down to the carrier bottom, so that lip is a column.
   board_box(panel[2], 33.20, panel[2] + 0.80, 34.30, Z_pcb_t, Z_panel_b);
   board_box(panel[2], 60.40, panel[2] + 0.80, 61.70, Z_pcb_t, Z_panel_b);
+  // Insertion-depth mark. Each fin starts just outboard of the seated edge and
+  // runs toward the cable, so the edge lines up with the fin when the tail is
+  // home. The fin does not cross the face and does not add bite.
+  board_box(panel[2] + 0.05, 32.75, panel[2] + 0.75, 33.15, Z_panel_b + 0.20, Z_panel_b + 0.70);
+  board_box(panel[2] + 0.05, 59.70, panel[2] + 0.75, 60.10, Z_panel_b + 0.20, Z_panel_b + 0.70);
 }
 module carrier() {
   z0 = Z_pcb_t;
