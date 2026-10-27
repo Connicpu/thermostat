@@ -291,11 +291,12 @@ else:
     print('carrier stays clear of the FPC bulge')
 # Hooks. The beam is free beside the glass; only cl_foot ties it to the pad.
 # E = 1.8 GPa. ε = 1.5 t δ / L^2, F = 3 E I δ / L^3, I = w t^3 / 12, w = 6 mm.
-# The tool slot is at the shelf, where the moment is smallest. It does not change
-# L, t, or δ, so the same F is the force to hold one hook out for removal.
+# The tool window is in the head at the free end. The root section that sets F is the full beam.
 cl_t=scad_num('cl_t'); cl_gap=scad_num('cl_gap'); cl_lip=scad_num('cl_lip')
 cl_lip_h=scad_num('cl_lip_h'); cl_foot=scad_num('cl_foot')
-cl_slot_w=scad_num('cl_slot_w'); cl_slot_h=scad_num('cl_slot_h'); cl_slot_d=scad_num('cl_slot_d')
+cl_slot_w=scad_num('cl_slot_w'); cl_slot_gap=scad_num('cl_slot_gap'); cl_slot_wall=scad_num('cl_slot_wall')
+cl_head=scad_num('cl_head'); cl_head_above=scad_num('cl_head_above'); cl_face_below=scad_num('cl_face_below')
+glass_lo=scad_num('glass_lo'); glass_hi=scad_num('glass_hi'); panel_h=scad_num('panel_h'); rel_air=scad_num('rel_air')
 xstop_bite=scad_num('xstop_bite'); face_recess=scad_num('face_recess')
 Zin=Zt+P['panel_gap']+1.2
 cl_L=Zin-(Zt+cl_foot)
@@ -303,7 +304,7 @@ cl_E=1800.0
 cl_I=6.0*cl_t**3/12.0
 cl_eps=1.5*cl_t*cl_lip/(cl_L*cl_L)
 cl_F=3*cl_E*cl_I*cl_lip/(cl_L**3)
-print('hooks: L %.2f mm  t %.2f  overlap %.2f  strain %.2f%%  force %.2f N/hook'%(cl_L, cl_t, cl_lip, 100*cl_eps, cl_F))
+print('hooks: L %.2f mm  t %.2f  lip %.2f  strain %.2f%%  force %.2f N/hook'%(cl_L, cl_t, cl_lip, 100*cl_eps, cl_F))
 hook_fail=False
 # The ramp rises by cl_lip while it steps back by cl_lip, so the lead-in is 45 deg.
 if cl_L<5.0 or cl_eps>=0.020 or cl_F>=8.0 or abs(math.degrees(math.atan2(cl_lip, cl_lip))-45)>1:
@@ -323,16 +324,20 @@ for x0,x1,edge,dire in ((47.0,53.0,26.24,1),(84.6,90.6,26.24,1),(49.6,55.6,62.94
     if d_beam<0.05 or d_gap>-0.05 or d_foot<0.05:
         hook_fail=True
         print('  HOOK NOT FREE')
-    # Slot: air in the outer face, ligament still solid. u increases toward the glass.
+    # Window: air a 1.0 mm blade can occupy, and a solid wall on the glass side of that air.
+    # u increases toward the glass. The push face is the inboard face of the outboard wall.
     u_outer=-(cl_gap+cl_t)
-    d_slot=float(qcar.signed_distance([_at(u_outer+cl_slot_d/2, Zin)])[0])
-    d_lig=float(qcar.signed_distance([_at(u_outer+cl_slot_d+0.12, Zin)])[0])
-    print('  slot x %.1f air %+.2f (want <0)  ligament %+.2f (want >0)'%(0.5*(x0+x1), d_slot, d_lig))
-    if d_slot>-0.05 or d_lig<0.05:
+    u_push=u_outer-cl_slot_gap
+    d_slot=float(qcar.signed_distance([_at(u_push+0.50, Zin)])[0])
+    d_wall=float(qcar.signed_distance([_at(u_push-0.20, Zin)])[0])
+    d_root=float(qcar.signed_distance([_at(u_outer+0.15, Zin-1.6)])[0])
+    print('  slot x %.1f blade %+.2f (want <0)  push wall %+.2f (want >0)  root %+.2f (want >0)'%(0.5*(x0+x1), d_slot, d_wall, d_root))
+    if d_slot>-0.05 or d_wall<0.05 or d_root<0.05:
         hook_fail=True
         print('  HOOK SLOT MISSING')
-# Glass cannot rise while all four shelves overlap it. Release is both hooks of one
-# long edge, held out by cl_lip, then a sideways slide past the other edge's shelves.
+# Shelf tips, relaxed, are shelf_span apart. Holding one edge out by (glass - span)
+# opens a gap the glass can slide through. rel_air is split across the two shelves.
+shelf_span=panel_h-2*cl_lip
 hooks=((47.0,53.0,26.24,1),(84.6,90.6,26.24,1),(49.6,55.6,62.94,-1),(76.0,82.0,62.94,-1))
 top=[h for h in hooks if h[3]>0]
 bot=[h for h in hooks if h[3]<0]
@@ -340,13 +345,61 @@ def _span(group):
     c=[0.5*(a+b) for a,b,_,_ in group]
     return max(c)-min(c)
 top_span=_span(top); bot_span=_span(bot)
-print('release: deflect %.2f mm at the shelf, %.2f N each hook, %.2f N for the pair'%(cl_lip, cl_F, 2*cl_F))
-print('release spans: top edge %.1f mm, bottom edge %.1f mm (both hooks of that edge)'%(top_span, bot_span))
-print('release slide: more than %.2f mm toward the freed edge, then the glass can rise'%(cl_lip))
-# The top pair is the 33–38 mm edge. The bottom pair is shorter and still a pair.
-if cl_lip<0.32-1e-6 or top_span<33 or top_span>38:
+print('shelf tip span %.2f mm, top hooks %.1f mm apart, bottom hooks %.1f mm apart'%(shelf_span, top_span, bot_span))
+if abs(cl_head-(cl_slot_gap+cl_slot_wall))>1e-6 or cl_slot_gap<1.20 or cl_lip<0.32-1e-6 or top_span<33 or top_span>38:
     hook_fail=True
     print('RELEASE SPAN FAIL')
+# Lip on the mesh: solid 0.08 mm inboard of the tip, air 0.08 mm outboard, both edges.
+for x0,x1,edge,dire in hooks:
+    xm=OX+0.5*(x0+x1)
+    z_shelf=Zin+cl_lip_h/2
+    d_in=float(qcar.signed_distance([[xm, _cy(edge+dire*(cl_lip-0.08)), z_shelf]])[0])
+    d_out=float(qcar.signed_distance([[xm, _cy(edge+dire*(cl_lip+0.08)), z_shelf]])[0])
+    print('  lip x %.1f in shelf %+.2f (want >0)  past tip %+.2f (want <0)'%(0.5*(x0+x1), d_in, d_out))
+    if d_in<0.02 or d_out>-0.02:
+        hook_fail=True
+        print('  LIP TIP FAIL')
+def _release(G, freed):
+    """Overlaps after holding `freed` edge out. Negative means the shelf is clear of the glass."""
+    delta=G-shelf_span+rel_air
+    eps=1.5*cl_t*delta/(cl_L*cl_L)
+    force=3*cl_E*cl_I*delta/(cl_L**3)
+    # Tips at board y. Top tip moves down in y when the top edge is freed; bottom tip moves up.
+    y_top=26.24+cl_lip-(delta if freed=='top' else 0.0)
+    y_bot=62.94-cl_lip+(delta if freed=='bottom' else 0.0)
+    y0=(y_top+y_bot-G)/2.0
+    top_ov=y_top-y0
+    bot_ov=y0+G-y_bot
+    return delta, eps, force, top_ov, bot_ov
+print('release hold-out is glass width minus shelf span, plus %.2f mm so both shelves clear'%rel_air)
+for G in (glass_lo, panel_h, glass_hi):
+    for freed in ('top', 'bottom'):
+        delta, eps, force, top_ov, bot_ov=_release(G, freed)
+        true_d=G-shelf_span
+        true_eps=1.5*cl_t*true_d/(cl_L*cl_L)
+        true_F=3*cl_E*cl_I*true_d/(cl_L**3)
+        print('  glass %.2f  %s  true hold-out %.3f mm  strain %.2f%%  force %.2f N   service %.3f mm  strain %.2f%%  force %.2f N  overlap top %+.3f bottom %+.3f'%(
+            G, freed, true_d, 100*true_eps, true_F, delta, 100*eps, force, top_ov, bot_ov))
+        if eps>=0.020 or force>=8.0 or top_ov>-0.02 or bot_ov>-0.02:
+            hook_fail=True
+            print('  RELEASE CLEARANCE FAIL')
+# J4, shell off, glass seated. The pick lies in the gap over the 2.0 mm housing and
+# reaches the mouth from outside the glass, through the open side of the fold.
+# A locked lift pulls pi/2 mm of tail per mm; this step does not lift or slide.
+fpc_R=(P['panel_gap']-0.50)/2.0
+fpc_inner=fpc_R-0.15
+pick_half=0.40
+zc_tun=Zt+2.0+(P['panel_gap']-2.0)/2.0
+pick_x1=FPC_EDGE+fpc_inner-0.30
+pick=box('J4 pick', 103.55, 41.80, pick_x1, 46.20, Zt+2.05, zc_tun+pick_half)[1]
+c_pick=mesh_clearance(carrier, pick, n=4000)
+print('J4 pick vs carrier %6.2f (mouth to x %.2f, fold inner radius %.2f, blade half %.2f)'%(c_pick, pick_x1, fpc_inner, pick_half))
+print('locked lift pulls %.3f mm of tail per mm; the %.2f mm insertion has %.2f mm of lift before it is under %.2f mm'%(
+    math.pi/2, fpc_inserted(P['panel_gap']+PRINT_Z, 0.50),
+    (fpc_inserted(P['panel_gap']+PRINT_Z, 0.50)-FPC_MIN)/(math.pi/2), FPC_MIN))
+if c_pick<0.20 or fpc_inner-pick_half<0.80:
+    hook_fail=True
+    print('J4 PICK FAIL')
 if hook_fail:
     print('HOOK FAIL')
 # +x stop. Pull-out along x is 1 mm of tail per mm of slide (the straight run grows).
