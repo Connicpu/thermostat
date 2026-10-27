@@ -3,6 +3,7 @@
 #include "tinytest.h"
 #include "menu.h"
 #include "buttons.h"
+#include "font.h"
 #include "gfx.h"
 #include <stdio.h>
 #include <string.h>
@@ -82,10 +83,13 @@ static void HomeKeysPassThrough(void)
 /** The main list wraps both ways, and Back returns home with a full refresh and no action. */
 static void NavigationWrapsAndBack(void)
 {
+    MenuView v;
     Reset();
     Sel();
     CHECK_EQ(s_m.cursor, kMiMode);
     Up(); /* wraps to Back; Clear safe mode is not listed */
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK_EQ(v.sel, v.nRows - 1);
     CHECK_EQ(s_m.cursor, kMiBack);
     Down();
     CHECK_EQ(s_m.cursor, kMiMode);
@@ -584,13 +588,12 @@ static void BoostCancelOnlyWhenActive(void)
 
 /**
  * Clear safe mode is listed only while safe mode is on, just before Back. M opens the confirm
- * screen; M again emits kMaClearSafeMode, and any other key or the 10 s timeout leaves the counter alone.
+ * screen; M again emits kMaClearSafeMode, and any other key or the 10 s timeout returns home
+ * without clearing.
  */
 static void ClearSafeModeConfirm(void)
 {
     MenuView v;
-    /* Two labels, a space, and the NUL. Each label slot is 28 bytes, so 27 characters each. */
-    char q[sizeof v.label[0] + sizeof v.label[1]];
     Reset();
     Sel();
     MenuGetView(&s_m, &s_c, &v);
@@ -607,7 +610,7 @@ static void ClearSafeModeConfirm(void)
     CHECK_EQ(v.nRows, kMiCount);
     CHECK(!strcmp(v.label[kMiClearSafe], "Clear safe mode"));
     CHECK(!strcmp(v.label[kMiBack], "Back"));
-    CHECK_EQ(v.sel, kMiBack); /* still on Back; the new row is the one above it */
+    CHECK_EQ(v.sel, kMiBack); /* still on Back; Clear safe mode is the row above it */
     Up();
     CHECK_EQ(s_m.cursor, kMiClearSafe);
     MenuGetView(&s_m, &s_c, &v);
@@ -618,8 +621,14 @@ static void ClearSafeModeConfirm(void)
     CHECK_EQ(s_m.st, kMsClearSafe);
     MenuGetView(&s_m, &s_c, &v);
     CHECK_EQ(v.kind, kViewWarning);
-    snprintf(q, sizeof q, "%s %s", v.label[0], v.label[1]);
-    CHECK(!strcmp(q, "Clear safe mode and restart?"));
+    CHECK_EQ(v.nRows, 3); /* title plus three lines; the last glyph row ends at y=112 */
+    CHECK(!strcmp(v.label[0], "Clear safe mode, restart?"));
+    CHECK(!strcmp(v.label[1], "M confirms"));
+    CHECK(!strcmp(v.label[2], "Other key cancels"));
+    CHECK(46 + (v.nRows - 1) * 24 + kFontSmall.height <= GFX_H);
+    CHECK(GfxTextWidth(&kFontMed, v.title) <= GFX_W);
+    for (int i = 0; i < v.nRows; i++)
+        CHECK(GfxTextWidth(&kFontSmall, v.label[i]) <= GFX_W);
 
     CHECK_EQ(Up().kind, kMaNone);
     CHECK_EQ(s_m.st, kMsList);
@@ -635,27 +644,9 @@ static void ClearSafeModeConfirm(void)
     CHECK_EQ(Key(kMenuKeyCombo, kBtnEvPress).kind, kMaNone);
     CHECK_EQ(s_m.st, kMsList);
     CHECK_EQ(s_m.cursor, kMiClearSafe);
-
-    /* safe mode ending while that row is selected: it is drawn as Back, and the next key treats it as Back */
-    s_c.safeMode = false;
-    MenuGetView(&s_m, &s_c, &v);
-    CHECK_EQ(v.nRows, kMiCount - 1);
-    CHECK(!strcmp(v.label[v.nRows - 1], "Back"));
-    CHECK_EQ(v.sel, v.nRows - 1);
-    for (int i = 0; i < v.nRows; i++)
-        CHECK(strcmp(v.label[i], "Clear safe mode") != 0);
     Down();
-    CHECK_EQ(s_m.cursor, kMiMode);
-    s_c.safeMode = true;
-    for (int i = 0; i < kMiCount && s_m.cursor != kMiBack; i++)
-        Down();
-    CHECK_EQ(s_m.cursor, kMiBack);
-    Up();
-    CHECK_EQ(s_m.cursor, kMiClearSafe);
-    s_c.safeMode = false;
-    MenuAction a = Sel(); /* the hidden row is Back, so M leaves the menu */
+    Sel(); /* Back returns to the main screen */
     CHECK(MenuIsHome(&s_m));
-    CHECK_EQ(a.kind, kMaNone);
 
     s_c.safeMode = true;
     Sel(); /* opening the menu starts at Mode */
@@ -665,7 +656,7 @@ static void ClearSafeModeConfirm(void)
     Sel();
     CHECK_EQ(MenuTick(&s_m, s_t + MENU_TIMEOUT_MS - 1).kind, kMaNone);
     CHECK_EQ(s_m.st, kMsClearSafe);
-    a = MenuTick(&s_m, s_t + MENU_TIMEOUT_MS);
+    MenuAction a = MenuTick(&s_m, s_t + MENU_TIMEOUT_MS);
     CHECK(MenuIsHome(&s_m));
     CHECK_EQ(a.kind, kMaNone);
     CHECK(a.fullRefresh);
@@ -957,6 +948,11 @@ static void RenderMenuPreviews(void)
     PreviewReset();
     s_m.st = kMsHoldReset;
     Shot("menu_reset_warning.pbm");
+    PreviewReset();
+    s_c.safeMode = true;
+    GotoItem(kMiClearSafe);
+    Sel();
+    Shot("menu_clear_safe.pbm");
     /* every label/value must fit: check the text in the list view is not clipped into the value column */
     Reset();
     Sel();

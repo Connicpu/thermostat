@@ -1210,6 +1210,127 @@ def survives_factory(s):
     return check
 
 
+def enter_safe_mode(s):
+    """Four power cycles after the first boot. The fifth boot, at 120 s, is safe mode."""
+    for k in range(4):
+        s.at(30 * SEC + k * 30 * SEC, "power cycle")
+
+
+def open_clear_confirm(s, t, step=SEC):
+    """From the main screen, open the Clear safe mode confirm. Returns when that M is released.
+
+    Nine DOWN presses: the row is the one just before Back.
+    """
+    s.press(t, "mode", 200)
+    for i in range(9):
+        s.press(t + (i + 1) * step, "down", 200)
+    s.press(t + 10 * step, "mode", 200)
+    return t + 10 * step + 200
+
+
+@scenario("bootloop_clear_hidden_on_normal_boot", until=1 * MIN, max_boots=1)
+def clear_hidden(s):
+    """A normal boot has no Clear safe mode row. Nine DOWN presses land on Back, and a second M
+    opens the menu again instead of clearing the counter."""
+    s.temp(0, 2100)
+    t = 10 * SEC
+    s.press(t, "mode", 200)
+    for i in range(9):
+        s.press(t + (i + 1) * SEC, "down", 200)
+    s.press(t + 10 * SEC, "mode", 200)  # Back
+    s.press(t + 12 * SEC, "mode", 200)  # menu again; would confirm if the row were Clear safe mode
+    def check(r):
+        r.never(r"EVT safe mode: cleared")
+        r.check(r.boots == 1, f"{r.boots} boots")
+        r.check(counts(r) == [1], f"counts {counts(r)}")
+    return check
+
+
+@scenario("bootloop_clear_timeout_keeps_count", until=4 * MIN, max_boots=6)
+def clear_timeout(s):
+    """The confirm screen's 10 s timeout returns home. The counter stays at 5, so the next power cycle is 6."""
+    s.temp(0, 2100)
+    enter_safe_mode(s)
+    open_clear_confirm(s, 130 * SEC)
+    s.at(170 * SEC, "power cycle")
+    def check(r):
+        r.never(r"EVT safe mode: cleared")
+        r.check(counts(r) == [1, 2, 3, 4, 5, 6], f"counts {counts(r)}")
+        r.check(r.boots == 6, f"{r.boots} boots")
+    return check
+
+
+@scenario("bootloop_clear_hold_cancels", until=4 * MIN, max_boots=6)
+def clear_hold(s):
+    """Holding M on the confirm screen returns to the list. It does not clear the counter."""
+    s.temp(0, 2100)
+    enter_safe_mode(s)
+    opened = open_clear_confirm(s, 130 * SEC)
+    s.press(opened + SEC, "mode", 2000)
+    s.at(170 * SEC, "power cycle")
+    def check(r):
+        r.never(r"EVT safe mode: cleared")
+        r.check(counts(r) == [1, 2, 3, 4, 5, 6], f"counts {counts(r)}")
+        r.check(r.boots == 6, f"{r.boots} boots")
+    return check
+
+
+@scenario("bootloop_clear_from_menu", until=5 * MIN, max_boots=11)
+def clear_from_menu(s):
+    """Confirming Clear safe mode writes the counter to 0 and restarts. A mode change made in the
+    same visit, less than 5 s earlier, is saved before that restart. Later power cycles fill the
+    counter again: 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5."""
+    s.temp(0, 2100)
+    enter_safe_mode(s)
+    t = 130 * SEC
+    s.press(t, "mode", 150)             # open the menu
+    s.press(t + 400, "mode", 150)       # edit Mode
+    s.press(t + 800, "up", 150)         # Off -> Heat
+    s.press(t + 1100, "mode", 150)      # save; settings become dirty here
+    for i in range(9):                  # Mode -> Clear safe mode
+        s.press(t + 1600 + i * 400, "down", 150)
+    s.press(t + 5300, "mode", 150)      # confirm screen
+    s.press(t + 5700, "mode", 150)      # clear and restart, 4.6 s after the save
+    for k in range(5):
+        s.at(160 * SEC + k * 20 * SEC, "power cycle")
+    def check(r):
+        r.check(counts(r) == [1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5], f"counts {counts(r)}")
+        cleared = r.expect(r"EVT safe mode: cleared from the menu", after=r.boot_times[4])
+        r.expect(r"NVS set tstat/cfg3", after=cleared, before=r.boot_times[5], msg="settings flushed before restart")
+        r.expect(r"EVT cfg loaded mode=4", after=r.boot_times[5], before=r.boot_times[6])
+        r.never(r"EVT safe mode: clear not saved")
+    return check
+
+
+@scenario("bootloop_fifth_write_fail_still_safe_mode", until=5 * MIN, max_boots=6)
+def fifth_write_fails(s):
+    """The fifth counted boot still enters safe mode when that NVS commit fails. The count is 5."""
+    heating(s)
+    enter_safe_mode(s)
+    s.set(119 * SEC, "nvs.commit_fail", 1)
+    def check(r):
+        r.check(counts(r) == [1, 2, 3, 4, 5], f"counts {counts(r)}")
+        t = r.expect(r"EVT safe mode: 5 resets", after=r.boot_times[4])
+        r.check(r.high_ms(W, t, 5 * MIN) == 0, "no heat in safe mode")
+    return check
+
+
+@scenario("bootloop_clear_commit_fail_stays", until=4 * MIN, max_boots=6)
+def clear_commit_fail(s):
+    """A clear whose NVS commit fails does not restart. The log says it was not saved, and the count stays at 5."""
+    s.temp(0, 2100)
+    enter_safe_mode(s)
+    opened = open_clear_confirm(s, 130 * SEC)
+    s.set(opened + 500, "nvs.commit_fail", 1)
+    s.press(opened + SEC, "mode", 200)
+    def check(r):
+        r.expect(r"EVT safe mode: clear not saved", after=r.boot_times[4])
+        r.never(r"EVT safe mode: cleared from the menu")
+        r.check(r.boots == 5, f"{r.boots} boots")
+        r.check(counts(r) == [1, 2, 3, 4, 5], f"counts {counts(r)}")
+    return check
+
+
 BOOT_LIMIT = 5
 
 
