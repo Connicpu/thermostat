@@ -1,6 +1,7 @@
 /* display.c - e-paper refresh policy.
- * - Button-driven changes, and a sensor-fault or "Starting sensor..." edge: partial refresh
- *   ~400 ms after the last such change.
+ * - Button-driven changes: partial refresh ~400 ms after the last one.
+ * - A sensor-fault or "Starting sensor..." edge the app task has a token for uses that
+ *   same path. The app task's bucket is 3 tokens, with one token back every 60 s.
  * - One background slot, shared by the clock and by sensor/link/running changes:
  *   the next local minute once the Zigbee clock is known, else at most one
  *   refresh per 3 min. No separate clock-only path.

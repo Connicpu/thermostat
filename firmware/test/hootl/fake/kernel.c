@@ -240,6 +240,17 @@ BaseType_t xTaskCreate(
     return pdPASS;
 }
 
+/**
+ * Fake stack high-water mark. HOOTL gives every task a 1 MiB pthread stack and ignores the
+ * size passed to xTaskCreate, so this is not the chip's watermark. The emulator smoke boot
+ * reads the real FreeRTOS mark.
+ */
+UBaseType_t uxTaskGetStackHighWaterMark(TaskHandle_t t)
+{
+    (void)t;
+    return 1048576u;
+}
+
 /** Fake vTaskDelete(): marks the task dead; does not return when deleting the caller. */
 void vTaskDelete(TaskHandle_t h)
 {

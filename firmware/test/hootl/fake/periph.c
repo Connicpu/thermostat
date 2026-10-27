@@ -933,6 +933,13 @@ static void OtaBootloader(void)
     SimEmit("BOOTLOADER running slot %d state %lld", b, (long long)Ost(b));
 }
 
+/** App version the menu's firmware row reads. HOOTL has no image header, so this is the semver. */
+const esp_app_desc_t *esp_app_get_description(void)
+{
+    static const esp_app_desc_t kDesc = {.version = "0.3.0"};
+    return &kDesc;
+}
+
 /** Running slot (kv ota.run). */
 const esp_partition_t *esp_ota_get_running_partition(void)
 {

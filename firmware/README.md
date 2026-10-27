@@ -53,7 +53,7 @@ All of these live in `control.c`, and the tests in `test/host/test_control.c` co
 | Fan mode | Auto: G only with Y (and W when `heatDrivesFan`) plus run-on. **On: G runs continuously, even with no heat/cool demand, in every mode including Off** (still killed by the failsafe). Set from HA (Fan Control 0x0202 FanMode, ZHA fan control / climate fan mode) or the menu (*Fan*) |
 | Fan run-on | G stays on 90 s after W and 45 s after Y. G is energised with Y. With W it's left to the furnace (`heatDrivesFan=false`) |
 | **Failsafe** | No valid reading for 15 s, or a reading outside 0–45 °C, turns all outputs off immediately. That overrides the minimum on-time and the fan run-on. The SHT40 is read every 2 s, so 15 s is about seven missed cycles. One lost sample cannot trip the timeout, and a dead bus still drops every output within that window. The compare is strict: outputs are still on at exactly 15 s and drop on the next millisecond, which the 250 ms loop sees on its next pass |
-| | Recovery needs 3 consecutive good readings. A missed cycle resets that streak. The firmware boots in failsafe. The screen says *Starting sensor...* until that sensor-timeout fault clears, or until 10 s have passed since boot, whichever comes first. A temperature on its own does not end the line. That line, and a fault that appears or clears, is drawn on the next partial refresh (about 0.4 s), including when the clock is not set |
+| | Recovery needs 3 consecutive good readings. A missed cycle resets that streak. The firmware boots in failsafe. The screen says *Starting sensor...* until that sensor-timeout fault clears, or until 10 s have passed since boot, whichever comes first. A temperature on its own does not end the line. That line, and a fault that appears or clears, is drawn on the next partial refresh (about 0.4 s), including when the clock is not set. Those paints share a bucket of 3 tokens, and one token returns every 60 s |
 | | Each read tries the measurement up to 3 times. A failed try resets the bus and sends the 0x94 soft reset, then waits about 20 ms before the next try. An acknowledged soft reset waits 2 ms before that gap. Those tries pack the same bus reset and soft reset the next 2 s cycle would have done, so one missed transfer does not wait out the period. They are not a fix for a sensor that stays failed for minutes: that still needs a power-cycle log. The Device info counters (and the `EVT sensor` line) are what that log is for. A cycle counts if any try succeeds |
 | **W/Y interlock** | `HvacInterlock()` is the only path to the pins. If W and Y are both requested, both are dropped and a fault is counted. That fault makes the loop unhealthy, so it stops kicking and the watchdogs reset the chip |
 | **Watchdog** | The STWD100 (about 1.6 s, minimum 1.12 s) is armed 10 s after boot, and only after the loop has run cleanly. The loop waits 250 ms at the bottom of each pass. The kick is once per pass, after the health check, and only while that check passes (no interlock fault; a stalled display is reported but deliberately not a reason to reset). A failed sensor read blocks for a few hundred milliseconds before that wait (about 360–390 ms when every transfer hits its 50 ms timeout), which is still inside the 1.12 s minimum. The IDF task watchdog (5 s) watches the same loop as a second layer. A watchdog reset puts the GPIOs in high-Z, and the 10k pull-downs then switch every triac off |
@@ -262,7 +262,7 @@ still forces a full refresh.
 | Offset | ±2.5 °C in 0.1 °C steps, kept in 0.1 °C. Shown in tenths of the display unit (°F is ×1.8, no 32° offset, half away from zero). Each press changes the number on screen; in °F that step is 0.1 or 0.2 because 0.1 °C is 0.18 °F. M saves and returns to the list; the 10 s timeout discards the edit |
 | Units | °C / °F for the display (persisted; Kconfig sets the factory default; display only, HA keeps its own units) |
 | Zigbee | Link status; **hold M (1.5 s)** to start pairing |
-| Device info | Firmware, then the sensor counters (ok/err, measurement failures / soft-reset and bus-reset failures / CRC, retries / bus resets / longest run of failed cycles), then raw temperature, raw RH and uptime. A count up to 99999 is the full number; past that it is shortened (100k, 1.0M, 10M, 4.2B) so three of them fit the row. Four rows are visible. Up/Down moves a cursor and scrolls the rest into view, and Up on the top row stays there. The same counts are logged as `EVT sensor ok=… meas=… rsterr=… crc=… retry=… rst=… gap=…` on the first sample, when a cycle starts or stops failing and that change is at least 10 s after the previous line, and once a minute. A change inside that 10 s is still remembered, so it does not become a new line just because the window then ends. They are not Zigbee attributes: the device has no diagnostics cluster |
+| Device info | Firmware, then the sensor counters (ok/err, measurement failures / soft-reset and bus-reset failures / CRC, retries / bus resets / longest run of failed cycles), then raw temperature, raw RH and uptime. Firmware is the app version (`esp_app_desc.version`). The value column is 17 characters; a longer string drops the leading `X.Y.Z-`, so `0.3.0-g7c9d421-dirty` is shown as `g7c9d421-dirty`. A count up to 99999 is the full number; past that it is shortened (100k, 1.0M, 10M, 999M, 4.2B) so three of them fit the row. Four rows are visible. Up/Down moves a cursor and scrolls the rest into view, and Up on the top row stays there. The same counts are logged as `EVT sensor ok=… meas=… rsterr=… crc=… retry=… rst=… gap=…` on the first sample, when a cycle starts or stops failing and that change is at least 10 s after the previous line, and once a minute. A change inside that 10 s is still remembered, so it does not become a new line just because the window then ends. They are not Zigbee attributes: the device has no diagnostics cluster |
 | Clear safe mode | Only listed while safe mode is on, just before Back. M opens a confirm screen: a SAFE MODE title plus three lines, "Clear safe mode, restart?", "M confirms", "Other key cancels". M clears `boot/n`, writes any pending settings, and restarts. If NVS will not open, or that write does not commit, the thermostat stays in safe mode, the log says the clear was not saved, and the banner reads "SAFE MODE: clear not saved". Any other key returns to the list. The 10 s timeout leaves the menu without clearing. Further resets fill the counter again |
 | Back | Main screen |
 
@@ -289,7 +289,7 @@ humidity, running state, link, and the clock) share **one** slot. While the Zigb
 that slot is at most every 3 min. Once the clock is known it is the next local-minute rollover (about
 60 s): the display task extrapolates `minuteStartMs` from `ZbThermostatLocalClock()`, so the digits
 update when the minute changes rather than on a free-running 60 s timer that can lag an extra minute.
-A temperature or humidity change waits for that same slot; there is no separate clock-only refresh. A sensor fault, and the *Starting sensor...* line coming or going, does not: those refresh with the button path, about 0.4 s after the edge, so a healthy sensor with no clock is not stuck on *Starting sensor...* until the 3 min slot. If the extrapolated
+A temperature or humidity change waits for that same slot; there is no separate clock-only refresh. A sensor fault, and the *Starting sensor...* line coming or going, uses the button path, about 0.4 s after the edge, so a healthy sensor with no clock leaves *Starting sensor...* with the fault instead of waiting for the 3 min slot. Those edges draw from a token bucket of 3. One token returns every 60 s, and the bucket never holds more than 3. The starting line and a fault that appears or clears inside the first minute each take a token. A sensor that keeps failing and recovering spends the burst, then one partial a minute. If the extrapolated
 minute never advances, a dirty screen is still flushed after 90 s. The panel
 deep-sleeps between refreshes. Displayed temperature is rounded to 0.1 °C before comparing, so sensor
 noise doesn't trigger refreshes.
@@ -306,14 +306,16 @@ The BUSY wait for a refresh (up to about 5 s full / 2 s partial) runs only in th
 polls with `vTaskDelay`, so the control task and the watchdog kick are never blocked on the panel. A
 dead panel is reported and does not stop heating.
 
-**Partial-refresh wear (GDEY029T94).** A partial every minute is about 1440 updates a day, about 0.53
-million a year. Good Display's GDEY029T94 specification lists optical **Life** as **1,000,000 times or
-5 years** at operating temperature (not split between full and partial). At that figure, counting
-every partial as one update spends about half of the 1,000,000-cycle rating per year; the "or 5 years"
-clause is the other limit, and the datasheet does not say partials count 1:1 with full updates. The
-same specification gives a partial refresh time of 0.3 s typical at 25 °C (this driver's BUSY timeout
-allows up to 2 s) and asks that the panel be refreshed at least every 24 hours so a stored image does
-not stick. The 6 hour full-refresh cap is inside that 24 hour note.
+**Partial-refresh wear (GDEY029T94).** The clock slot is one partial a minute, about 1440 updates a day,
+about 0.53 million a year. Fault and starting-line edges sit inside that same budget: a burst of 3,
+then one partial a minute, including a sensor that flaps between failed and good. Good Display's
+GDEY029T94 specification lists optical **Life** as **1,000,000 times or 5 years** at operating
+temperature (not split between full and partial). At that figure, counting every partial as one update
+spends about half of the 1,000,000-cycle rating per year; the "or 5 years" clause is the other limit,
+and the datasheet does not say partials count 1:1 with full updates. The same specification gives a
+partial refresh time of 0.3 s typical at 25 °C (this driver's BUSY timeout allows up to 2 s) and asks
+that the panel be refreshed at least every 24 hours so a stored image does not stick. The 6 hour
+full-refresh cap is inside that 24 hour note.
 
 ![longest banner that still shows the time](docs/display_preview_clock_banner.png)
 ![longest banner, time dropped](docs/display_preview_clock_clash.png)
@@ -474,6 +476,8 @@ Every row also passes the safety monitor.
 | SHT40 | stuck/frozen value | `sht40_frozen_value` | identical reading for 20 min → frozen → failsafe; clears when values move |
 | SHT40 | implausible value (90 °C) | `sht40_out_of_range` | TEMP RANGE fault, all off; recovers |
 | SHT40 | absent from power-on | `sht40_absent_at_boot` | never leaves failsafe, nothing on, no reboot |
+| SHT40 | fault edge after the starting window | `sensor_fault_after_start_repaints`, `sensor_fault_clears_after_start_repaints` | SENSOR FAIL on the glass within a couple of seconds; a later clear paints Idle the same way |
+| SHT40 | flapping dead/alive or out of range | `sensor_flap_dead_alive_refresh_budget`, `sensor_flap_out_of_range_refresh_budget` | token bucket: about one partial a minute over 10 min, not one per edge |
 | SHT40 | I2C driver init fails | `sht40_bus_init_fails` | sensor fault, rest of system runs |
 | STWD100 | missed kick (app hang) | `stwd100_missed_kick_resets` | reset 1.6 s after last WDI edge; outputs low; normal boot after |
 | STWD100 | reset mid-heat / power cut mid-cool | `reset_mid_heat_keeps_heat_off_time`, `reset_mid_cool_keeps_compressor_off_time` | W ≥ 60 s / Y ≥ 5 min off across the reboot |
@@ -643,7 +647,7 @@ Zigbee and OTA numbers come from the `FW_VERSION_*` semver. `version.txt` and th
 | Basic SWBuildID | `FW_VERSION`, ZCL string whose length byte is `sizeof(FW_VERSION) - 1` | `0.3.0` |
 | Basic DateCode | not added | absent |
 | OTA client file version | `FW_OTA_FILE_VERSION`, `0xMMmmpppp` from the same three numbers | `0x00030000` |
-| Menu *Device info → Firmware* | `FW_VERSION` | `0.3.0` |
+| Menu *Device info → Firmware* | `esp_app_desc.version`; a string longer than 17 characters drops the leading `X.Y.Z-` | `0.3.0`, or `g7c9d421-dirty` |
 
 The OTA numeric scheme is `0xMMmmpppp` from `FW_VERSION_*`. The string inside the `.bin` is what the boot log prints, and that same string rides along inside a Zigbee OTA image. The Zigbee OTA file header is written later by `image_builder_tool.py` from the number you pass it, which should be `FW_OTA_FILE_VERSION`.
 

@@ -418,6 +418,7 @@ def sensor_starting_clear(s):
         ok = r.expect(r"EVT ctrl fault=OK", before=12 * SEC)
         r.expect(r"EVT panel Idle", after=ok, before=ok + 3 * SEC)
         r.never(r"EVT panel Starting sensor", after=ok + 3 * SEC, before=20 * SEC)
+        r.check(r.count(r"EPD refresh") == 2, "boot frame plus the starting line clearing")
     return check
 
 
@@ -444,6 +445,63 @@ def sensor_fault_after_start(s):
         r.expect(r"EVT panel Idle", before=15 * SEC)
         fault = r.expect(r"EVT ctrl fault=SENSOR FAIL", after=20 * SEC, before=40 * SEC)
         r.expect(r"EVT panel SENSOR FAIL", after=fault, before=fault + 3 * SEC)
+    return check
+
+
+@scenario("sensor_fault_clears_after_start_repaints", until=70 * SEC)
+def sensor_fault_clears(s):
+    """No clock. A sensor that dies after the starting window, then recovers, paints the clear
+    on the button path. The starting line, the fault and the clear are three edges inside the
+    first minute, which is the burst the token bucket keeps for that case."""
+    s.temp(0, 2100)
+    s.set(20 * SEC, "sht.mode", 1)
+    s.set(45 * SEC, "sht.mode", 0)
+    def check(r):
+        r.expect(r"EVT panel Idle", before=15 * SEC)
+        fault = r.expect(r"EVT ctrl fault=SENSOR FAIL", after=20 * SEC, before=40 * SEC)
+        r.expect(r"EVT panel SENSOR FAIL", after=fault, before=fault + 3 * SEC)
+        ok = r.expect(r"EVT ctrl fault=OK", after=45 * SEC, before=60 * SEC)
+        r.expect(r"EVT panel Idle", after=ok, before=ok + 3 * SEC)
+        r.never(r"EVT panel SENSOR FAIL", after=ok + 3 * SEC)
+    return check
+
+
+def _flap_refreshes(r, want):
+    n = r.count(r"EPD refresh")
+    r.check(n == want, f"{n} panel refreshes in 10 min, want {want}")
+
+
+@scenario("sensor_flap_dead_alive_refresh_budget", until=10 * MIN, timeout=300)
+def sensor_flap_dead(s):
+    """No clock. The sensor NAKs for 15.3 s, then answers for 6.1 s, and that pair repeats.
+    Each death and recovery is an edge. The token bucket keeps the glass near one partial a
+    minute instead of painting every edge."""
+    s.temp(0, 2100)
+    dead, alive = 15300, 6100
+    t = 0
+    while t < 10 * MIN:
+        s.set(t, "sht.mode", 1)
+        if t + dead < 10 * MIN:
+            s.set(t + dead, "sht.mode", 0)
+        t += dead + alive
+    def check(r):
+        r.check(r.count(r"EVT ctrl fault=SENSOR FAIL") >= 10, "sensor kept dying")
+        r.check(r.count(r"EVT ctrl fault=OK") >= 10, "sensor kept recovering")
+        _flap_refreshes(r, 10)
+    return check
+
+
+@scenario("sensor_flap_out_of_range_refresh_budget", until=10 * MIN, timeout=300)
+def sensor_flap_range(s):
+    """No clock. One sample outside 0–45 °C, then three good samples, on an 8 s period.
+    That is two edges every 8 s. The token bucket keeps the glass near one partial a minute."""
+    s.temp(0, 9000)
+    for t in range(0, 10 * MIN, 2000):
+        s.temp(t, 9000 if (t // 2000) % 4 == 0 else 2100)
+    def check(r):
+        r.check(r.count(r"EVT ctrl fault=TEMP RANGE") >= 20, "range fault kept recurring")
+        r.check(r.count(r"EVT ctrl fault=OK") >= 20, "range fault kept clearing")
+        _flap_refreshes(r, 12)
     return check
 
 

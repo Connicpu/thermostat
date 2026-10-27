@@ -854,6 +854,32 @@ static void InfoScreen(void)
     CHECK(!strcmp(v.value[3], "4.2B/4.2B/4.2B"));
     for (int i = 0; i < v.nRows; i++)
         RowFits(&v, i);
+    /* 999,999,999 is the top of the whole-millions form. */
+    s_c.sensorOk = 999999999u;
+    s_c.sensorMeas = 999999999u;
+    s_c.sensorReset = 0;
+    s_c.sensorCrc = 0;
+    s_c.sensorRetry = 0;
+    s_c.sensorRst = 0;
+    s_c.sensorGap = 0;
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK(!strcmp(v.value[1], "999M/999M"));
+    CHECK(!strcmp(v.value[2], "999M/0/0"));
+    CHECK(!strcmp(v.value[3], "0/0/0"));
+    for (int i = 0; i < v.nRows; i++)
+        RowFits(&v, i);
+    /* 17 visible characters. The git suffix stays; a semver that already fits is kept whole. */
+    s_c.pFwVersion = "0.3.0-g7c9d421-dirty";
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK(!strcmp(v.value[0], "g7c9d421-dirty"));
+    RowFits(&v, 0);
+    s_c.pFwVersion = "0.3.0-g7c9d421";
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK(!strcmp(v.value[0], "0.3.0-g7c9d421"));
+    s_c.pFwVersion = "0.3.0-abcdefghijklmnopqrstuvwxyz";
+    MenuGetView(&s_m, &s_c, &v);
+    CHECK(!strcmp(v.value[0], "jklmnopqrstuvwxyz"));
+    s_c.pFwVersion = "0.2.0";
     /* Leave and reopen so the cursor starts at the top again. Four Downs reach raw temp. */
     Sel();
     CHECK_EQ(s_m.st, kMsList);

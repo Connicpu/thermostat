@@ -20,7 +20,8 @@ esp_err_t DisplayInit(void);
  *
  * The model is copied and compared with memcmp(); unchanged content is ignored unless urgent.
  * urgent=true (a button, or a sensor-fault / "Starting sensor..." edge): the task is woken and
- * refreshes URGENT_SETTLE_MS (400 ms) after the last urgent post. Otherwise the clock and
+ * refreshes URGENT_SETTLE_MS (400 ms) after the last urgent post. The app task spends a token
+ * before posting those sensor edges (3 on hand, one returned every 60 s). Otherwise the clock and
  * sensor/link/running changes share one background slot: the next local-minute rollover once
  * pM->clockKnown (about 60 s, from the extrapolated minute, not a free-running 60 s timer), or at
  * most one refresh per 3 min while the
