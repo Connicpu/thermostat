@@ -476,11 +476,11 @@ module panel_xstops() {
   // The post footprint continues down to the carrier bottom, so that lip is a column.
   board_box(panel[2], 33.20, panel[2] + 0.80, 34.30, Z_pcb_t, Z_panel_b);
   board_box(panel[2], 60.40, panel[2] + 0.80, 61.70, Z_pcb_t, Z_panel_b);
-  // Insertion-depth mark. Each fin starts just outboard of the seated edge and
-  // runs toward the cable, so the edge lines up with the fin when the tail is
-  // home. The fin does not cross the face and does not add bite.
-  board_box(panel[2] + 0.05, 32.75, panel[2] + 0.75, 33.15, Z_panel_b + 0.20, Z_panel_b + 0.70);
-  board_box(panel[2] + 0.05, 59.70, panel[2] + 0.75, 60.10, Z_panel_b + 0.20, Z_panel_b + 0.70);
+  // Insertion-depth mark. Each fin starts just outboard of the seated edge,
+  // overlaps the post, and runs toward the cable, so the edge lines up with
+  // the fin when the tail is home. The fin does not cross the face and does not add bite.
+  board_box(panel[2] + 0.05, 32.75, panel[2] + 0.75, 33.25, Z_panel_b + 0.20, Z_panel_b + 0.70);
+  board_box(panel[2] + 0.05, 59.70, panel[2] + 0.75, 60.45, Z_panel_b + 0.20, Z_panel_b + 0.70);
 }
 module carrier() {
   z0 = Z_pcb_t;
