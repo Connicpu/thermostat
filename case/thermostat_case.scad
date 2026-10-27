@@ -13,7 +13,7 @@ clr = 0.3;                  // fit clearance
 plate_t = 3.0;              // backplate thickness
 standoff_h = 14.0;          // backplate face -> PCB back, so the 11.1 mm 15EDGK plug and 9.5 mm C43 clear a flat plate and lip
 pcb_t = 1.6;
-panel_gap = 4.6;            // PCB top -> panel back. 4.6 keeps >=3.0 mm of tail in J4 even if the carrier prints 0.10 mm tall. See case/ASSEMBLY.md
+panel_gap = 4.45;           // PCB top -> panel back. 4.45 is the lip trade: a tall print plus the 0.20 mm lip still leaves 3.0 mm in J4, and a short print leaves 0.35 mm over the optos. See case/ASSEMBLY.md
 panel_t = 1.2;
 front_t = 2.0;              // front face thickness
 BW = 140; BH = 64;          // PCB
@@ -62,18 +62,18 @@ echo(str("FPC R=", fpc_R, " arc=", fpc_arc, " straight=", fpc_straight, " insert
 assert(fpc_ins > 3.0, "FPC tail insertion is short of the connector minimum");
 assert(fpc_ins_hi > 3.0, "a tall carrier print drops the FPC below 3.0 mm");
 assert(fpc_ins < 4.2, "FPC tail insertion is long");
-// 4.0 mm opto under the display panel. A short carrier print must still leave 0.40 mm.
-assert(panel_gap - 0.10 - 4.0 >= 0.40, "panel gap does not clear the optos");
-// The display panel rests on the pads. Nothing hooks it and nothing releases it.
-// The land behind the panel has to clear a thick board (+0.16), a tall carrier
-// print (+0.10), a low snap seat (+0.10), and a tall standoff (+0.15): 0.51 mm.
-// 0.70 mm leaves 0.19 mm before the skin touches. That same 0.70 mm is how far
-// the panel can rise on a nominal stack, and 1.21 mm on the loose stack.
-// The locked tail allows about 0.07 mm of rise on a tall print before the
-// inserted length drops under 3.0 mm. The shell does not close that gap:
-// a hold-down on the shell is a separate decision. See case/ASSEMBLY.md.
-// The window chamfer starts further out, at Z_in+0.85.
-face_recess = 0.70;
+// 4.0 mm opto under the display panel. The short-print floor is 0.30 mm.
+// At this gap a short carrier print leaves 0.35 mm. The old 0.40 mm floor
+// does not fit a 0.20 mm lip rise on a tall print.
+assert(panel_gap - 0.10 - 4.0 >= 0.30, "panel gap does not clear the optos");
+// The display panel rests on the pads. The carrier lip, lip_air above the
+// panel front, is what stops it rising. The shell does not touch the panel.
+// The land behind the panel still has to clear a thick board (+0.16), a tall
+// carrier print (+0.10), a low snap seat (+0.10), and a tall standoff (+0.15):
+// 0.51 mm, and then the 0.20 mm rise up to the lip. The window chamfer starts
+// at Z_in+0.85, so the recess stops there. The lip stands proud of that and
+// has its own pocket. See case/ASSEMBLY.md.
+face_recess = 0.85;
 xstop_bite = 0.05;                   // +x posts cross the panel edge by this much, so a short print stops the slide
 // The outline is 36.70 mm. The datasheet gives that one width.
 // 36.50–36.90 is an assumption around it.
@@ -82,6 +82,36 @@ panel_hi = 36.90;
 panel_h = 36.70;
 fence_air = 0.20;                    // air between a long-edge fence and the outline. The fence does not cross the face.
 fence_t = 0.80;
+// Lip above the display panel. 0.20 mm of air, then 0.40 mm of PETG (two layers)
+// reaching 0.40 mm onto the border. The active area stays clear (margins are
+// 3.0 / 3.82 / 9.1 mm). The shell carries none of this load.
+lip_air = 0.20;
+shelf_t = 0.40;
+lip_in = 0.40;
+fpc_ins_lip = fpc_free - PI * (panel_gap + 0.10 + lip_air - fpc_z_ret) / 2 - fpc_straight;
+echo(str("FPC at tall print plus lip rise, inserted=", fpc_ins_lip));
+assert(fpc_ins_lip > 3.0, "tall print plus the lip rise drops the FPC below 3.0 mm");
+// Finger push that opens the J4 slider toward +x. The contact face is the -x
+// face of the beam. Section is push_t along x and push_h along z, so the bend
+// is in the plane of the layers. push_L is the free length from the anchor to
+// the free end of that face. Travel is push_defl. E is snap_E.
+push_t = 0.80;
+push_h = 1.10;
+push_defl = 0.75;
+push_face_x = 114.80;
+push_face_y0 = 53.70;
+push_face_y1 = 64.70;
+push_z0 = 3.70;                        // mm above the PCB top
+push_z1 = 4.80;
+push_root_y = 62.50;
+push_L = 8.80;
+ear_rear_x = 100.767;                  // high-ear rear, WRL slider, board x
+shoe_x0 = 100.05;
+shoe_x1 = 100.55;
+shoe_y0 = 50.45;
+shoe_y1 = 51.75;
+shoe_z0 = 0.90;
+shoe_z1 = 1.20;
 // Backplate clips. The polygon apex is 0.80 mm outside the lip face; ±0.90 mm is the bump's z half-span, not the climb.
 // The shell inner face is clr off the lip, so the wall moves snap_bump - clr.
 // Free length is that wall from the bump up to the front face, which ties the four walls.
@@ -104,6 +134,14 @@ assert(snap_defl > 0.20, "backplate bump does not reach the shell wall");
 assert(snap_L > 11, "backplate clip wall is too short");
 assert(snap_eps < petg_eps, "backplate clip strain is past the PETG flexural limit");
 assert(snap_F < 8, "backplate clip takes more than a finger");
+push_I = push_h * push_t * push_t * push_t / 12;
+push_eps = 1.5 * push_t * push_defl / (push_L * push_L);
+push_F = 3 * snap_E * push_I * push_defl / (push_L * push_L * push_L);
+echo(str("PUSH L=", push_L, " strain=", push_eps, " force_N=", push_F));
+assert(abs((push_root_y - push_face_y0) - push_L) < 0.001, "push_L is not the free length");
+assert(push_face_y1 - push_face_y0 >= 11, "slider push face is under 11 mm");
+assert(push_eps < petg_eps, "slider push strain is past the PETG flexural limit");
+assert(push_F < 8, "slider push takes more than a finger");
 btn = [[112,30],[112,40],[112,50]];  // UP DOWN MODE
 pin = [[93,5]];                      // RESET pinhole only (BOOT is only useful with USB attached)
 led = [63.3,21.2];                   // D5 status LED -> light-pipe hole
@@ -127,7 +165,7 @@ swirl_margin = 2.0;                  // clearance to window/buttons/holes/letter
 pcb_tol = 0.16;
 part_clr = 0.5;
 vslot_w = 1.6; vslot_p = 3.2;        // edge-vent slot / web (1.6 = 4 lines at a 0.4 mm nozzle)
-vslot_z = [6.5, 23.4];               // above the 5.5 mm lip, 1.0 mm short of the inner face (Z_in = 24.4)
+vslot_z = [6.5, 23.4];               // above the 5.5 mm lip, 0.85 mm short of the inner face (Z_in = 24.25)
 ribL_bx = [26.8, 28.4];              // rear divider, hot zone | middle
 // Rib S is at board x 119.0 so the Ø0.65 J2 peg at board x 118.11 keeps >= 0.5 mm
 // (118.8 would leave only 0.37 mm). A notch over the peg would open the duct at the inlet.
@@ -265,6 +303,13 @@ module shell(pk=true){   // pk=false: preview only, pockets left solid (inlays s
     board_box(panel[2]-0.40, 37.40, panel[2]+4.0, 50.60, Z_pcb_t+0.40, Z_in-0.02);
     // Land behind the display panel, so a thick board does not bring the panel into the face.
     board_box(panel[0]-0.30, panel[1]-0.55, panel[2]+0.40, panel[3]+0.55, Z_in-0.02, Z_in+face_recess);
+    // Local pockets over the carrier lips. The lip top is 0.60 mm past the inner
+    // face; the loose stack adds 0.51 mm. The pocket stops at Z_in+1.36, which
+    // leaves about 0.64 mm of skin and about 0.25 mm over the lip on that stack.
+    lip_pocket(42.0, 53.0, panel[1], +1);
+    lip_pocket(84.6, 96.0, panel[1], +1);
+    lip_pocket(49.6, 55.6, panel[3], -1);
+    lip_pocket(76.0, 90.0, panel[3], -1);
     button_void();
     // RESET pinhole, LED light pipe
     for(p=pin) translate([cx(p[0]),cy(p[1]),Z_in-1]) cylinder(d=1.6,h=10);
@@ -461,6 +506,41 @@ module edge_fence(x0, x1, edge, dir) {
   board_box(x0, min(y_in, y_out), x1, max(y_in, y_out), z0, z_fence);
   board_box(x0, min(y_in, edge + dir * 0.40), x1, max(y_in, edge + dir * 0.40), z0, z0 + 1.50);
 }
+// Shelf lip_air above the panel front, lip_in onto the border, standing on the fence.
+// The riser overlaps the fence top so the shelf is not a separate body.
+module panel_lip(x0, x1, edge, dir) {
+  y_fence = edge - dir * fence_air;
+  y_over = edge + dir * lip_in;
+  y_out = y_fence - dir * fence_t;
+  z_lip0 = Z_in + lip_air;
+  z_lip1 = z_lip0 + shelf_t;
+  board_box(x0, min(y_fence, y_over), x1, max(y_fence, y_over), z_lip0, z_lip1);
+  board_box(x0, min(y_fence, y_out), x1, max(y_fence, y_out), Z_in - 0.50, z_lip1);
+}
+// Shell cut over one lip, 0.40 mm past the shelf and the riser.
+module lip_pocket(x0, x1, edge, dir) {
+  y_fence = edge - dir * fence_air;
+  y_over = edge + dir * lip_in;
+  y_out = y_fence - dir * fence_t;
+  y0 = min(y_out, y_over) - 0.50;
+  y1 = max(y_out, y_over) + 0.50;
+  board_box(x0 - 0.50, y0, x1 + 0.50, y1, Z_in - 0.20, Z_in + 1.36);
+}
+// Printed push. A finger on the -x face drives the shoe toward +x into the high
+// ear rear. The display panel stays on the pads. The beam is left of the airflow
+// partition and above the USB-C body. The rod runs past the MODE tube.
+module slider_push() {
+  z_lo = Z_pcb_t + push_z0;
+  z_hi = Z_pcb_t + push_z1;
+  x1 = push_face_x + push_t;
+  board_box(push_face_x, push_face_y0, x1, push_face_y1, z_lo, z_hi);
+  board_box(push_face_x, push_root_y, x1, 63.90, Z_pcb_t, z_hi);
+  board_box(108.70, 60.70, x1, 63.40, Z_pcb_t + 1.70, Z_pcb_t + 3.20);
+  board_box(push_face_x, 54.80, x1, 55.60, Z_pcb_t + 1.20, z_hi);
+  // The rod stands on a spine to the bed. The shoe bridges the last few millimetres.
+  board_box(shoe_x0, 54.80, x1, 55.60, Z_pcb_t, Z_pcb_t + 1.55);
+  board_box(shoe_x0, shoe_y0, shoe_x1, 55.60, Z_pcb_t + shoe_z0, Z_pcb_t + shoe_z1);
+}
 // Posts on the cable side of the panel. +x is the slide that shortens the tail in J4.
 // Each post bites xstop_bite onto the outline and stands in the shell's FPC pocket.
 // The bands miss the button tubes (they meet the edge near y 30, 40, and 50) and
@@ -516,7 +596,12 @@ module carrier() {
   edge_fence(84.6, 96.0, panel[1], +1);
   edge_fence(49.6, 55.6, panel[3], -1);
   edge_fence(76.0, 90.0, panel[3], -1);
+  panel_lip(42.0, 53.0, panel[1], +1);
+  panel_lip(84.6, 96.0, panel[1], +1);
+  panel_lip(49.6, 55.6, panel[3], -1);
+  panel_lip(76.0, 90.0, panel[3], -1);
   panel_xstops();
+  slider_push();
 }
 module fpc() {
   zc = Z_pcb_t + fpc_z_ret + fpc_R;
