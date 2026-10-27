@@ -45,7 +45,9 @@ fpc_guide = 12.60;                   // drawing column for the applicable FPC wi
 fpc_thick = 0.30;
 fpc_z_ret = 0.50;                    // lower leg. Side view shows 0.50±0.05; it is not labeled as the centerline
 mouth_x = 103.77;                    // J4 silk front face. Mouth faces +x
-j4_depth = 3.90;                     // DIM B, body depth behind that face
+j4_depth = 3.90;                     // solid run back from j4_front; the sheet's DIM B label is not a stroke
+j4_front = 102.675;                  // housing +x face
+ear_x = 102.775;                     // -x face of the block rear and the end ears, 0.10 mm in front of j4_front
 j4_len = 17.60;                      // overall length, centered on the tail
 j4_h = 2.00;                         // housing height above the PCB top
 fpc_R = (panel_gap - fpc_z_ret) / 2;
@@ -624,7 +626,8 @@ module pcb(){ color("darkgreen") translate([OX,cy(BH),Z_pcb_b]) difference(){ cu
   color("limegreen") translate([cx(term[0])-plug_w/2,cy(plug_y1),Z_pcb_b-plug_h]) cube([plug_w,plug_y1-plug_y0,plug_h]);      // 15EDGK plug (wire entry faces the hole)
   color("darkred") for(i=[0:4]) hull(){ translate([cx(term[0])-7+i*3.5,cy(plug_y0)+3,Z_pcb_b-5.5]) sphere(d=1.2); translate([W/2-8+i*4,H/2,-2]) sphere(d=1.2);} // wires
   color("gray") translate([cx(usb_x)-4.5,cy(BH),Z_pcb_t]) cube([9,7.3,3.2]);                    // USB-C flush with board edge
-  color("black") translate([cx(98.5),cy(53),Z_pcb_t]) cube([103.9-98.5,53-34.8,2.0]);             // J4, mouth at x 103.77, H=2.0
+  color("black") translate([cx(j4_front - j4_depth), cy(44 + j4_len/2), Z_pcb_t])
+    cube([j4_depth, j4_len, j4_h]);             // J4 housing, +x face at j4_front
   color("royalblue") translate([cx(bulk[0]),cy(bulk[1]),Z_pcb_b-bulk_h]) cylinder(d=8,h=bulk_h);       // C43 47uF/63V THT, back side
   color("orange") translate([cx(127),cy(32.7),Z_pcb_t]) cube([1.5,1.5,0.5]);                 // SHT40
 }
@@ -637,29 +640,39 @@ module release_blade(defl=0) {
   board_box(48.4, 26.24 + u_push, 51.6, 26.24 + u_push + 1.00,
             Z_in - cl_face_below + 0.35, Z_in + cl_head_above + 0.70);
 }
-// Hook for the J4 slider. Open is +x: the lip bears on the slider's pull face (the mouth
-// plane, on the cable side) and the tool translates by slider_travel. A blade that only
-// pushes can only close the slider. The shank is 0.80 mm wide and 0.45 mm thick, cut from
-// shim, 18 mm from the lip to the elbow, leaning pick_ang degrees off +x. The handle is
-// 3.2 mm along +x from the elbow and stops before J2. Insertion holds the tool pick_lift
-// above this seated pose and rotates it about the elbow from pick_swing degrees up to this
-// lean, then lowers it so the lip meets the face. The seated pose is what this module draws.
-// Straight along +x from here runs the shank into the fold.
-pick_ang = 66;
-pick_ytip = 43;
-pick_L = 18;
+// Hook for the J4 slider. Open is +x. The tongue's +x face bears on the upper ear's -x face
+// at ear_x, in the 0.10 mm slot in front of j4_front. A lip on the mouth's +x side can only
+// push the slider shut. The shank is 0.80 mm wide and 0.45 mm thick, one piece of feeler
+// stock with the handle. The handle is the 5.0 mm of that strip past the elbow, held in
+// the fingers. The head is the bent end, filed to 0.34 mm in x and 0.56 mm in y,
+// and it stays above the housing. The tongue is filed to pick_tongue_dx so 0.02 mm of air
+// remains against j4_front. Insertion holds the tool pick_lift above this seated pose and
+// rotates it about the elbow from pick_swing degrees up to this lean, then lowers the tongue
+// into the slot. The seated pose is what this module draws. A longer straight +x pull runs
+// into J2. The stroke is an assumption, stroke_lo to stroke_hi, not a drawing callout.
+pick_ang = 50;
+pick_ytip = 52.525;
+pick_L = 9;
 pick_w = 0.80;
-pick_hand = 3.2;
+pick_hand = 5.0;
 pick_inset = 0.70;
 pick_z0 = 20.75;
 pick_z1 = 21.20;
-pick_lip_z0 = 20.25;
-pick_lip_z1 = 20.72;
-pick_lip_dx = 0.34;
-pick_lip_hy = 0.28;
+pick_tongue_dx = 0.08;
+pick_tongue_y0 = 52.25;
+pick_tongue_y1 = 52.80;
+pick_tongue_z0 = 20.35;
+pick_tongue_z1 = 20.60;
+pick_head_dx = 0.34;
+pick_head_hy = 0.28;
+pick_head_z0 = 20.62;
+pick_head_z1 = 21.06;
 pick_swing = -28;
 pick_lift = 0.60;
-slider_travel = 0.85;
+stroke_lo = 0.85;
+stroke_hi = 1.30;
+assert(abs((ear_x - j4_front) - 0.10) < 1e-6, "ear slot");
+assert(abs(pick_tongue_dx - (ear_x - j4_front - 0.02)) < 1e-6, "tongue air");
 module board_rod(x0, y0, x1, y1, w, z0, z1) {
   ang = atan2(y1 - y0, x1 - x0);
   len = norm([x1 - x0, y1 - y0]);
@@ -669,7 +682,7 @@ module board_rod(x0, y0, x1, y1, w, z0, z1) {
         cube([len, w, z1 - z0]);
 }
 module j4_pick(shift=0) {
-  x_tip = mouth_x + shift;
+  x_tip = ear_x + shift;
   y_tip = pick_ytip;
   x_elb = x_tip + pick_L * cos(pick_ang);
   y_elb = y_tip + pick_L * sin(pick_ang);
@@ -677,7 +690,8 @@ module j4_pick(shift=0) {
   y_s = y_tip + pick_inset * sin(pick_ang);
   board_rod(x_s, y_s, x_elb, y_elb, pick_w, pick_z0, pick_z1);
   board_rod(x_elb, y_elb, x_elb + pick_hand, y_elb, pick_w, pick_z0, pick_z1);
-  board_box(x_tip, y_tip - pick_lip_hy, x_tip + pick_lip_dx, y_tip + pick_lip_hy, pick_lip_z0, pick_lip_z1);
+  board_box(x_tip - pick_tongue_dx, pick_tongue_y0, x_tip, pick_tongue_y1, pick_tongue_z0, pick_tongue_z1);
+  board_box(x_tip - pick_head_dx, y_tip - pick_head_hy, x_tip, y_tip + pick_head_hy, pick_head_z0, pick_head_z1);
 }
 // Keep only the neighbourhood of the first top hook, so a section shows the window and the shelves.
 module release_keep() {
