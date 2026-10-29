@@ -1,134 +1,103 @@
-# Retainer concept
+# Shell hold-down
 
-Four PETG pads under the display panel push it up. A PETG plate on each station holds it down, and only the land of that plate touches the panel. The shell clips to the backplate. It does not touch the plate, the pads, or the display panel, and it is not a stop.
+The separate plate, clip, and detent are withdrawn. The panel drops onto the carrier. The shell clips only to the backplate, and its ribs are what press the panel. Nothing locks the panel in.
 
-The pads are the stiff size. The cable allowance is 0.30 N until Connie measures the tail, and the springs are sized for 35% of the load remaining. Thicker sections are used wherever the shell allows them, because the printer is a Bambu Lab P2S with the stock 0.20 mm Standard profile and Generic PETG HF. No custom settings, no painted supports, no modifier meshes.
+Scratch, not the shipped case:
 
-PETG only, apart from the four drywall-anchor screws. Fingers only. The screw bracket in `concept-c-screw-bracket.png` stays parked. The outboard-leaf sketch in `concept-option2-outboard.png` stays parked.
+- `case/scratch/r6_shell_hold.scad` includes `case/thermostat_case.scad`
+- `docs/case-r6/shell-hold-section.png` — shell off, and shell on
+- `docs/case-r6/shell-hold-plan.png`
+- `docs/case-r6/shell_hold_check.py` — the gate numbers below
 
-Sketches:
+## What does not close
 
-- `docs/case-r6/concept-pad-section.png`
-- `docs/case-r6/concept-pad-plan.png`
+Two gates fight each other, and a third one does not fit in the shell.
 
-Scratch, not the case:
+The panel can sit only in a narrow band. Shell off, the free nub has to stay at or below 23.28 mm or the tail in J4 drops under 3.15 mm at a tall carrier and a thick leaf. The backstop has to stay at or above 22.90 mm or a short carrier leaves less than 0.15 mm over the opto-triacs (top 22.60). That is 0.15 mm of useful spring travel, and a leaf printed 0.05 mm thin or thick uses most of it.
 
-- `case/scratch/r6_pad_concept_proto.scad`
-- `case/scratch/r6_pad_seat.stl` — one station, eight separate bodies
-- `case/scratch/r6_pad_coupon.stl` — pad, plate, clamp bar, and cap, each flat on the bed
-- `case/scratch/r6_pad_print.3mf` — that coupon, supports off
+Sized so the thin leaf still holds 2× after 35% creep, the four leaves push **17.8 N** at the thick leaf. The four backplate clips hold **14.7 N** (3.67 N each, the existing clip formula). The thick corner can push the shell back off the clips. Scaling the leaves down until the thick corner stays under the clips drops the thin corner to about 1.6×. **2× at the thin leaf and a shell that stays clipped at the thick leaf are not both available inside the J4 and opto limits.**
 
-`docs/case-r6/pad_calc.py` prints the force table. `docs/case-r6/pad_check.py` checks the four stations against the board parts.
+The shell rib has a second, separate problem. Its tip is 24.10 mm at dz = 0, which is the front of a 1.2 mm panel sitting on the backstop. Across dz 0–0.51, carrier ±0.15, and panel 1.1–1.3, that rib **misses the panel on 22 of 36 corners**, including every corner at dz = 0.51. Dropping the rib far enough to touch the worst loose corner (front 24.00 at dz 0.51) puts the tip near 23.49 mm. At the tight corner the panel front on the backstop is 24.35 mm, so the rib stands 0.86 mm proud of a seated shell. The shell cannot finish clipping unless that rib yields 0.86 mm.
 
-## The cable
+A leaf thick enough to yield that far and still make the force does not fit. Above the panel there is about 1.5 mm between a high panel front and a 0.40 mm shell skin. A 1.4 mm rib in that gap, 2.4 mm wide and 34 mm long, is about a tenth of the required retained force. The opto clearance, the J4 rise limit, and a 0.51 mm shell stack cannot be met together by a PETG rib in the space the shell has.
 
-Connie, with the panel in hand and the board vertical: the tail takes almost no force to hold the gap. Fingertips do not resolve a few tenths of a newton, and that hold was not the seated fold at the 1.98 mm radius. The sign is unknown. An opening residual loads the plate. A closing residual loads the pads.
+## What the geometry does
 
-The design allowance is **0.30 N** until she measures it. 0.06 N remains plausible. It is not the number used to size the pads.
+The panel drops in from the front. The existing fences locate the long edges (0.20 mm air). The x-stops locate the cable end. The tail goes into J4. No clip, no screw, no detent.
 
-Shock is 5.5 g × 5 g = 0.270 N. With the 0.30 N allowance the load is 0.570 N. The pads are sized for twice that after only 35% of the elastic force remains. PETG at 4.5–15 MPa, 35–50 °C below Tg, can lose more than half of a sustained stress over years. 35% kept is the design value. 50% is not.
+Four PETG leaves sit under the border. Each is 10 mm from the clamp face to the nub centre, 2.60 mm thick (13 layers), nub 0.80 mm, and the only contact is the nub at y 2.05–2.45. Top leaves are 2.80 mm wide. Bottom leaves are 2.50 mm wide so they stay above the J1 tails (y ≤ 59.5) and clear of D7/D8. Free nub top is 23.05 mm. Beam bottom is 19.65 mm, 1.05 mm over the PCB.
 
-A scale check, if she wants the number: board face-down over a 0.01 g scale, panel face-down on a 4.45 mm spacer, tail seated in J4. Read the panel's weight first, with the tail slack. A higher reading is an opening tail. Repeat at 4.35, 4.45, and 4.60 mm, and again after a day. This concept does not wait on that reading.
+Five backstop columns top out at 22.90 mm. They are tied into the carrier. A 10 N press ends on them. At carrier −0.15 the stop is 22.75 mm, 0.15 mm over the opto top. Travel from a seated panel is zero, because the panel is already on the stop once the shell has pushed it there. U6 is not under the panel.
 
-## What the worst corner holds
+The shell ribs are bosses on the recess ceiling, 2.80 mm along the edge and 0.40 mm across the land (the land is only 0.40 mm wide). Shoulders are not modeled; the contact is the land itself. Design tip is 24.10 mm.
 
-E = 1800 N/mm². Four pads. Each beam is L = 18 mm, w = 2.4 mm, t = 3.00 mm (fifteen layers of 0.20 mm). The free nub top is z = 23.55.
+Nub centres, board x: 62 and 100 on the top edge, 72 and 104 on the bottom. `shell_hold_check.py` reports no clash with U3, U6, U7, U8, R31, D7, D8, C1/C41, or the J1/C43 tails.
 
-The deflection window is 0.50 mm: panel thickness 0.20, pad print 0.10, and 0.20 between the carrier shoulder and the pad. The thin corner is δ = 0.20 mm. The thick corner is δ = 0.70 mm.
+## Force, when the shell has seated the panel
 
-`k = E w t³ / (4 L³)`
+E = 1800 N/mm². Four leaves. 35% retained. Shock 0.270 N. Cable allowance 0.30 N. The load to beat is 1.139 N.
 
-| Pad thickness | k | Force at δ = 0.20 |
-|---|---|---|
-| 2.95 mm | 4.75 N/mm | 0.95 N |
-| 3.00 mm | 5.00 N/mm | 1.00 N |
-| 3.05 mm | 5.25 N/mm | 1.05 N |
+Compression is free nub minus backstop, plus the leaf's own ±0.05 mm. Carrier height moves the nub and the stop together, so it drops out.
 
-A ±0.05 mm error in the 3.00 mm thickness changes the force, at the same deflection, by about ±5% (the cube of 2.95/3.00 and 3.05/3.00). The deflection window moves the force much more than the thickness does. The thin corner already includes both.
+| Leaf | Compression | Held after creep | Margin | Strain | Spring force |
+|---|---|---|---|---|---|
+| thin, −0.05 | 0.10 mm | 2.77 N | 2.43× | 0.38% | 7.91 N |
+| thick, +0.05 | 0.20 mm | 6.21 N | 5.45× | 0.80% | 17.75 N |
 
-The web from the cap to the nub is 0.60 mm thick and 24 mm long, about 65 N/mm. In series with the thin pad the delivered force at δ = 0.20 is 0.89 N. Four pads at 35% retained hold 1.24 N.
+Install strain is the same order. It is under 2.4%. The 17.75 N thick-leaf force is the number that exceeds the 14.67 N clip hold.
 
-| Cable allowance | Load | Held, worst corner | Margin |
+Clip snap is 3.67 N per clip, 14.7 N for the four. Seating the shell means that snap plus the spring force, because the leaves compress as the clips crest. At the thin leaf that is about 23 N. At the thick leaf it is about 33 N, and once seated the springs can outweigh the clips.
+
+## J4, shell off
+
+The panel sits on the free nub. Insertion uses the case formula (free length 14.40, straight 4.69, lower leg 0.50).
+
+| Carrier | Leaf | Panel back | Inserted |
 |---|---|---|---|
-| 0.06 N | 0.330 N | 1.24 N | 3.76× |
-| 0.15 N | 0.420 N | 1.24 N | 2.96× |
-| 0.30 N | 0.570 N | 1.24 N | 2.18× |
+| −0.15 | −0.05 | 22.85 | 3.82 |
+| −0.15 | +0.05 | 22.95 | 3.66 |
+| 0 | −0.05 | 23.00 | 3.58 |
+| 0 | +0.05 | 23.10 | 3.43 |
+| +0.15 | −0.05 | 23.15 | 3.35 |
+| +0.15 | +0.05 | 23.25 | 3.19 |
 
-2.18× at 0.30 N clears 2×. A measurement at 0.06 N or 0.15 N only adds margin.
+The low corner is 3.19 mm. Panel thickness does not move the back when the panel is sitting on the nub.
 
-At a pad 0.05 mm thick and δ = 0.70, the sustained strain is 0.99%. Sliding the plate in adds 0.15 mm. That install case is 1.20%, under 2.4%. One station on the thick pad is about 4.5 N. Press the plate, not the display panel.
+## Rib reach
 
-The shelf is the outboard edge of the plate bar. The cap is the lip, inboard of that shelf and still outboard of the panel edge. The nub is at y = 2.50. With the shelf near y = −1.5 and the cap near y = −0.8,
+Tip = 24.10 + dz. The panel front, still on the nub because the rib has not pushed it down, is 23.05 + carrier + thickness.
 
-H / F = (2.50 − (−1.5)) / (−0.8 − (−1.5)) = 5.7.
+| dz | Carrier | Thickness | Front | Rib | |
+|---|---|---|---|---|---|
+| 0 | −0.15 | 1.1 | 24.00 | 24.10 | misses |
+| 0 | −0.15 | 1.3 | 24.20 | 24.10 | touches |
+| 0 | +0.15 | 1.1 | 24.30 | 24.10 | touches |
+| 0 | +0.15 | 1.3 | 24.50 | 24.10 | touches |
+| 0.51 | any of these | 1.1 or 1.3 | 24.00–24.50 | 24.61 | misses |
 
-The arm is that plan distance. It is not the 0.40 mm plate thickness. At the thick corner, F is about 3.7 N and H is about 21 N. Two posts, each 1.2 mm by 0.8 mm, carry it in compression: about 11 MPa, 0.6% of E, under the 1% interlayer limit.
+22 of the 36 corners miss. Every dz = 0.51 corner misses.
 
-## Layout
+## Air and the slice
 
-The contact plane is z = 24.30, the land underside. A 0.40 mm land puts its top at 24.70. The shell ceiling over the land is the original recess, z = 25.51. A 0.60 mm land would leave 0.10 mm of air at stack offset 0.51, so the land stays two layers thick. It is 1.20 mm wide, y = 2.00–3.20, which is three beads of a 0.40 mm nozzle. The worst seal line is 1.92 mm inboard of nominal and the worst active-area limit is 3.12 mm, so the land clears both.
+The recess skin is 0.74 mm and slices to 0.80 mm, so the ceiling is 25.45 mm. The highest shell-off front is 24.50 mm. Air is 0.95 mm. The ribs are the only new shell contact. Everywhere else the shell is the shipped one.
 
-The nub centre is y = 2.50, on the land centre. The nub is 4.0 × 1.2 mm. Its inboard edge is 3.10, 0.02 mm outside the worst active-area limit of 3.12. The web and the outboard bar are at z ≥ 24.50, so they do not meet the panel edge or the seal line.
+Bambu Studio 02.08.02.61, machine `Bambu Lab P2S 0.4 nozzle`, process `0.20mm Standard @BBL P2S`, filament `Generic PETG @BBL P2S`. Supports off, layer 0.20 mm, nozzle 255 °C. The gcode header reports sparse infill 20% and 2 walls. `warning_message` in each `result.json` is empty.
 
-| Panel | Back | Gap | Inserted | Air over the optos |
-|---|---|---|---|---|
-| 1.1 | 23.20 | 4.60 | 3.27 | 0.60 |
-| 1.2 | 23.10 | 4.50 | 3.43 | 0.50 |
-| 1.3 | 23.00 | 4.40 | 3.58 | 0.40 |
+The log also printed, on each run, before the slice finished:
 
-A tall carrier and a 1.1 mm panel insert 3.11 mm. A land 0.05 mm thin raises the panel 0.05 mm and the insertion is 3.03 mm, still at or above 3.0. That 0.05 mm is the rise budget. The cap is on the carrier, so its thickness does not add rise.
+```
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+error_code 65544, description: Wayland: Failed to connect to display
+glfwInit return error, code 65544
+```
 
-The land top is z = 24.76. Air at stack offset 0.51 is 0.24 mm, and 0.21 mm with 0.03 mm of tilt. The cap top is z = 25.16, under a local ceiling at 25.92. Air there is 0.22 mm after the same tilt. The pocket is only over the cap. The face skin there is 0.33 mm. Over the land the skin is the original 0.74 mm.
+No floating-region or cantilever warning was printed. The leaf is 17 layers (3.40 mm, the 2.60 mm beam plus the 0.80 mm nub). The rib coupon is 10 layers (0.80 mm skin plus a 1.20 mm rib). The carrier with the backstops is 26 layers and one solid.
 
-The beam bottom is z = 19.55. The PCB top is 18.60, so the tip has 0.95 mm of air, more than the 0.85 mm the thick corner and the slide-in need. Nothing is under the tip. The root sits in a 4 mm clamp. A 1.20 mm bar, printed flat, pins the root. The carrier has no ceiling bridge over the spring.
-
-The backstop top is z = 22.75. The lowest service back, a 1.3 mm panel on a short carrier with a thick land, is 22.85, so the travel onto the stop is 0.10 mm. U6, U7, and U8 are MOC3063S opto-triacs, 4.0 mm tall, top at 22.60. The stop is 0.15 mm above that top. A 10 N press on the glass reaches the stop and does not reach the optos. U7 straddles the top edge at x 28.8–40.2. The backstop there is a rib on each side of U7, not a bridge across it. The panel is stiff enough that stopping the edge stops the glass over U7.
-
-## Stations
-
-Each plate is 22 mm, x = nub − 16 to nub + 6, in the seat mesh and on the plan. Nubs:
-
-| Edge | Nub x |
-|---|---|
-| Top | 64 and 100 |
-| Bottom | 72 and 100 |
-
-The beams are inboard of the edge, y about 1.0–3.3 mm onto the panel, bottom at 19.55. That misses U7, the ESP32 module (its top is 21.75 and it stops at y 25.5, outboard of the beams), C1/C41, and the J1/C43 tails (they stop at y 59.5; the bottom beams start at 59.64). `pad_check.py` reports no clashes.
+Files: `case/scratch/r6_leaf.stl`, `r6_rib.stl`, `r6_carrier_stops.stl`, and the matching `r6_leaf_p2s.3mf` and `r6_rib_p2s.3mf`.
 
 ## Fingers
 
-The shell is off.
+1. Drop the panel onto the carrier. The fences take the long edges. The cable end meets the x-stops and the tail enters J4. Lift it back out the same way. Nothing clicks.
+2. Set the shell on the backplate and press until the four clips click. Where a rib reaches the border, it presses the panel onto the backstop and compresses the leaf under that nub.
 
-1. Drop a pad in, root outboard, nub up. Drop the 1.20 mm clamp bar onto the root. The side walls keep it.
-2. Snap the cap onto the two posts. The hooks are 1.2 mm. The cap stays on the carrier.
-3. Set the panel on the nubs. The tail is already in J4.
-4. Press one station, on the plate, about 4.5 N at the thick pad. Slide the plate in from the open end until the 1.2 mm detent clicks. The slot under the cap is open. The land is the only contact on the panel.
-5. Repeat the other three stations.
-
-To remove one, push its ear outboard. The ear is outboard of the panel edge. Slide the plate out the open end. The cap stays. The plate cannot walk out to the shell: the posts and the detent locate it, and the nearest carrier face is 0.21 mm inside the shell wall.
-
-## Print
-
-Connie's machine is a P2S. Bambu Studio and OrcaSlicer are not on this machine, so the slice is PrusaSlicer 2.9.2 with the stock P2S numbers that PrusaSlicer can set: 0.40 mm nozzle, 0.20 mm layers, PETG at 255 °C and a 70 °C bed, Arachne, supports off. No painted supports and no modifier meshes.
-
-`r6_pad_coupon.stl` is the pad (nub up), the plate (land on the bed, frame in the same first layers), the 1.20 mm clamp bar, and the 0.60 mm cap. Filament 118.76 mm. No overhang perimeter. No floating object, no loose extrusions, no low bed adhesion.
-
-The carrier station, feet down, is 45.20 mm of filament. No overhang perimeter. The spring is not under a printed bridge. The cap and the clamp bar are separate flat parts, so their stop faces are bed faces.
-
-The land is 0.40 mm thick because the ceiling does not allow 0.60 mm there. It is 1.20 mm wide. The cap, the clamp bar, the posts, the detent, and the web are 0.60 mm or 1.20 mm.
-
-## Gates
-
-Checked across 1.1 / 1.2 / 1.3 mm, the panel shift, stack offset 0 / 0.16 / 0.26 / 0.51, carrier ±0.10, and pad ±0.05. The scratch checker covers the station footprints. The rest are the mesh and the slice.
-
-- Pad tip clearance 0.95 mm, root engagement 4 mm, clamp bar 1.20 mm with no bridge on the spring.
-- δ 0.20–0.70. Sustained strain 0.99%. Install 1.20%. Margin 2.18× at 0.30 N and 35% retained.
-- Retention features 0.60 mm or 1.20 mm, except the land at 0.40 mm under the ceiling. The slice shows those thicknesses as real layers.
-- Rise 0.05 mm from a thin land. Inserted length 3.03 mm at the tall print and a 1.1 mm panel.
-- Plate contact is the land only, y 2.00–3.20. Nub centre at 2.50.
-- Air at offset 0.51, with 0.03 mm tilt: 0.21 mm over the land, 0.22 mm over the cap.
-- The retainer stops 0.21 mm inside the shell wall. The shell is not a stop in y.
-- Opto air at rest on a short 1.3 mm panel is 0.30 mm. On the backstop it is 0.15 mm. A 10 N press ends on the stop.
-- Install and removal are a slide through the open end of the cap, with the ear outboard of the panel.
-- Station footprints miss every listed board part and pin tail.
-- PrusaSlicer 2.9.2 of the coupon and of the carrier station: no overhang perimeter on the land or the nub.
+To open, pull the shell off the clips and lift the panel.

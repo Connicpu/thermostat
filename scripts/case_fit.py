@@ -129,6 +129,10 @@ parts+= [box('L1 SWPA6045 6.0x6.0x4.5',21.1,53.5,27.1,59.5,Zt,Zt+4.5),
  box('R3 0402 x0.50',117.1,49.9,117.9,51.1,Zt,Zt+0.50),
  box('C11 0402 x0.55',116.4,39.4,117.6,40.3,Zt,Zt+0.55),
  box('R14 0402 x0.50',118.53,25.97,119.18,27.03,Zt,Zt+0.50),
+ # B5819W SOD-123. Body about 2.7 x 1.6; height up to 1.35. Centres from the board.
+ box('D7 B5819W SOD-123 x1.35',83.65,59.60,86.35,61.40,Zt,Zt+1.35),
+ box('D8 B5819W SOD-123 x1.35',89.65,59.60,92.35,61.40,Zt,Zt+1.35),
+ box('R31 0402 x0.55',42.00,27.24,43.00,27.84,Zt,Zt+0.55),
 ]
 def _rot(x,y,deg):
     a=math.radians(deg); c,s=math.cos(a),math.sin(a); return x*c-y*s, x*s+y*c
