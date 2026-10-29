@@ -1,105 +1,128 @@
-# Revised retainer concept
+# Retainer concept
 
-The square hook and the 8° undercut, as drawn in `concept-a-square-hook.png` and `concept-b-undercut.png`, do not close. The panel pushes the bump up. That hook can only push down, and it sits outboard of the bump and 4.25 mm away along the fence. The root-on-fence contact can only push up, and it sits on the same side of the hook as the bump. There is no pair of reactions that balances the clip, so it tips about the tooth. About 1.7–5.1° swallows 0.10–0.30 mm of interference, and the shell is reached near 4.5–5°. Preload is about 0 N. The 8° undercut adds about 0.49 N·mm per N of bump force, and the couple the loop needs is about 3.4 N·mm per N, so B does not fix it. Those two drawings stay in the folder as the rejected free bodies.
+The display panel is held by the carrier. Four PETG pads under the panel push it up. A PETG plate on each long edge holds it down. The plate's underside is the contact, on the border. The shell clips only to the backplate. It does not touch the plate, the pads, or the display panel, and it is not a stop.
 
-Connie's rules for this case: PETG only, apart from the four drywall-anchor screws already in the backplate. No tools. The display panel rests on the carrier pads. The shell clips only to the backplate, stays off the panel, and is not a stop for a clip.
-
-## The revised clip
+PETG only, apart from the four drywall-anchor screws in the backplate. No tools. Fingers only. The screw bracket in `concept-c-screw-bracket.png` is not developed here. It waits on Connie.
 
 Sketches:
 
-- `docs/case-r6/concept-rev-section.png` — section along the leaf, free body
-- `docs/case-r6/concept-rev-plan.png` — plan, stop, tab
+- `docs/case-r6/concept-pad-section.png` — section through one pad, and the beam
+- `docs/case-r6/concept-pad-plan.png` — the panel, the four pads, the two plates
+- `docs/case-r6/concept-option2-outboard.png` — the outboard leaf, as a second option
 
 Scratch, not the case:
 
-- `case/scratch/r6_lip_leaf_proto.scad`
-- `case/scratch/r6_lip_leaf_clip.stl` — the print coupon (clip, pillars, and a 0.70 × 0.60 control tower)
-- `case/scratch/r6_lip_leaf_seat.stl` — the same clip on the shelf, lip, stop peg, and a shell wall, so the seat gap and the stop play are in a mesh
+- `case/scratch/r6_pad_concept_proto.scad`
+- `case/scratch/r6_pad_seat.stl` — one station: carrier, pad, plate, washer, panel, shell
+- `case/scratch/r6_pad_coupon.stl` — the pad, the plate, and the washer, flat on the bed
 
-The leaf runs along the fence. In x the order is shelf, lip, bump.
+`docs/case-r6/pad_calc.py` prints the numbers below.
 
-- The shelf pushes the heel **up** (bearing). Shelf centre x = 0.50 mm.
-- The lip pushes the plate **down** (hold-down). Lip centre x = 2.00 mm. Its underside is square. A 45° chamfer is only on the upstream lower corner, the side the plate enters.
-- The bump pushes **up**. Bump centre x = 7.50 mm. Free length from the lip's downstream edge (x = 2.80) to the bump centre is L = 4.70 mm.
+## The cable
 
-With the bearing 1.50 mm upstream of the lip centre and the bump 5.50 mm downstream of it:
+Connie has the display panel in hand: "The cable is very flexible, it requires almost no force to hold the panel at a fixed distance when the board is oriented vertically."
 
-H = F × 5.50 / 1.50 = 3.67 F, R = H − F = 2.67 F.
+The board is vertical in that check, so the panel's weight is in the plane of the board. The force she is describing is the tail. The fold is the U under the panel, centerline radius 1.975 mm. A residual that opens the fold pushes the panel up into the plate, and the plate reacts it. A residual that closes the fold pulls the panel off the plate, and the pads react it. Her observation does not separate the sign. The magnitude is about zero.
 
-Both are positive. The same three forces share one y, the leaf centreline, so there is no moment out of that plane. The lip covers the anchor, which is the bump's side of the shelf, so a tooth at the far end is not what holds the panel down. A 0.35 mm tooth under the lip's downstream edge only stops the plate sliding back out. It has 0.05 mm of x play in the seat mesh.
+The tail is 12.50 mm wide and 0.30 mm thick. The outer fiber at R = 1.975 mm is (0.15) / 1.975 = 7.6%. That is past yield for the polyimide. A fully elastic film at the Kapton HN modulus, 2.5 GPa, would hold the semicircle with about 14 N (`F = πEI / (4R²)`, `I = 0.0281 mm⁴`). The plastic moment of the 0.30 mm section, at a 2% yield strain and a shape factor of 1.5, is about 14 N·mm, and the matching force is about 5.6 N. That is the force to form the fold, not the force left in it once it is seated. The seated force is the allowance below.
 
-The outboard stop is a peg in a slot in the heel, not the shell. Outboard play is 0.08 mm. The plate is 1.20 mm wide under the lip, so the y overlap is 1.20 mm and 0.08 < 1.20 − 0.10. The seated outer face is 0.30 mm from the shell wall. At the stop the air is 0.22 mm. The release tab stays inside the leaf's y, so it does not enter that gap. It clears the recess ceiling by being below the leaf top.
+The design allowance is 0.06 N, the low end of the 0.06–1.5 N band, kept because "almost no force" is not a measured zero. It is applied as a closing force, so the pads have a budget for it. The shock is 5.5 g × 5 g = 0.270 N. The load is 0.330 N. The pads are sized for at least twice that after 50% relaxation: 0.659 N.
 
-## Preload
+A kitchen scale is optional. Stand the board on edge, support the panel at the seated gap on the scale, and read the force with the tail seated. The pads above do not wait on that reading.
 
-E = 1800 N/mm². Leaf t = 0.60 mm, w = 1.20 mm, L = 4.70 mm.
+## Layout
 
-I = 1.20 × 0.60³ / 12 = 0.0216 mm⁴.
-k = 3 × 1800 × 0.0216 / 4.70³ = 1.12 N/mm.
+Coordinates are the case. The panel outline is x 29.46–108.46, y 26.24–62.94. The active area is x 32.46–99.36, y 30.06–59.12. The polarization-seal line is 1.52 mm inboard of the edge. The active-area margin used here is 0.50 mm, so the band on the long edges runs from 1.52 mm to 3.32 mm inboard. The shell window is 0.50 mm outside the active area, 3.32 mm inboard of the nominal edge at the panel front. The recess ceiling is z = 25.51 (`Z_in + 1.26`). The shell wall is 2.16 mm outboard of the edge at the low side of the recess and 2.50 mm outboard at the recess cut. The fences stand in that strip.
 
-The lip, 1.60 mm along x, 1.00 mm thick, and 0.70 mm of overhang, has k ≈ 3 × 1800 × (1.60 / 12) / 0.70³ ≈ 3900 N/mm. In series with the leaf the stiffness falls by about 0.03%. The table is the leaf.
+The contact plane is z = 24.30. It is the top of the carrier shoulder. The plate sits on that shoulder, so the plate's underside is that plane, and the plate's own thickness is above it. A 0.40 mm plate has its top at 24.70. Every panel thickness meets the same front:
 
-Nominal interference at a 1.2 mm panel is 0.24 mm. A 1.1 mm panel is 0.14 mm. A 1.3 mm panel is 0.34 mm. The datasheet band is 1.2 ± 0.1 mm.
+| Panel | Back | Gap | Inserted, 0.50 mm leg | Air over the 4.0 mm optos |
+|---|---|---|---|---|
+| 1.1 | 23.20 | 4.60 | 3.27 | 0.60 |
+| 1.2 | 23.10 | 4.50 | 3.43 | 0.50 |
+| 1.3 | 23.00 | 4.40 | 3.58 | 0.40 |
 
-| Panel | δ | Strain at L = 4.70 | Force |
-|---|---|---|---|
-| 1.1 | 0.14 | 0.57% | 0.16 N |
-| 1.2 | 0.24 | 0.98% | 0.27 N |
-| 1.3 | 0.34 | 1.39% | 0.38 N |
+A carrier printed 0.10 mm tall raises the 1.1 back to 23.30, gap 4.70, inserted 3.11 mm. A carrier printed 0.10 mm short lowers the 1.3 back to 22.90, and the opto clearance is 0.30 mm. Both are on the gate. The plate thickness does not move the panel: the shoulder does.
 
-Strain is 1.5 × t × δ / L², stress along x, in the layer plane. Four leaves after 50% relaxation are 0.31 N at 1.1 mm, above a 5 g shock on the 5.5 g panel (0.27 N).
+The land is y = 2.05–2.45 mm inboard of the nominal edge, 0.40 mm wide. The panel can sit 0.20 mm outboard of nominal (against the fence) or 0.40 mm inboard (36.50 mm panel, all of the 0.60 mm opening on one side). At that inboard shift the seal line is 1.92 mm inboard of nominal, and the land's outer edge at 2.05 mm clears it by 0.13 mm. At the outboard shift the active-area limit is 3.12 mm inboard of nominal, and the land's inner edge at 2.45 mm clears it by 0.67 mm. The window at the panel front is 3.32 mm inboard, 0.87 mm past the land.
 
-The warm-wall case is the 1.2 mm row, 0.98%. The tolerance case is a 1.3 mm panel, another 0.05 mm of bump or seat error, and contact on the bump's root-side edge (L = 4.10 mm): δ = 0.39 mm, strain 2.09%, under the 2.4% install gate.
+On the panel, the pad and the plate share one centre, 2.25 mm inboard. The pad pushes up. The plate pushes down. They are equal, opposite, and on the same point in plan, so R/H = 1. There is no moment on the panel. The plate's own root moment stays in the plate, between the shoulder and the washer, outboard of the edge.
 
-At F = 0.27 N the lip root moment is H × 0.70 = 0.69 N·mm with H = 3.67 F. For a 1.60 mm wide, 1.00 mm thick lip, σ = M (t/2) / I = 2.6 MPa. That is the bending stress in the ledge, across the layers it was built in. As a fraction of E it is 0.14%. It is not zero. The clip has no vertical post in this loop. A post that did carry the hook force would be gated with σ = M c / I from its own section. The old 1.6 mm post was about 6.2 MPa per N of hook force at a 4.25 mm lever. This layout does not use that post.
+The washer is 0.20 mm, on the outboard part of the plate. Its ear is the same layer, outboard of the panel edge. A tooth on the washer sits in a groove in the stem, open toward the slide-in end, with 0.20 mm of play before the closed side. The end stop is 0.20 mm past the other end of the plate. The local ceiling over the washer is z = 25.80, which leaves 0.45 mm of the 2.00 mm face. The pocket runs from the shell wall to 0.20 mm inboard of the edge. It does not enter the window. Over the land the ceiling stays z = 25.51.
 
-The leaf is 1.20 mm wide, two beads at a 0.40 mm nozzle. It sits on the border with its outer edge 1.70 mm from the nominal panel edge and its inner edge 2.90 mm from that edge. The active area starts 3.82 mm in. The gate has to repeat this at the worst panel width (36.50–36.90 in the 37.10 opening) and the clip's y play, and fail if the outer edge crosses the 1.52 mm line or the inner edge comes within 0.50 mm of the active area. The 6.0 mm fence segment is too short for a 4.70 mm leaf plus the anchor. The four leaves go on the spans that are at least 8 mm. The long bottom span holds two.
+Air under the ceiling, plate top at 24.75 (the 0.40 mm plate printed 0.05 mm thick):
 
-## Print
+| Stack dz | Air over the plate | Air over the washer top at 25.00 |
+|---|---|---|
+| 0 | 0.76 | 0.80 |
+| 0.16 | 0.60 | 0.64 |
+| 0.26 | 0.50 | 0.54 |
+| 0.51 | 0.25 | 0.29 |
 
-One pose. Retention face up: the plate top and the latch tooth top are horizontal top surfaces. Layers stack in +z, which is case z, so the leaf stress along x and a y-direction latch stress along x are in the layer plane. The bump is 1.20 × 1.20 × 0.40 mm under the leaf, two model layers, not a bed face. The arm and the tooth of the earlier clip sat about 3 mm below the bump, so the bump cannot be the lowest point of that one-piece shape. Pillars are 0.80 mm square with a 0.50 mm neck, and they are in the clip mesh.
+The plate is clamped on the shoulder, so it does not swing. The bending rise at the land, at the thin-corner force, is about 0.01 mm. A 5° tilt across the 0.40 mm land is 0.03 mm. At dz = 0.51 the air is then 0.22 mm over the plate and 0.26 mm over the washer.
 
-## Slice (PrusaSlicer 2.9.2)
+A gap that stayed open under the washer would lift the plate, and the panel with it, by the same amount. The amplification is 1. The 0.05 mm in the seat mesh is the parting that keeps the bodies apart. Service contact closes it. Left open, 0.05 mm of rise at the tall 1.1 case leaves 3.03 mm in J4.
 
-The binary is the Debian package `prusa-slicer 2.9.2+dfsg-1`, reported as `PrusaSlicer-2.9.2+UNKNOWN`. This Ubuntu image's apt candidate is 2.7.2, so 2.9.2 was installed from the Debian snapshot of that package. The package has no Bambu P2S profile. The slice uses a 0.40 mm nozzle, 0.20 mm layers, Arachne, PETG at 240 °C / 80 °C bed, supports off, which is the case 3MF's PETG and support switch.
+## The pads
 
-File: `case/scratch/r6_lip_leaf_clip.stl`. Supports off. Filament 6.70 mm.
+E = 1800 N/mm². Four pads. Each is a cantilever, L = 12.7 mm, w = 3.3 mm, t = 1.40 mm, with a nub on the free end. The nub is the only contact with the panel back. The free nub is at z = 23.45, which is 0.25 mm above the 1.1 back.
 
-The log line is `Floating object part, Low bed adhesion, Loose extrusions`.
+`I = 3.3 × 1.40³ / 12 = 0.754 mm⁴`
 
-- The 0.70 × 0.60 × 4.2 mm tower has 2 extrusion points. It does not build.
-- Each 0.80 mm pillar has extrusion from z = 0.4 through z = 3.2.
-- The bump has extrusion at z = 3.2 and z = 3.4 (two layers). The toolpath span is 0.75 × 0.75 mm inside the 1.20 × 1.20 mm mesh.
-- The retention face has extrusion at z = 4.0.
+`k = 3 × 1800 × 0.754 / 12.7³ = 1.99 N/mm`
+
+A pad printed 0.05 mm thin is t = 1.35 mm and 0.05 mm lower, so the 1.1 deflection is 0.20 mm and k = 1.78 N/mm. A pad printed 0.05 mm thick is t = 1.45 mm and the 1.3 deflection is 0.50 mm. These faces are on the bed and on the top of the nub, so the ×1.59 factor from a first layer printed in air does not apply. At ×1.59 on the thickness the 0.50 mm case would be 0.76% strain and 0.63 N, which is recorded and not the design.
+
+The plate from the outboard clamp to the land centre is 2.45 mm, 0.40 mm thick, and 16 mm along the edge at one station. That cantilever is 31 N/mm. In series with the thin pad the delivered force is 0.338 N. Four pads after 50% relaxation are 0.675 N, 2.05× the 0.330 N load.
+
+| Pad | Panel | δ | Strain | Force, one pad | Four pads, relaxed |
+|---|---|---|---|---|---|
+| nominal, 1.40 mm | 1.1 | 0.25 | 0.33% | 0.50 N | 0.99 N |
+| nominal | 1.2 | 0.35 | 0.46% | 0.70 N | 1.39 N |
+| nominal | 1.3 | 0.45 | 0.59% | 0.90 N | 1.79 N |
+| thin, 1.35 mm | 1.1 | 0.20 | 0.25% | 0.36 N | 0.71 N |
+| thin, with the plate | 1.1 | 0.20 | 0.25% | 0.34 N | 0.68 N |
+| thick, 1.45 mm | 1.3 | 0.50 | 0.67% | 1.10 N | 2.21 N |
+
+Strain is `1.5 × t × δ / L²`. The 0.67% row is the sustained case, under 1%. Sliding the plate in takes another 0.15 mm. On the thick pad and the 1.3 panel that is δ = 0.65 mm and 0.88%, under the 2.4% install gate. One edge is two pads: 2.4 N at the nominal 1.3 panel, 2.9 N on the thick pad.
+
+The root moment in the beam is in the layer plane. The across-layer member is the stem, whose length is case z. At 1.10 N and the 2.45 mm plate span the moment is 2.7 N·mm. The shoulder and the washer form that couple across the 0.40 mm plate, 6.7 N. On the 1.00 × 0.65 mm stem alone that is 10 MPa, 0.58% of E, under the 1% interlayer limit. The shoulder is 7.5 × 1.25 mm and shares the couple.
+
+A ledge 1.60 mm wide and 1.00 mm thick, with 0.70 mm of overhang, is 2099 N/mm by `k = 3EI / L³`. Bending stress in that ledge is in the layer plane. The across-layer check is the stem above.
 
 ## Fingers
 
-The shell is off for both steps.
+The shell is off for both jobs.
 
-1. Set the panel on the pads. Hold the release tab and slide the plate under the lip from the lead-in end until the tooth passes the lip edge.
-2. To remove it, lift the tab about 0.4 mm and slide the plate back. That bend is 1.6% and about 0.45 N, once, with the shell off. The tab is the end of the leaf, in the leaf's own y, so the pull is not on a 0.48 mm arm buried against the rib.
+1. Drop each pad into its trench, the root under the lip, the nub up.
+2. Set the panel on the nubs. The tail is already in J4.
+3. Press one long edge down, about 2.4 N, until the front is just under the plate. Slide the plate in from the open end until it meets the end stop and the tooth clicks. 0.20 mm of play remains at the tooth.
+4. Do the other edge the same way.
+
+To take it apart, push the ear toward the open end. The ear is outboard of the panel edge, in the washer's own layer, so the push is not on the display panel. Slide the plate out. Lift the panel off the nubs, then the pads out of the trenches.
+
+## Slice
+
+PrusaSlicer 2.9.2, the Debian `2.9.2+dfsg-1` binary. The coupon is `case/scratch/r6_pad_coupon.stl`: the pad with its nub, the 0.40 mm plate, and the 0.20 mm washer, each on the bed. Nozzle 0.40 mm, layers 0.20 mm, Arachne, PETG. The gcode sets 240 °C and an 80 °C bed. Supports off. Filament 46.29 mm. Estimated time 1 m 20 s.
+
+No layer is an overhang perimeter. The log has no floating object, no loose extrusions, and no low bed adhesion.
+
+- z = 0.2 is external perimeter and solid infill. That is the plate's underside, the bearing face, and the washer's stop face, both on the bed. It is also the pad's bottom.
+- The plate's top is z = 0.4, top solid infill.
+- The nub is the top 1.00 mm of the pad. z = 2.4 is the preload face: perimeters that fill the 4.0 × 2.4 mm nub. There is no bridge under it.
+
+## Option 2
+
+`concept-option2-outboard.png` is the other arrangement. A leaf 1.6 mm wide and 10 mm long sits outboard of the panel edge, where the strip is about 2.2 mm. A rigid finger reaches in over the land. A fixed pad under the finger is the upward bearing. In plan the shelf, the lip, and the finger are on one line, with the lip between the other two, so the leaf's free body closes in x and in y. At the same 1% strain and the same 0.20 mm thin-corner deflection the leaf is about t = 1.33 mm and about 0.34 N. It is not the one to build. The pad under the panel is, because its contact faces print on the bed and on a top surface, and the panel front stays on one plane.
 
 ## Gates to add
 
-All of these read the assembled mesh, at the worst panel thickness, the worst panel width, and the clip's y play.
+All of these read the assembled mesh, at 1.1, 1.2, and 1.3 mm, at the panel's inboard and outboard shift, and at stack dz of 0, 0.16, 0.26, and 0.51 mm.
 
-- Hook overlap in y, and the z gap between the plate top and the lip.
-- Seat gap between the heel and the shelf.
-- Outboard-stop play, which has to be less than the overlap minus 0.10 mm.
-- Shell clearance at least 0.21 mm with the clip against that stop, under a side load, under ±5° of tilt, and under the bump-rise probe.
-- Shell removed, push up on each bump: rigid rise stays inside the seat gap, and the clip does not rotate as a rigid body.
-- The 0.80 mm pillars are in the fit mesh, not only in a print file the fit never opens.
-- Strain from the mesh t, L, and δ, including the 1.3 mm panel, +0.05 mm, and contact on the bump's root-side edge. Interlayer stress in any vertical member that carries hook force, from its section.
-- Bump and tip against the 1.52 mm line and the active area at the worst offset.
-- A 2.9.2 slice of the print mesh: the bump is two layers, and the retention face is a top surface.
-
-## Concept C
-
-`concept-c-screw-bracket.png` stays as the screw-stopped leaf. It is not developed further here. It is not ruled out. It adds an M2 screw and a nut at each bracket and it needs a screwdriver, which is outside PETG-only and outside no-tools. It waits on Connie's explicit choice.
-
-## Optional, not in this concept
-
-- A double-ended clip, anchor in the middle, leaf each way, if one end's latch is awkward to reach.
-- A longer leaf where a span allows it, if a warm-wall coupon relaxes past the 50% used above.
-- A printed coupon held at 40 °C for a week, to replace that 50% with a measurement.
+- Plan-view R/H from the nub and the land. Both positive, and the two centres within 0.2 mm in x and in y.
+- Seat-gap rise. A gap under the washer lifts the panel 1:1. At the tall print and the 1.1 panel the inserted length stays at or above 3.0 mm, including that rise. The tooth play is 0.20 mm and does not lift the panel.
+- Stem interlayer stress, `F / A` or `Mc / I` from the stem section, at the thick-pad 1.3 force. The gate is 1% of E.
+- Air to the shell ceiling over the plate and over the washer, at every stack dz, with 0.03 mm of tilt on the land. The floor is 0.21 mm.
+- Land against the 1.52 mm line, the active area minus 0.50 mm, and the window, at the worst panel shift.
+- A sweep of the slide-in and the slide-out, shell off, ear outboard of the panel edge, tooth leaving through the open end.
+- A 2.9.2 slice of the coupon. No overhang perimeter on the plate's bed face or on the nub's top face.
