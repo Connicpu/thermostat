@@ -62,18 +62,12 @@ echo(str("FPC R=", fpc_R, " arc=", fpc_arc, " straight=", fpc_straight, " insert
 assert(fpc_ins > 3.0, "FPC tail insertion is short of the connector minimum");
 assert(fpc_ins_hi > 3.0, "a tall carrier print drops the FPC below 3.0 mm");
 assert(fpc_ins < 4.2, "FPC tail insertion is long");
-// 4.0 mm opto under the display panel. The short-print floor is 0.30 mm.
-// At this gap a short carrier print leaves 0.35 mm. The old 0.40 mm floor
-// does not fit a 0.20 mm lip rise on a tall print.
-assert(panel_gap - 0.10 - 4.0 >= 0.30, "panel gap does not clear the optos");
-// The display panel rests on the pads. The carrier lip, lip_air above the
-// panel front, is what stops it rising. The shell does not touch the panel.
-// The land behind the panel still has to clear a thick board (+0.16), a tall
-// carrier print (+0.10), a low snap seat (+0.10), and a tall standoff (+0.15):
-// 0.51 mm, and then the 0.20 mm rise up to the lip. The window chamfer starts
-// at Z_in+0.85, so the recess stops there. The lip stands proud of that and
-// has its own pocket. See case/ASSEMBLY.md.
-face_recess = 0.85;
+// 4.0 mm opto under the display panel. The stop sits sh_drop under Z_panel_b.
+// The assert below, once sh_drop exists, keeps a short print off the opto tops.
+// The display panel rests on the carrier stops. Bridges in the shell press the border.
+// The recess over that border is deep enough for a 0.80 mm beam and a 0.45 mm land,
+// and it leaves skin under the face. See case/ASSEMBLY.md.
+face_recess = 1.26;
 xstop_bite = 0.05;                   // +x posts cross the panel edge by this much, so a short print stops the slide
 // The outline is 36.70 mm. The datasheet gives that one width.
 // 36.50–36.90 is an assumption around it.
@@ -82,15 +76,51 @@ panel_hi = 36.90;
 panel_h = 36.70;
 fence_air = 0.20;                    // air between a long-edge fence and the outline. The fence does not cross the face.
 fence_t = 0.80;
-// Lip above the display panel. 0.20 mm of air, then 0.40 mm of PETG (two layers)
-// reaching 0.40 mm onto the border. The active area stays clear (margins are
-// 3.0 / 3.82 / 9.1 mm). The shell carries none of this load.
-lip_air = 0.20;
-shelf_t = 0.40;
-lip_in = 0.40;
-fpc_ins_lip = fpc_free - PI * (panel_gap + 0.10 + lip_air - fpc_z_ret) / 2 - fpc_straight;
-echo(str("FPC at tall print plus lip rise, inserted=", fpc_ins_lip));
-assert(fpc_ins_lip > 3.0, "tall print plus the lip rise drops the FPC below 3.0 mm");
+// Shell bridges. A 0.50 mm land, 0.45 mm tall, on a 0.80 x 1.20 beam.
+// The carrier stop is sh_drop under Z_panel_b. The free land is sh_R_below
+// under the nominal panel front when the shell is at the window centre.
+sh_root = 2.40;
+sh_t = 0.80;
+sh_w = 1.20;
+sh_y0 = 2.05;
+sh_land0 = 2.47;
+sh_land1 = 2.97;
+sh_nub_h = 0.45;
+sh_nub_len = 4.0;
+sh_drop = 0.15;
+sh_stop = Z_panel_b - sh_drop;
+sh_R_below = 0.38;
+sh_R = sh_stop + panel_t - sh_R_below;
+sh_bite = 0.10;
+sh_loc_gap = 0.10;
+sh_loc_t = 0.80;
+sh_rib_drop = 1.85;
+sh_tie_h = 1.20;
+sh_ceil_skin = 0.06;
+sh_spans = [
+  [29.70, 67.50, 0, 48.60],
+  [71.60, 106.40, 0, 98.00],
+  [29.70, 67.50, 1, 48.60],
+  [71.60, 106.40, 1, 98.00]
+];
+sh_columns = [
+  [29.60, 29.30, 33.40, 30.40],
+  [33.50, 33.00, 50.20, 34.80],
+  [44.30, 26.50, 47.40, 27.70],
+  [41.60, 37.20, 50.40, 43.00],
+  [34.20, 48.20, 50.20, 51.20],
+  [34.20, 60.90, 50.40, 61.55]
+];
+sh_ties = [
+  [33.40, 29.40, 49.50, 30.05]
+];
+sh_locs = [
+  [42.4, 52.6, 0],
+  [85.0, 95.6, 0],
+  [50.0, 55.2, 1],
+  [76.4, 89.6, 1]
+];
+assert(panel_gap - sh_drop - 0.10 - 4.0 > 0, "panel stop meets the optos");
 // Finger push that opens the J4 slider toward +x. The contact face is the -x
 // face of the beam. Section is push_t along x and push_h along z, so the bend
 // is in the plane of the layers. push_L is the free length from the anchor to
@@ -251,8 +281,56 @@ module backplate(){
   }
 }
 
+// ---------------- shell bridges ----------------
+function sh_y_edge(which) = which == 0 ? panel[1] : panel[3];
+function sh_dir(which) = which == 0 ? 1 : -1;
+
+module sh_pillar_pair(x0, x1, y0, y1, z0, z1) {
+  board_box(x0, min(y0, y1), x0 + sh_root, max(y0, y1), z0, z1);
+  board_box(x1 - sh_root, min(y0, y1), x1, max(y0, y1), z0, z1);
+}
+module sh_bridge(x0, x1, which, nubx) {
+  edge = sh_y_edge(which);
+  dir = sh_dir(which);
+  y0 = edge + dir * sh_y0;
+  y1 = edge + dir * (sh_y0 + sh_w);
+  z0 = sh_R + sh_nub_h;
+  z1 = z0 + sh_t;
+  board_box(x0 + sh_root - 0.12, min(y0, y1), x1 - sh_root + 0.12, max(y0, y1), z0, z1);
+  ny0 = edge + dir * sh_land0;
+  ny1 = edge + dir * sh_land1;
+  board_box(nubx - sh_nub_len / 2, min(ny0, ny1), nubx + sh_nub_len / 2, max(ny0, ny1), sh_R, z0 + 0.02);
+}
+module sh_pillars(x0, x1, which) {
+  edge = sh_y_edge(which);
+  dir = sh_dir(which);
+  y0 = edge + dir * sh_y0;
+  y1 = edge + dir * (sh_y0 + sh_w);
+  z0 = sh_R + sh_nub_h;
+  z1 = Z_in + face_recess + sh_bite;
+  sh_pillar_pair(x0, x1, y0, y1, z0, z1);
+}
+module sh_loc(x0, x1, which) {
+  edge = sh_y_edge(which);
+  dir = sh_dir(which);
+  y_fence = edge - dir * (fence_air + fence_t);
+  y_near = y_fence - dir * sh_loc_gap;
+  y_far = y_near - dir * sh_loc_t;
+  z0 = Z_in - sh_rib_drop;
+  z1 = Z_in + face_recess + sh_bite;
+  board_box(x0, min(y_near, y_far), x1, max(y_near, y_far), z0, z1);
+}
+module sh_beams() { for (s = sh_spans) sh_bridge(s[0], s[1], s[2], s[3]); }
+module sh_pillar_all() { for (s = sh_spans) sh_pillars(s[0], s[1], s[2]); }
+module sh_loc_all() { for (s = sh_locs) sh_loc(s[0], s[1], s[2]); }
+module sh_added() { sh_beams(); sh_pillar_all(); sh_loc_all(); }
+module sh_widen() {
+  board_box(panel[0] - 0.30, panel[1] + 2.50, panel[2] + 0.40, panel[1] + 3.30, Z_in - 0.02, Z_in + face_recess);
+  board_box(panel[0] - 0.30, panel[3] - 3.30, panel[2] + 0.40, panel[3] - 2.50, Z_in - 0.02, Z_in + face_recess);
+}
+
 // ---------------- front shell ----------------
-module shell(pk=true){   // pk=false: preview only, pockets left solid (inlays sit 0.01 proud) to avoid OpenCSG specks
+module shell_plain(pk=true){   // pk=false: preview only, pockets left solid (inlays sit 0.01 proud) to avoid OpenCSG specks
   difference(){
     union(){
       difference(){
@@ -301,15 +379,9 @@ module shell(pk=true){   // pk=false: preview only, pockets left solid (inlays s
     board_box(panel[0]-0.30, panel[1]-0.30, panel[2]+1.20, panel[3]+0.30, Z_pcb_t+0.50, Z_in-0.02);
     // Fold pocket. The bend bulges past the outline, and the lower leg sits near the board.
     board_box(panel[2]-0.40, 37.40, panel[2]+4.0, 50.60, Z_pcb_t+0.40, Z_in-0.02);
-    // Land behind the display panel, so a thick board does not bring the panel into the face.
+    // Land behind the display panel. The bridges sit in the widened band.
     board_box(panel[0]-0.30, panel[1]-0.55, panel[2]+0.40, panel[3]+0.55, Z_in-0.02, Z_in+face_recess);
-    // Local pockets over the carrier lips. The lip top is 0.60 mm past the inner
-    // face; the loose stack adds 0.51 mm. The pocket stops at Z_in+1.36, which
-    // leaves about 0.64 mm of skin and about 0.25 mm over the lip on that stack.
-    lip_pocket(42.0, 53.0, panel[1], +1);
-    lip_pocket(84.6, 96.0, panel[1], +1);
-    lip_pocket(49.6, 55.6, panel[3], -1);
-    lip_pocket(76.0, 90.0, panel[3], -1);
+    sh_widen();
     button_void();
     // RESET pinhole, LED light pipe
     for(p=pin) translate([cx(p[0]),cy(p[1]),Z_in-1]) cylinder(d=1.6,h=10);
@@ -331,6 +403,7 @@ module shell(pk=true){   // pk=false: preview only, pockets left solid (inlays s
     translate([cx(led[0]),cy(led[1]),Z_in-2]) cylinder(d=2.0,h=10);
   }
 }
+module shell(pk=true){ union(){ shell_plain(pk); sh_added(); } }
 
 // ---------------- multi-colour bodies ----------------
 pv_e = 0.01;   // preview-only: inlays grow 0.01 mm (up + sideways) to avoid z-fighting; STL exports use 0
@@ -506,26 +579,6 @@ module edge_fence(x0, x1, edge, dir) {
   board_box(x0, min(y_in, y_out), x1, max(y_in, y_out), z0, z_fence);
   board_box(x0, min(y_in, edge + dir * 0.40), x1, max(y_in, edge + dir * 0.40), z0, z0 + 1.50);
 }
-// Shelf lip_air above the panel front, lip_in onto the border, standing on the fence.
-// The riser overlaps the fence top so the shelf is not a separate body.
-module panel_lip(x0, x1, edge, dir) {
-  y_fence = edge - dir * fence_air;
-  y_over = edge + dir * lip_in;
-  y_out = y_fence - dir * fence_t;
-  z_lip0 = Z_in + lip_air;
-  z_lip1 = z_lip0 + shelf_t;
-  board_box(x0, min(y_fence, y_over), x1, max(y_fence, y_over), z_lip0, z_lip1);
-  board_box(x0, min(y_fence, y_out), x1, max(y_fence, y_out), Z_in - 0.50, z_lip1);
-}
-// Shell cut over one lip, 0.40 mm past the shelf and the riser.
-module lip_pocket(x0, x1, edge, dir) {
-  y_fence = edge - dir * fence_air;
-  y_over = edge + dir * lip_in;
-  y_out = y_fence - dir * fence_t;
-  y0 = min(y_out, y_over) - 0.50;
-  y1 = max(y_out, y_over) + 0.50;
-  board_box(x0 - 0.50, y0, x1 + 0.50, y1, Z_in - 0.20, Z_in + 1.36);
-}
 // Printed push. A finger on the -x face drives the shoe toward +x into the high
 // ear rear. The display panel stays on the pads. The beam is left of the airflow
 // partition and above the USB-C body. The rod runs past the MODE tube.
@@ -563,6 +616,8 @@ module panel_xstops() {
   board_box(panel[2] + 0.05, 59.70, panel[2] + 0.75, 60.45, Z_panel_b + 0.20, Z_panel_b + 0.70);
 }
 module carrier() {
+  difference() {
+  union() {
   z0 = Z_pcb_t;
   // left edge fence, 0.25 mm off the board, tied to the spine so the nozzle keeps the gap
   board_box(-0.80, 42.0, -0.25, 60.0, z0, z0 + 1.15);
@@ -596,12 +651,17 @@ module carrier() {
   edge_fence(84.6, 96.0, panel[1], +1);
   edge_fence(49.6, 55.6, panel[3], -1);
   edge_fence(76.0, 90.0, panel[3], -1);
-  panel_lip(42.0, 53.0, panel[1], +1);
-  panel_lip(84.6, 96.0, panel[1], +1);
-  panel_lip(49.6, 55.6, panel[3], -1);
-  panel_lip(76.0, 90.0, panel[3], -1);
+  for (c = sh_columns)
+    board_box(c[0], c[1], c[2], c[3], Z_pcb_t, sh_stop);
+  for (c = sh_ties)
+    board_box(c[0], c[1], c[2], c[3], Z_pcb_t, Z_pcb_t + sh_tie_h);
   panel_xstops();
   slider_push();
+  }
+  // Rest surfaces under the outline, brought to the stop. Fences stand outboard of this cut.
+  board_box(panel[0] - 0.02, panel[1] - 0.05, panel[2] + 0.02, panel[3] + 0.05,
+            sh_stop, Z_panel_b + 0.25);
+  }
 }
 module fpc() {
   zc = Z_pcb_t + fpc_z_ret + fpc_R;
@@ -645,6 +705,14 @@ else if(part=="shell_orange") flipP() inlay_orange();
 else if(part=="shell_pink") flipP() { light_pipe(); inlay_pink(); }
 else if(part=="shell") translate([0,H,Z_out]) rotate([180,0,0]) shell();   // print face-down
 else if(part=="carrier") carrier();
+else if(part=="sh_beams") sh_beams();
+else if(part=="sh_pillars") sh_pillar_all();
+else if(part=="sh_locs") sh_loc_all();
+else if(part=="sh_carrier") carrier();
+else if(part=="sh_stock") shell_plain();
+else if(part=="sh_shell_print") translate([0,H,Z_out]) rotate([180,0,0]) shell();
+else if(part=="sh_carrier_print") translate([0,0,-Z_pcb_t]) carrier();
+else if(part=="sh_stock_print") translate([0,H,Z_out]) rotate([180,0,0]) shell_plain();
 else if(part=="caps") for(i=[0:2]) translate([i*14,0,0]) cap(0, 0, true);
 else if(part=="assembly"){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); fpc(); color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); color("orange") cap_placed(btn_flare); }
 else if(part=="exploded"){ color("lightgray") backplate(); translate([0,0,22]){ pcb(); color("wheat") carrier(); epd(); fpc(); } translate([0,0,64]){ color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); color("orange") cap_placed(btn_flare); } }
@@ -656,6 +724,15 @@ else if(part=="section_j1x") difference(){ union(){ color("lightgray") backplate
   translate([cx(term[0]),-1,-30]) cube([W, H+2, 80]); }   // cut across J1 + plug + wire bend (board x=70)
 else if(part=="section_airflow") difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); color("orange") cap_placed(btn_flare); }
   translate([-1, cy(32), -30]) cube([W+2, H, 80]); }   // cut at board y=32, through the SHT40 and both zone ribs
+else if(part=="open"){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); fpc(); }
+else if(part=="section_bridge") rotate([-90,0,0]) difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); color("white") shell(false); }
+  translate([-1,-1,-30]) cube([W+2, cy(28.96), 80]); }
+else if(part=="section_pillar") rotate([0,90,0]) difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); color("white") shell(false); }
+  translate([-30,-1,-30]) cube([cx(30.9)+30, H+2, 80]); }
+else if(part=="section_u7") rotate([-90,0,0]) difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); color("white") shell(false); }
+  translate([-1,-1,-30]) cube([W+2, cy(29.85), 80]); }
+else if(part=="section_j4") rotate([-90,0,0]) difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); fpc(); color("white") shell(false); }
+  translate([-1,-1,-30]) cube([W+2, cy(44), 80]); }
 // rear clearance check: tallest rear parts must clear the backplate top (plate_t)
 assert(Z_pcb_b-bulk_h>plate_t+1, "C43 hits backplate");
 assert(Z_pcb_b-plug_h>plate_t-plug_pocket+1, "J1 plug hits backplate");

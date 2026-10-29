@@ -1,6 +1,6 @@
 # Assembly
 
-The case is a 147 × 71 × 26.25 mm PETG shell, backplate, and panel carrier. The board, the carrier, and the display panel are one subassembly. The shell is a cover. It clips only to the backplate. It does not hold the display panel, and it does not press the board.
+The case is a 147 × 71 × 26.25 mm PETG shell, backplate, and panel carrier. The board, the carrier, and the display panel are one subassembly. The shell clips to the backplate. Four bridges printed in the shell press the display panel onto the carrier. The shell does not press the board.
 
 Coordinates below are board coordinates unless noted: origin at the board's top-left, x to the right, y down, z up from the PCB top. Case z is out from the wall, with the wall at z = 0. The outer depth, 26.25 mm, is the shell front (`Z_out`).
 
@@ -47,7 +47,7 @@ Raising the panel lengthens only the semicircle. The pull-out is π/2 ≈ 1.57 m
 | 0.50 mm | 3.66 mm | 3.51 mm | 3.35 mm |
 | 0.70 mm | 3.98 mm | 3.82 mm | 3.66 mm |
 
-4.45 mm is the design gap. A carrier that prints 0.10 mm tall opens it to 4.55 mm and inserts 3.35 mm. The lip then allows another 0.20 mm of rise, which inserts 3.03 mm, still at the drawing's 3.0 mm. A short print closes the gap to 4.35 mm and inserts 3.66 mm. A thicker board does not change the gap: it lifts the board, the carrier, and the panel together. Carrier print height does.
+4.45 mm is the nominal gap from the PCB top to `Z_panel_b`. The panel sits on the stop, 0.15 mm under that. A carrier that prints 0.10 mm tall opens the seated gap, and a short print closes it. A thicker board does not change the gap: it lifts the board, the carrier, and the panel together. Carrier print height does. The cable can still lift a thin corner out of J4. That reseat is in the bridge section below.
 
 A 0.30 mm leg at the design gap inserts 2.96 mm, 0.04 mm under the drawing. That is the tail lying on the soldermask. The 0.50 mm figure is an unlabeled side-view number, so this row is the open question on the fold.
 
@@ -67,7 +67,7 @@ With the slider open the tail can shift sideways in the connector. The drawing's
 
 The mouth is under the panel. The window is smaller than the panel, so the panel cannot drop in through the front. Assembly mates J4 with the panel in the hand, then sets the panel down on the carrier pads. The fences and the cable-end posts locate it. Nothing hooks it, and there is no release step.
 
-The shell never touches the display panel and never touches the board. Its only clips are the four bumps on the backplate lip.
+The shell clips are the four bumps on the backplate lip. The bridges on the long edges of the window press the display panel. The shell does not press the board.
 
 ## The carrier
 
@@ -114,19 +114,21 @@ The shell prints face-down, so the wall's length (case z, the 21.05 mm) runs alo
 
 The 2.4% gate is the Ultimaker PETG flexural strain, 3.6%, divided by 1.5. `scripts/case_fit.py` recomputes both and fails if the climb is 0.20 mm or less, if L is 11 mm or less, if the strain reaches 2.4%, or if the force reaches 8 N. A wall of L = 8 mm at this same climb is 2.81% and the script asserts that case fails. The mesh probe finds the bump solid 0.25 mm inside the apex, the window air at the apex (signed distance −1.00 mm), and shell solid 8 mm beside the window. A box that fills the window is solid at the apex, and the script asserts that filled window fails.
 
-The shell clears the display panel and the fold while it sits, and while it is lifted 1 mm and 2 mm off the clips (the climb). On the current mesh the panel clearance is 0.39 mm seated and 0.31 mm with the board 0.16 mm thick, and 0.46 mm at both lifts. The fold clearance is 0.35 mm, 0.36 mm, and 0.35 mm. The fit fails if any of those is 0.10 mm or less. A shell pushed 1 mm onto the panel enters it, and the script asserts that case fails. The board slab, including a thick board, stays 0.50 mm off the shell. A clamp post added on a mounting hole enters the board, and the script asserts that case fails.
+The active area and the fold stay clear of the shell while it sits, and while it is lifted 1 mm and 2 mm off the clips. The fit reads that clearance and fails at 0.10 mm or less. The lands on the border are the hold-down, so that check is the active area, not the border. A shell pushed 1 mm onto the panel enters it, and the script asserts that case fails. The board slab, including a thick board, stays 0.50 mm off the shell. A clamp post added on a mounting hole enters the board, and the script asserts that case fails.
 
-The inner face is recessed 0.85 mm over the panel border, which is where the window chamfer starts. That recess is clearance. It is not what holds the panel down. The carrier lip does that, and the shell carries 0 N from the panel.
+The inner face is recessed 1.26 mm over the panel border. The bridges and their pillars stand in that recess. The recess is deep enough for the 0.80 mm beam and the 0.45 mm land, and it leaves skin under the face.
 
 Putting the shell on, or taking it off, does not shift the display panel and does not load the tail. The panel is already on the pads, between the fences and against the +x posts. The shell's clearance stays positive through the 2 mm lift. The locating pins keep the board. The shell's sideways travel is 0, which fits the smallest non-negative guide play.
 
-## The carrier lip
+## The shell bridges
 
-The shell does not hold the display panel. The pads stop it going down. A lip on each long-edge fence stops it going up. The lip stands 0.20 mm above the panel front (`lip_air`), then 0.40 mm of PETG (`shelf_t`, two layers), and it reaches 0.40 mm onto the border. That 0.40 mm stays off the active area. The lip is on both long edges, on the same spans as the fences, so the panel cannot pivot off one side. The shell has a local pocket over each lip and does not touch it. The load on the shell from the panel is 0 N.
+The display panel drops straight onto the carrier. The pads and the added columns top out at z 22.90, 0.15 mm under the nominal panel back. Fences stand 0.20 mm off the long edges. Ribs on the shell stand 0.10 mm off the outer face of each fence, and the rib bottoms reach `Z_in − 1.85`, so the rib and the fence overlap at every stack corner.
 
-The panel does not drop straight down onto the pads. It tilts, slides under the lips, and then sits. The 0.20 mm gap stays air. The fit reads that air and reads the shelf solid, and it fails if the lip is missing.
+Each bridge is 0.80 mm thick and 1.20 mm wide, with a land 0.50 mm wide and 0.45 mm tall. The lands stay between 1.92 mm and 3.32 mm from the edge. The right-hand land is 6 mm from its pillar. Pillars stay at least 0.13 mm off the panel, and the beam stays 0.16 mm under the recess ceiling.
 
-A tall print lifts the pads and the lip together, so the 0.20 mm gap does not open. It does lift the whole panel off J4. At the 4.55 mm tall gap the tail inserts 3.35 mm, and the 0.20 mm rise leaves 3.03 mm. A lip air of 0.40 mm on that same tall print leaves less than 3.0 mm, and the fit fails that case. The minimum stays 3.0 mm. The opto clearance at the short print is 0.35 mm, at the design gap 0.45 mm, and at the tall print 0.55 mm. The short-print floor in the fit is 0.30 mm.
+With the panel on the stop, the tail inserts 3.98 / 3.74 / 3.51 mm at carrier −0.15 / 0 / +0.15. The target is 3.15 mm. A thin corner has a gap under the land, and the cable can lift that end out of J4 from day one. After the bridges relax, more corners do the same. Take the shell off, press the tail back in, and close the slider.
+
+Under a 10 N press with the preload gone, U7 keeps 0.04 mm and U8 keeps 0.12 mm. The top-left column is what holds U7 off the panel.
 
 ## The slider push
 
@@ -177,7 +179,7 @@ The backplate is screwed to the wall. Every step after that is fingers. The snap
 
 3. Set the carrier on the board. The left fence and the bottom fence drop onto the board edges, and the pads sit on the soldermask.
 
-4. Fold the tail 180° under the panel, contacts down. Tilt the display panel and slide it under the carrier lips, then set it down on the pads. Slide the tail into J4 from the right until the panel edge meets the posts and lines up with the depth marks. Leave the panel seated. It is not lifted again while the slider is locked. With a fingernail in the 2.60 mm slot under the panel, push the high ear's +x face toward −x. The face is at board x = 103.77, y 52.70–52.80. The fold stays the seated semicircle. There is no click. The panel back is 4.45 mm above the PCB, and the lips sit 0.20 mm above the panel front. This is the subassembly: board, carrier, display panel, tail.
+4. Fold the tail 180° under the panel, contacts down. Drop the display panel onto the pads. Slide the tail into J4 from the right until the panel edge meets the posts and lines up with the depth marks. With a fingernail in the slot under the panel, push the high ear's +x face toward −x. The face is at board x = 103.77, y 52.70–52.80. The fold stays the seated semicircle. There is no click. The panel back is on the stop at 22.90. This is the subassembly: board, carrier, display panel, tail.
 
 5. Mate the 15EDGK plug onto J1 while the board is in the hand. The plug faces the wire hole.
 
@@ -185,18 +187,18 @@ The backplate is screwed to the wall. Every step after that is fingers. The snap
 
 7. Snap the three button caps into the shell from the inside, before the shell goes near the board. Snap the print tie off each cap first. Lay the shell face-down, push each head through its hole with a fingertip on the leaf, and press until the cone seats and the barb clicks behind the lip. The barb bends 0.30 mm to pass. The caps stay in the shell from here on. They can rattle between the cone and the lip.
 
-8. Lower the shell over the stack and press the side walls over the backplate bumps with the fingers until they snap. The walls climb 0.50 mm. The shell does not touch the display panel and it does not touch the board. The stems come down onto the three actuators with the 0.63 mm gap.
+8. Lower the shell over the stack and press the side walls over the backplate bumps with the fingers until they snap. The walls climb 0.50 mm. The ribs take the fences. The lands meet the border where the stack is thick, and stay clear where it is thin. The shell does not touch the board. The stems come down onto the three actuators with the 0.63 mm gap.
 
 The light pipe, the RESET pinhole, the window, and the vents are in the shell. The three airflow zones are the hot zone on the left (triacs and the opto drive), the quiet middle over the wire hole, and the sensor duct on the right. Close the wall opening with a printed PETG plug around the cable, the same material as the case. The baffle around the SHT40 island is open to the right wall. The edge vents are about 28% open area, on all four edges, with the triac heat on the far side of the curtain from the sensor.
 
 ## Taking it apart
 
-1. Unsnap the shell walls at the snap windows with a fingernail. The window is 2.0 mm tall and 11 mm wide, which is the purchase. The bumps are 0.80 mm outside the lip and 41.6° on both sides, so the wall climbs off them. Lift the shell straight off. The button caps stay in it. The display panel stays on the pads, between the fences and against the cable-end posts. The board stays on the locating pins. The tail is not loaded: the shell clears the panel and the fold through the whole lift, and the shell does not slide sideways. To take a cap out, press the single barb toward the stem and push the cap out the back of the hole.
+1. Unsnap the shell walls at the snap windows with a fingernail. The window is 2.0 mm tall and 11 mm wide, which is the purchase. The bumps are 0.80 mm outside the lip and 41.6° on both sides, so the wall climbs off them. Lift the shell straight off. The button caps stay in it. The bridges leave the border as the shell comes off. The display panel stays on the pads, between the fences and against the cable-end posts. The board stays on the locating pins. The shell does not slide sideways. To take a cap out, press the single barb toward the stem and push the cap out the back of the hole.
 
 2. Lift the subassembly off the pins. Unplug the HVAC plug in the hand.
 
-3. Leave the display panel seated. Press the carrier push toward +x with a fingertip on its contact face (board x = 114.80, y 53.70–64.70). The shoe moves the high-ear slider toward +x. The panel stays on the pads, under the lips. Draw the tail out toward +x only after the slider is open. A lift that clears the fences, while the slider is still locked, pulls the tail under 3.0 mm.
+3. If the cable end has lifted out of J4, press the tail back in and close the slider before the shell goes back on. To take the panel out, press the carrier push toward +x with a fingertip on its contact face (board x = 114.80, y 53.70–64.70). The shoe moves the high-ear slider toward +x. Draw the tail out toward +x only after the slider is open, then lift the panel off the pads.
 
 ## Where J4 sits
 
-J4 is the footprint in `kicad/`: silk mouth at board x = 103.77, 4.69 mm inboard of the panel edge, slider under the panel. The housing face on the STEP is at x = 102.675, and the housing body is board y 36.0–52.0. Assembly tilts the panel under the lips, seats it on the pads, slides the tail in until the edge meets the posts and the depth marks, and shuts the slider with a fingernail on the high ear's +x face. The panel stays seated. Service lifts the shell straight off with a fingernail in the snap window, then opens the slider with a fingertip on the carrier push. The panel stays on the pads until the slider is open. The connector stays on the footprint.
+J4 is the footprint in `kicad/`: silk mouth at board x = 103.77, 4.69 mm inboard of the panel edge, slider under the panel. The housing face on the STEP is at x = 102.675, and the housing body is board y 36.0–52.0. Assembly drops the panel onto the pads, slides the tail in until the edge meets the posts and the depth marks, and shuts the slider with a fingernail on the high ear's +x face. The cable end can leave J4 from day one at a thin corner. Service is the shell off, the tail pressed back in, and the slider closed. The connector stays on the footprint.

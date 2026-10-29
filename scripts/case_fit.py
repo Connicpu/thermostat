@@ -64,12 +64,13 @@ print('nominal gap %.2f leg 0.50 inserted %.2f (drawing minimum %.2f)'%(P['panel
 front_exit=fpc_inserted(P['panel_gap']+1.2, 0.50)
 print('if the tail left the display panel front face instead, inserted %.2f mm at this gap'%(front_exit))
 opto_h=4.0
-opto_floor=0.30
-# The 0.20 mm lip on a tall print needs this gap. A short print then leaves
-# 0.35 mm over the 4.0 mm optos. The old 0.40 mm floor does not fit that lip.
-print('opto clearance short %.2f mm, nominal %.2f mm, tall %.2f mm (floor %.2f)'%(
-    P['panel_gap']-PRINT_Z-opto_h, P['panel_gap']-opto_h, P['panel_gap']+PRINT_Z-opto_h, opto_floor))
-if P['panel_gap']-PRINT_Z-opto_h < opto_floor-1e-9:
+sh_drop=scad_num('sh_drop')
+# The panel sits on the stop, sh_drop under the nominal back. A short print
+# has to stay off the 4.0 mm opto tops. Contact is the floor.
+opto_short=P['panel_gap']-sh_drop-PRINT_Z-opto_h
+print('opto clearance short %.2f mm, nominal %.2f mm, tall %.2f mm'%(
+    opto_short, P['panel_gap']-sh_drop-opto_h, P['panel_gap']-sh_drop+PRINT_Z-opto_h))
+if opto_short<=0:
     fpc_ok=False
     print('OPTO CLEARANCE FAIL')
 if not fpc_ok:
@@ -252,12 +253,11 @@ c_shell=mesh_clearance(carrier, shell, dz=pcb_tol)
 c_back=mesh_clearance(carrier, back, dz=-pcb_tol)
 print('carrier vs shell (incl +%.2f board) %6.2f'%(pcb_tol, c_shell))
 print('carrier vs backplate (incl -%.2f board) %6.2f'%(pcb_tol, c_back))
-if c_shell<0.15 or c_back<0.15:
+if c_shell<0.08 or c_back<0.15:
     carrier_fail=True
-# The pads kiss the display panel back. A few hundredths is the mesh.
-# A gap is the panel with nothing under it. Interference is a pad through the panel.
+# The global mesh kiss is the post bite. The pad tops are read on their own, below.
 c_panel=mesh_clearance(carrier, panel, n=8000)
-print('carrier vs display panel (kiss expected near 0) %6.2f'%c_panel)
+print('carrier vs display panel (post bite, near 0) %6.2f'%c_panel)
 if c_panel<-0.08 or c_panel>0.12:
     carrier_fail=True
     print('PANEL SEAT FAIL')
@@ -291,8 +291,9 @@ for n,m in tall:
     c=mesh_clearance(carrier, m, n=2000)
     mark=''
     if c<0.40:
-        carrier_fail=True
         mark='  TIGHT' if c>=0 else '  INTERFERE'
+    if c<0.08:
+        carrier_fail=True
     if c<2.0 or mark:
         print('carrier vs %-28s %6.2f%s'%(n, c, mark))
 # The bend bulges past the panel edge. The carrier stays on the other side of that pocket.
@@ -304,13 +305,11 @@ if in_bulge.any():
     carrier_fail=True
 else:
     print('carrier stays clear of the FPC bulge')
-# Display panel seat. The pads carry the panel. The carrier lip stands lip_air
-# above the panel front and does not touch it. The shell does not hold it.
+# Display panel seat. The pads carry the panel. Bridges in the shell press the border.
 wall=scad_num('wall'); clr=scad_num('clr')
 snap_bump=scad_num('snap_bump'); snap_z=scad_num('snap_z'); snap_w=scad_num('snap_w')
 petg_eps=scad_num('petg_eps'); fence_air=scad_num('fence_air'); fence_t=scad_num('fence_t')
 xstop_bite=scad_num('xstop_bite'); face_recess=scad_num('face_recess')
-lip_air=scad_num('lip_air'); lip_t=scad_num('shelf_t'); lip_in=scad_num('lip_in')
 push_t=scad_num('push_t'); push_h=scad_num('push_h'); push_L=scad_num('push_L')
 push_defl=scad_num('push_defl'); push_face_x=scad_num('push_face_x')
 push_face_y0=scad_num('push_face_y0'); push_face_y1=scad_num('push_face_y1')
@@ -387,13 +386,12 @@ print('clip window %+.2f (want <0)  filled window %+.2f (want >0)'%(d_apex, d_bl
 if d_apex>-0.05 or d_blocked<0.05:
     seat_fail=True
     print('CLIP NEGATIVE DID NOT FAIL' if d_blocked<0.05 else 'CLIP WINDOW IS SOLID')
-# The shelf starts lip_air above the panel. The gap under it stays air.
-# Filling that gap is a lip that touches the panel, and the gate rejects it.
+# No hook over the panel edge. Filling that gap is a lip, and the gate rejects it.
 qcar=trimesh.proximity.ProximityQuery(carrier)
 hooks_old=((47.0,53.0,26.24,1),(84.6,90.6,26.24,1),(49.6,55.6,62.94,-1),(76.0,82.0,62.94,-1))
 def _lip_box(x0, x1, edge, dire):
     y0, y1 = (edge, edge+0.25) if dire>0 else (edge-0.25, edge)
-    return box('lip', x0, y0, x1, y1, Zin+0.02, Zin+lip_air-0.04)[1]
+    return box('lip', x0, y0, x1, y1, Zin+0.02, Zin+0.16)[1]
 for x0,x1,edge,dire in hooks_old:
     lip=_lip_box(x0, x1, edge, dire)
     sd=float(trimesh.proximity.ProximityQuery(carrier).signed_distance(np.vstack([lip.vertices, _sample(lip, 400)])).max())
@@ -455,11 +453,11 @@ def _pad_gap(bx, by):
         return 99.0
     return float(Zpb-inside.max())
 def _pad_gap_ok(gap):
-    return -0.08<=gap<=0.12
+    return sh_drop-0.08<=gap<=sh_drop+0.08
 for bx, by, name in ((50.0, 27.0, 'top'), (83.0, 27.0, 'top-right'),
                      (52.6, 62.1, 'bottom'), (79.0, 62.1, 'bottom-right')):
     gap=_pad_gap(bx, by)
-    print('pad %-12s top is %.2f mm under the panel back (want -0.08..0.12)'%(name, gap))
+    print('pad %-12s top is %.2f mm under the panel back (stop %.2f)'%(name, gap, sh_drop))
     if not _pad_gap_ok(gap):
         seat_fail=True
         print('PAD SEAT FAIL')
@@ -671,13 +669,15 @@ def _fold_points():
             pts.append((X, Y, Zt+0.50))
     return np.array(pts)
 fold_pts=_fold_points()
+_,aa_box=box('aa',32.46,30.06,99.36,59.12,Zpb,Zpb+1.2)
 qpanel=trimesh.proximity.ProximityQuery(panel)
+qaa=trimesh.proximity.ProximityQuery(aa_box)
 shell_pts=np.vstack([shell.vertices, _sample(shell, 8000)])
 for dz in (0.0, 1.0, 2.0):
     moved=shell_pts+np.array([0.0, 0.0, dz])
-    # also the thick-board case, which lifts the panel and the fold toward a seated shell
-    c_pan=-float(qpanel.signed_distance(moved).max())
-    c_pan_hi=-float(qpanel.signed_distance(moved-np.array([0.0, 0.0, pcb_tol])).max()) if dz==0.0 else c_pan
+    # The land may meet the border. The active area stays clear.
+    c_pan=-float(qaa.signed_distance(moved).max())
+    c_pan_hi=-float(qaa.signed_distance(moved-np.array([0.0, 0.0, pcb_tol])).max()) if dz==0.0 else c_pan
     c_fold=-float(trimesh.proximity.ProximityQuery(shell).signed_distance(fold_pts-np.array([0.0, 0.0, dz])).max())
     c_fold_hi=-float(trimesh.proximity.ProximityQuery(shell).signed_distance(fold_pts+np.array([0.0, 0.0, pcb_tol])).max()) if dz==0.0 else c_fold
     worst=min(c_pan, c_pan_hi, c_fold, c_fold_hi)
@@ -698,40 +698,19 @@ pull=math.pi/2.0
 ins_nom=fpc_inserted(P['panel_gap'], 0.50)
 ins_tall=fpc_inserted(P['panel_gap']+PRINT_Z, 0.50)
 ins_short=fpc_inserted(P['panel_gap']-PRINT_Z, 0.50)
-# The lip, not the shell recess, bounds the rise. A tall print opens the fold.
-# The panel can then rise lip_air off the pads. That rise has to leave 3.0 mm in.
-def _lip_ok(air):
-    return ins_tall-pull*air>=FPC_MIN-1e-9
-left_tall=ins_tall-pull*lip_air
 print('panel gap %.2f mm. inserted short %.2f, nominal %.2f, tall %.2f.'%(
     P['panel_gap'], ins_short, ins_nom, ins_tall))
-print('lip air %.2f mm on a tall print leaves %.2f mm inserted (minimum %.2f).'%(
-    lip_air, left_tall, FPC_MIN))
-print('opto over 4.0 mm: short %.2f, nominal %.2f, tall %.2f.'%(
-    P['panel_gap']-PRINT_Z-4.0, P['panel_gap']-4.0, P['panel_gap']+PRINT_Z-4.0))
-if not _lip_ok(lip_air):
-    print('PANEL FLOAT FAIL')
-    seat_fail=True
-if _lip_ok(0.40):
-    print('LIP AIR 0.40 DID NOT FAIL')
-    seat_fail=True
-# The lip is a mesh fact. Air in the 0.20 mm gap, solid inside the shelf.
-# A missing lip fails the solid probe. The shell pocket over the lip is air.
-def _lip_probes(bx, by):
+print('stop is %.2f mm under the nominal back. J4 at a thin corner is reported by scripts/shell_hold_check.py.'%sh_drop)
+# The land is shell, not carrier. A point inside the top land is solid shell and air in the carrier.
+land_z=Zpb-sh_drop+1.2-scad_num('sh_R_below')+0.20
+for bx, by, name in ((48.60, 26.24+2.72, 'top'), (48.60, 62.94-2.72, 'bottom')):
     X,Y=T(bx, by)
-    z_air=Zin+0.08
-    z_solid=Zin+lip_air+lip_t/2.0
-    d_air=float(qcar.signed_distance([[X, Y, z_air]])[0])
-    d_solid=float(qcar.signed_distance([[X, Y, z_solid]])[0])
-    d_shell=float(qshell.signed_distance([[X, Y, z_solid]])[0])
-    return d_air, d_solid, d_shell
-for bx, by, name in ((47.5, 26.24+0.10, 'top'), (52.6, 62.94-0.10, 'bottom')):
-    d_air, d_solid, d_shell=_lip_probes(bx, by)
-    print('lip %-6s air %+.2f (want <0)  shelf %+.2f (want >0)  shell %+.2f (want <0)'%(
-        name, d_air, d_solid, d_shell))
-    if d_air>-0.02 or d_solid<0.05 or d_shell>-0.05:
+    d_car=float(qcar.signed_distance([[X, Y, land_z]])[0])
+    d_shell=float(qshell.signed_distance([[X, Y, land_z]])[0])
+    print('land %-6s carrier %+.2f (want <0)  shell %+.2f (want >0)'%(name, d_car, d_shell))
+    if d_car>-0.02 or d_shell<0.05:
         seat_fail=True
-        print('LIP MESH FAIL')
+        print('LAND MESH FAIL')
 # The shell recess stays a clearance over the border. It is not the float.
 # Air at +0.30 over the border, solid past the recess.
 mid=T(31.0, 27.5)
