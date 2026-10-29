@@ -13,7 +13,7 @@ clr = 0.3;                  // fit clearance
 plate_t = 3.0;              // backplate thickness
 standoff_h = 14.0;          // backplate face -> PCB back, so the 11.1 mm 15EDGK plug and 9.5 mm C43 clear a flat plate and lip
 pcb_t = 1.6;
-panel_gap = 4.45;           // PCB top -> panel back. 4.45 is the lip trade: a tall print plus the 0.20 mm lip still leaves 3.0 mm in J4, and a short print leaves 0.35 mm over the optos. See case/ASSEMBLY.md
+panel_gap = 4.45;           // PCB top -> panel back. A tall print inserts 3.35 mm, and a short print leaves 0.35 mm over the optos. See case/ASSEMBLY.md
 panel_t = 1.2;
 front_t = 2.0;              // front face thickness
 BW = 140; BH = 64;          // PCB
@@ -63,16 +63,13 @@ assert(fpc_ins > 3.0, "FPC tail insertion is short of the connector minimum");
 assert(fpc_ins_hi > 3.0, "a tall carrier print drops the FPC below 3.0 mm");
 assert(fpc_ins < 4.2, "FPC tail insertion is long");
 // 4.0 mm opto under the display panel. The short-print floor is 0.30 mm.
-// At this gap a short carrier print leaves 0.35 mm. The old 0.40 mm floor
-// does not fit a 0.20 mm lip rise on a tall print.
+// At this gap a short carrier print leaves 0.35 mm over the optos.
 assert(panel_gap - 0.10 - 4.0 >= 0.30, "panel gap does not clear the optos");
-// The display panel rests on the pads. The carrier lip, lip_air above the
-// panel front, is what stops it rising. The shell does not touch the panel.
-// The land behind the panel still has to clear a thick board (+0.16), a tall
-// carrier print (+0.10), a low snap seat (+0.10), and a tall standoff (+0.15):
-// 0.51 mm, and then the 0.20 mm rise up to the lip. The window chamfer starts
-// at Z_in+0.85, so the recess stops there. The lip stands proud of that and
-// has its own pocket. See case/ASSEMBLY.md.
+// The display panel rests on the pads. A separate retainer clips onto the
+// fences after the panel is down and presses the border onto the pads.
+// The shell does not touch the panel. The window chamfer starts at
+// Z_in+face_recess. The retainer tongue sits in that recess.
+// face_recess is bounded in scripts/case_fit.py: 0.50 and 1.00 both fail.
 face_recess = 0.85;
 xstop_bite = 0.05;                   // +x posts cross the panel edge by this much, so a short print stops the slide
 // The outline is 36.70 mm. The datasheet gives that one width.
@@ -82,36 +79,33 @@ panel_hi = 36.90;
 panel_h = 36.70;
 fence_air = 0.20;                    // air between a long-edge fence and the outline. The fence does not cross the face.
 fence_t = 0.80;
-// Lip above the display panel. 0.20 mm of air, then 0.40 mm of PETG (two layers)
-// reaching 0.40 mm onto the border. The active area stays clear (margins are
-// 3.0 / 3.82 / 9.1 mm). The shell carries none of this load.
-lip_air = 0.20;
-shelf_t = 0.40;
-lip_in = 0.40;
-fpc_ins_lip = fpc_free - PI * (panel_gap + 0.10 + lip_air - fpc_z_ret) / 2 - fpc_straight;
-echo(str("FPC at tall print plus lip rise, inserted=", fpc_ins_lip));
-assert(fpc_ins_lip > 3.0, "tall print plus the lip rise drops the FPC below 3.0 mm");
-// Finger push that opens the J4 slider toward +x. The contact face is the -x
-// face of the beam. Section is push_t along x and push_h along z, so the bend
-// is in the plane of the layers. push_L is the free length from the anchor to
-// the free end of that face. Travel is push_defl. E is snap_E.
-push_t = 0.80;
-push_h = 1.10;
-push_defl = 0.75;
-push_face_x = 114.80;
-push_face_y0 = 53.70;
-push_face_y1 = 64.70;
-push_z0 = 3.70;                        // mm above the PCB top
-push_z1 = 4.80;
-push_root_y = 62.50;
-push_L = 8.80;
-ear_rear_x = 100.767;                  // high-ear rear, WRL slider, board x
-shoe_x0 = 100.05;
-shoe_x1 = 100.55;
-shoe_y0 = 50.45;
-shoe_y1 = 51.75;
-shoe_z0 = 0.90;
-shoe_z1 = 1.20;
+// Retainer. Four separate PETG clips, one on each fence span. Each drops
+// straight down after the panel is on the pads. A tongue on the border is
+// the spring: the mesh is the seated shape, ret_air above the nominal panel
+// front. The free tongue sits ret_free below that, so it presses the panel
+// onto the pads. A panel 0.10 mm thicker than the 1.2 mm drawing adds that
+// much deflection. The datasheet states no thickness tolerance; 0.10 mm is
+// the allowance used here. The tongue bends in z, across the layers.
+// E is snap_E, set below.
+ret_air = 0.05;
+ret_free = 0.20;
+ret_thick = 0.10;
+ret_t = 0.45;
+ret_L = 5.00;
+ret_reach = 1.40;                      // onto the border, inside the 3.0 mm margin
+ret_defl = ret_free + ret_thick;
+// Clip arm. It runs along the fence (x) and bends outward in y to pass the
+// rib. The strained fibers run along x, in the plane of the layers when the
+// clip is printed with the tongue up. The 2.4% flexural gate applies.
+// The shortest fence span sets clip_L.
+clip_t = 0.45;
+clip_L = 4.30;
+clip_d = 0.40;
+// Mouth witness. The pointer stands just outside the housing, on the mouth plane.
+witness_x0 = 103.40;
+witness_x1 = 104.10;
+witness_y0 = 53.15;
+witness_y1 = 53.70;
 // Backplate clips. The polygon apex is 0.80 mm outside the lip face; ±0.90 mm is the bump's z half-span, not the climb.
 // The shell inner face is clr off the lip, so the wall moves snap_bump - clr.
 // Free length is that wall from the bump up to the front face, which ties the four walls.
@@ -134,14 +128,17 @@ assert(snap_defl > 0.20, "backplate bump does not reach the shell wall");
 assert(snap_L > 11, "backplate clip wall is too short");
 assert(snap_eps < petg_eps, "backplate clip strain is past the PETG flexural limit");
 assert(snap_F < 8, "backplate clip takes more than a finger");
-push_I = push_h * push_t * push_t * push_t / 12;
-push_eps = 1.5 * push_t * push_defl / (push_L * push_L);
-push_F = 3 * snap_E * push_I * push_defl / (push_L * push_L * push_L);
-echo(str("PUSH L=", push_L, " strain=", push_eps, " force_N=", push_F));
-assert(abs((push_root_y - push_face_y0) - push_L) < 0.001, "push_L is not the free length");
-assert(push_face_y1 - push_face_y0 >= 11, "slider push face is under 11 mm");
-assert(push_eps < petg_eps, "slider push strain is past the PETG flexural limit");
-assert(push_F < 8, "slider push takes more than a finger");
+ret_eps = 1.5 * ret_t * ret_defl / (ret_L * ret_L);
+ret_I = ret_reach * ret_t * ret_t * ret_t / 12;
+ret_F = 3 * snap_E * ret_I * ret_free / (ret_L * ret_L * ret_L);
+clip_eps = 1.5 * clip_t * clip_d / (clip_L * clip_L);
+echo(str("RETAINER L=", ret_L, " defl=", ret_defl, " strain=", ret_eps, " force_N=", ret_F));
+echo(str("CLIP-ON strain=", clip_eps));
+assert(ret_eps < 0.010, "retainer tongue is past the 1.0% interlayer bound");
+assert(ret_F < 1.0, "retainer tongue presses harder than 1 N");
+assert(clip_eps < petg_eps, "retainer clip is past the PETG flexural limit");
+assert(face_recess > ret_air + ret_t + 0.25, "face recess does not clear the retainer tongue");
+assert(face_recess < 1.20, "face recess eats the shell face");
 btn = [[112,30],[112,40],[112,50]];  // UP DOWN MODE
 pin = [[93,5]];                      // RESET pinhole only (BOOT is only useful with USB attached)
 led = [63.3,21.2];                   // D5 status LED -> light-pipe hole
@@ -302,14 +299,8 @@ module shell(pk=true){   // pk=false: preview only, pockets left solid (inlays s
     // Fold pocket. The bend bulges past the outline, and the lower leg sits near the board.
     board_box(panel[2]-0.40, 37.40, panel[2]+4.0, 50.60, Z_pcb_t+0.40, Z_in-0.02);
     // Land behind the display panel, so a thick board does not bring the panel into the face.
+    // The retainer tongues sit in this recess.
     board_box(panel[0]-0.30, panel[1]-0.55, panel[2]+0.40, panel[3]+0.55, Z_in-0.02, Z_in+face_recess);
-    // Local pockets over the carrier lips. The lip top is 0.60 mm past the inner
-    // face; the loose stack adds 0.51 mm. The pocket stops at Z_in+1.36, which
-    // leaves about 0.64 mm of skin and about 0.25 mm over the lip on that stack.
-    lip_pocket(42.0, 53.0, panel[1], +1);
-    lip_pocket(84.6, 96.0, panel[1], +1);
-    lip_pocket(49.6, 55.6, panel[3], -1);
-    lip_pocket(76.0, 90.0, panel[3], -1);
     button_void();
     // RESET pinhole, LED light pipe
     for(p=pin) translate([cx(p[0]),cy(p[1]),Z_in-1]) cylinder(d=1.6,h=10);
@@ -505,41 +496,12 @@ module edge_fence(x0, x1, edge, dir) {
   y_out = y_in - dir * fence_t;
   board_box(x0, min(y_in, y_out), x1, max(y_in, y_out), z0, z_fence);
   board_box(x0, min(y_in, edge + dir * 0.40), x1, max(y_in, edge + dir * 0.40), z0, z0 + 1.50);
-}
-// Shelf lip_air above the panel front, lip_in onto the border, standing on the fence.
-// The riser overlaps the fence top so the shelf is not a separate body.
-module panel_lip(x0, x1, edge, dir) {
-  y_fence = edge - dir * fence_air;
-  y_over = edge + dir * lip_in;
-  y_out = y_fence - dir * fence_t;
-  z_lip0 = Z_in + lip_air;
-  z_lip1 = z_lip0 + shelf_t;
-  board_box(x0, min(y_fence, y_over), x1, max(y_fence, y_over), z_lip0, z_lip1);
-  board_box(x0, min(y_fence, y_out), x1, max(y_fence, y_out), Z_in - 0.50, z_lip1);
-}
-// Shell cut over one lip, 0.40 mm past the shelf and the riser.
-module lip_pocket(x0, x1, edge, dir) {
-  y_fence = edge - dir * fence_air;
-  y_over = edge + dir * lip_in;
-  y_out = y_fence - dir * fence_t;
-  y0 = min(y_out, y_over) - 0.50;
-  y1 = max(y_out, y_over) + 0.50;
-  board_box(x0 - 0.50, y0, x1 + 0.50, y1, Z_in - 0.20, Z_in + 1.36);
-}
-// Printed push. A finger on the -x face drives the shoe toward +x into the high
-// ear rear. The display panel stays on the pads. The beam is left of the airflow
-// partition and above the USB-C body. The rod runs past the MODE tube.
-module slider_push() {
-  z_lo = Z_pcb_t + push_z0;
-  z_hi = Z_pcb_t + push_z1;
-  x1 = push_face_x + push_t;
-  board_box(push_face_x, push_face_y0, x1, push_face_y1, z_lo, z_hi);
-  board_box(push_face_x, push_root_y, x1, 63.90, Z_pcb_t, z_hi);
-  board_box(108.70, 60.70, x1, 63.40, Z_pcb_t + 1.70, Z_pcb_t + 3.20);
-  board_box(push_face_x, 54.80, x1, 55.60, Z_pcb_t + 1.20, z_hi);
-  // The rod stands on a spine to the bed. The shoe bridges the last few millimetres.
-  board_box(shoe_x0, 54.80, x1, 55.60, Z_pcb_t, Z_pcb_t + 1.55);
-  board_box(shoe_x0, shoe_y0, shoe_x1, 55.60, Z_pcb_t + shoe_z0, Z_pcb_t + shoe_z1);
+  // Hook rib on the outer face, low enough to clear the shell face and high
+  // enough to clear the bottom board-edge rail (rail top is Z_pcb_t+1.15).
+  rib_z0 = Z_pcb_t + 1.70;
+  rib_z1 = rib_z0 + 0.50;
+  y_rib = y_out - dir * 0.30;
+  board_box(x0, min(y_out, y_rib), x1, max(y_out, y_rib), rib_z0, rib_z1);
 }
 // Posts on the cable side of the panel. +x is the slide that shortens the tail in J4.
 // Each post bites xstop_bite onto the outline and stands in the shell's FPC pocket.
@@ -596,12 +558,68 @@ module carrier() {
   edge_fence(84.6, 96.0, panel[1], +1);
   edge_fence(49.6, 55.6, panel[3], -1);
   edge_fence(76.0, 90.0, panel[3], -1);
-  panel_lip(42.0, 53.0, panel[1], +1);
-  panel_lip(84.6, 96.0, panel[1], +1);
-  panel_lip(49.6, 55.6, panel[3], -1);
-  panel_lip(76.0, 90.0, panel[3], -1);
   panel_xstops();
-  slider_push();
+  // Mouth witness. The pointer is the plane the tail crosses. 3.0 mm of tail
+  // past this plane is the drawing minimum. The panel-edge fins show the seated depth.
+  // The arm joins the cable-end post so the pointer is not a loose body.
+  board_box(witness_x0, witness_y0, witness_x1, witness_y1, Z_pcb_t + 0.40, Z_pcb_t + 1.10);
+  board_box(witness_x0, witness_y0, panel[2] + 0.40, witness_y1, Z_pcb_t, Z_pcb_t + 1.00);
+  board_box(panel[2] - 0.20, witness_y0, panel[2] + 0.40, 60.40, Z_pcb_t, Z_pcb_t + 1.00);
+}
+// One clip. Tongue is the seated spring (ret_air above the panel front).
+// The hook stands outside the fence rib and reaches under it without touching it.
+module retainer_clip(x0, x1, edge, dir) {
+  z_fence = Z_in - 0.40;
+  y_in = edge - dir * fence_air;
+  y_out = y_in - dir * fence_t;
+  y_rib = y_out - dir * 0.40;
+  // Bar on the fence. Its top stays under the shell face (Z_in). The recess
+  // is only over the border, so the bar cannot rise into the face.
+  z_bar1 = Z_in - 0.22;
+  board_box(x0, min(y_out, y_in) + 0.15, x1, max(y_out, y_in) - 0.15, z_fence + 0.16, z_bar1);
+  // Riser on the inner fence, inside the face recess, up to the tongue.
+  y_rise0 = y_in - dir * 0.20;
+  y_rise1 = y_in + dir * 0.05;
+  board_box(x0, min(y_rise0, y_rise1), x1, max(y_rise0, y_rise1), z_fence + 0.16, Z_in + ret_air + ret_t);
+  // Tongue above the border. Seated shape: ret_air above the nominal panel front.
+  y_tip = edge + dir * ret_reach;
+  board_box(x0 + 0.30, min(y_rise1, y_tip), x1 - 0.30, max(y_rise1, y_tip), Z_in + ret_air, Z_in + ret_air + ret_t);
+  // Arm along x, outside the rib. The post at x0 stays outside the fence and
+  // a bridge above the fence joins the post to the bar. The tooth reaches
+  // under the rib and stops short of the fence face.
+  rib_z0 = Z_pcb_t + 1.70;
+  rib_z1 = rib_z0 + 0.50;
+  y_arm_in = y_rib - dir * 0.10;
+  y_arm_out = y_arm_in - dir * clip_t;
+  board_box(x0 + 0.30, min(y_arm_in, y_arm_out), x1 - 0.30, max(y_arm_in, y_arm_out), rib_z0 - 0.05, rib_z1 + 0.10);
+  // Post, outside the fence.
+  board_box(x0 + 0.30, min(y_arm_in, y_arm_out), x0 + 1.80, max(y_arm_in, y_arm_out), rib_z0 - 0.05, z_bar1);
+  // Bridge above the fence, from the post into the bar.
+  y_bar_edge = y_out + dir * 0.20;
+  board_box(x0 + 0.30, min(y_arm_in, y_bar_edge), x0 + 1.80, max(y_arm_in, y_bar_edge), z_fence + 0.16, z_bar1);
+  // Tooth under the rib, 0.15 mm onto the rib, 0.12 mm of z air under it.
+  y_tooth = y_rib + dir * 0.12;
+  // Neck drops out of the arm. Catch reaches under the rib and overlaps the neck.
+  y_neck = y_arm_in - dir * 0.20;
+  board_box(x0 + 2.00, min(y_arm_out, y_neck), x1 - 0.30, max(y_arm_out, y_neck), rib_z0 - 0.35, rib_z0 + 0.12);
+  board_box(x0 + 2.00, min(y_neck, y_tooth), x1 - 0.30, max(y_neck, y_tooth), rib_z0 - 0.40, rib_z0 - 0.12);
+}
+module retainer() {
+  retainer_clip(42.0, 53.0, panel[1], +1);
+  retainer_clip(84.6, 96.0, panel[1], +1);
+  retainer_clip(49.6, 55.6, panel[3], -1);
+  retainer_clip(76.0, 90.0, panel[3], -1);
+}
+// Printed PETG plug for the centred 25 x 20 mm wire hole. The flange stays on
+// the room side of the backplate. The body fits in the hole. A slot passes the cable.
+module wire_plug() {
+  difference() {
+    union() {
+      translate([-14.5, -12.0, 0]) cube([29, 24, 1.2]);
+      translate([-12.1, -9.6, 1.2]) cube([24.2, 19.2, 2.6]);
+    }
+    translate([-4, -2.5, -0.1]) cube([8, 5, 5]);
+  }
 }
 module fpc() {
   zc = Z_pcb_t + fpc_z_ret + fpc_R;
@@ -645,16 +663,18 @@ else if(part=="shell_orange") flipP() inlay_orange();
 else if(part=="shell_pink") flipP() { light_pipe(); inlay_pink(); }
 else if(part=="shell") translate([0,H,Z_out]) rotate([180,0,0]) shell();   // print face-down
 else if(part=="carrier") carrier();
+else if(part=="retainer") retainer();
+else if(part=="plug") wire_plug();
 else if(part=="caps") for(i=[0:2]) translate([i*14,0,0]) cap(0, 0, true);
-else if(part=="assembly"){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); fpc(); color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); color("orange") cap_placed(btn_flare); }
-else if(part=="exploded"){ color("lightgray") backplate(); translate([0,0,22]){ pcb(); color("wheat") carrier(); epd(); fpc(); } translate([0,0,64]){ color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); color("orange") cap_placed(btn_flare); } }
-else if(part=="section") difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); fpc(); color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); color("orange") cap_placed(btn_flare); }
+else if(part=="assembly"){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); color("khaki") retainer(); epd(); fpc(); color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); color("orange") cap_placed(btn_flare); }
+else if(part=="exploded"){ color("lightgray") backplate(); translate([0,0,22]){ pcb(); color("wheat") carrier(); epd(); fpc(); } translate([0,0,40]) color("khaki") retainer(); translate([0,0,64]){ color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); color("orange") cap_placed(btn_flare); } }
+else if(part=="section") difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); color("khaki") retainer(); epd(); fpc(); color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); color("orange") cap_placed(btn_flare); }
   translate([-1,-1,-30]) cube([W+2, cy(40), 80]); }   // cut through the DOWN button centre (board y=40), the panel, and the FPC
-else if(part=="section_j1") difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); color("white") shell(false); }
+else if(part=="section_j1") difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); color("khaki") retainer(); epd(); color("white") shell(false); }
   translate([-1,-1,-30]) cube([W+2, cy(58)+1, 80]); }   // cut along the J1 pin row / C43 centre (board y=58)
-else if(part=="section_j1x") difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); color("white") shell(false); }
+else if(part=="section_j1x") difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); color("khaki") retainer(); epd(); color("white") shell(false); }
   translate([cx(term[0]),-1,-30]) cube([W, H+2, 80]); }   // cut across J1 + plug + wire bend (board x=70)
-else if(part=="section_airflow") difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); epd(); color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); color("orange") cap_placed(btn_flare); }
+else if(part=="section_airflow") difference(){ union(){ color("lightgray") backplate(); pcb(); color("wheat") carrier(); color("khaki") retainer(); epd(); color("white") shell(false); color("black") inlay_black(pv_e); color("orange") inlay_orange(pv_e); color("hotpink") light_pipe(); color("hotpink") inlay_pink(pv_e); color("orange") cap_placed(btn_flare); }
   translate([-1, cy(32), -30]) cube([W+2, H, 80]); }   // cut at board y=32, through the SHT40 and both zone ribs
 // rear clearance check: tallest rear parts must clear the backplate top (plate_t)
 assert(Z_pcb_b-bulk_h>plate_t+1, "C43 hits backplate");
@@ -665,4 +685,6 @@ if(part=="plate"){
   translate([5,H+12-(wall+clr),0]) backplate();
   for(i=[0:2]) translate([168+ (i*14), 22, 0]) cap(0, 0, true);
   translate([152, 168, -Z_pcb_t]) carrier();
+  translate([20, 175, -(Z_pcb_t + 1.30)]) retainer();
+  translate([210, 180, 0]) wire_plug();
 }

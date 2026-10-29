@@ -7,7 +7,9 @@ ld=lambda f: trimesh.load(f,process=True)
 groups=[('front_shell',(5,5),[('shell_white',1),('shell_black',2),('shell_orange',3),('shell_pink',4)]),
         ('backplate',(5,85),[('backplate',1)]),
         ('button_caps_x3',(175,20),[('caps',3)]),
-        ('panel_carrier',(152,168),[('carrier',1)])]
+        ('panel_carrier',(152,168),[('carrier',1)]),
+        ('panel_retainer',(8,175),[('retainer',1)]),
+        ('wire_plug',(200,175),[('plug',1)])]
 objs='';items='';cfg='<?xml version="1.0" encoding="UTF-8"?>\n<config>\n';oid=1;plate=''
 for gname,(ox,oy),parts in groups:
     ms=[(p,e,ld(p+'.stl')) for p,e in parts]
