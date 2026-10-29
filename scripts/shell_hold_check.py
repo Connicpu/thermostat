@@ -375,6 +375,8 @@ def analyse(src, cn, rep):
 
     # Root strain at the thickest force. Off-centre load, larger end moment.
     max_eps = 0.0
+    over_1 = 0
+    pairs = 0
     for r in rows:
         for length, a, _nx, _which in geos:
             tt = t0 + r["ft"]
@@ -384,9 +386,13 @@ def analyse(src, cn, rep):
             b = length - a
             mend = F * a * b * max(a, b) / length ** 2
             eps = 6.0 * mend / (E_SOFT * w * tt ** 2) if tt else 9.0
+            pairs += 1
+            if eps > 0.01 + 1e-12:
+                over_1 += 1
             max_eps = max(max_eps, eps)
     rep.say("root strain max %.2f%%" % (100 * max_eps))
-    rep.gate(max_eps <= 0.015, "root strain %.2f%% <= 1.50%%" % (100 * max_eps))
+    rep.say("root strain over 1%%: %d of %d pairs" % (over_1, pairs))
+    rep.gate(max_eps <= 0.012 + 1e-12, "root strain %.2f%% <= 1.20%%" % (100 * max_eps))
 
     # Ribs overlap the fences in z at every corner.
     z_fence = cn["Z_in"] - 0.40
@@ -445,7 +451,7 @@ def analyse(src, cn, rep):
     # The free gap is the loose stack corner. The low carrier sets the rest air.
     rep.say("")
     rep.say("10 N press, preload lost, rigid panel")
-    pads = pads_from_case(open(CASE).read(), cn["panel"])
+    pads = pads_from_case(src, cn["panel"])
     for c in cols:
         pads.append((c[0], c[1], c[2], c[3]))
     supports = _pad_points(pads, 3)
@@ -495,6 +501,7 @@ def render(scad, work):
         "sh_locs": "locs.stl",
         "sh_carrier": "carrier.stl",
         "sh_stock": "stock.stl",
+        "sh_shell": "shell.stl",
     }
     for part, name in parts.items():
         out = os.path.join(work, name)
@@ -584,6 +591,50 @@ def mesh_checks(src, cn, rep, paths):
         rep.gate(worst >= 0.08, "added stops clear %s by %.2f mm" % (name, worst))
     # No shoes in the scad.
     rep.gate("sh_shoes" not in src and "module sh_shoe" not in src, "no edge shoes")
+    shell_m = trimesh.load(paths["sh_shell"])
+    shell_bodies = shell_m.split(only_watertight=False)
+    rep.say("shell bodies %d" % len(shell_bodies))
+    rep.gate(len(shell_bodies) == 1, "shell is one body")
+    air_border = _border_clearance(shell_m, src, cn)
+    rep.say("shell vs display panel outside the lands %.3f mm" % air_border)
+    # The beam underside is flush with the panel front, so the 0.10 mm air
+    # rule stays on the active area. Outside the land boxes the shell may
+    # meet that front and must not enter the panel.
+    rep.gate(air_border > -0.02, "border outside the lands does not enter the panel (%.3f mm)" % air_border)
+
+
+def _land_rects(src, panel):
+    land0 = grab(src, "sh_land0")
+    land1 = grab(src, "sh_land1")
+    nlen = grab(src, "sh_nub_len")
+    lo, hi = min(land0, land1), max(land0, land1)
+    out = []
+    for _x0, _x1, which, nubx in grab_list(src, "sh_spans"):
+        edge = panel[1] if int(which) == 0 else panel[3]
+        sign = 1.0 if int(which) == 0 else -1.0
+        ya = edge + sign * lo
+        yb = edge + sign * hi
+        out.append((nubx - nlen / 2.0, min(ya, yb), nubx + nlen / 2.0, max(ya, yb)))
+    return out
+
+
+def _border_clearance(shell_m, src, cn, pad=0.15):
+    """Clearance of the shell to the whole display panel, land boxes left out."""
+    import numpy as np
+    import trimesh
+    pts = shell_m.vertices
+    extra = shell_m.sample(6000) if len(pts) else shell_m.sample(6000)
+    pts = np.vstack([pts, extra])
+    bx = pts[:, 0] - cn["OX"]
+    by = cn["H"] - cn["OYT"] - pts[:, 1]
+    keep = np.ones(len(pts), dtype=bool)
+    for x0, y0, x1, y1 in _land_rects(src, cn["panel"]):
+        keep &= ~((bx >= x0 - pad) & (bx <= x1 + pad) & (by >= y0 - pad) & (by <= y1 + pad))
+    if not np.any(keep):
+        return 99.0
+    panel = _panel_mesh(cn, cn["Z_panel_b"], cn["Z_panel_b"] + cn["panel_t"])
+    dist = trimesh.proximity.ProximityQuery(panel).signed_distance(pts[keep])
+    return -float(np.max(dist))
 
 
 def _thick_s(src, cn, front, half):
@@ -693,8 +744,7 @@ def draw(src, cn):
 
 def run(scad):
     src = open(scad).read()
-    case = open(CASE).read()
-    cn = case_nums(case)
+    cn = case_nums(src)
     rep = Report()
     analyse(src, cn, rep)
     if rep.fails and os.path.abspath(scad) != os.path.abspath(SCAD):
@@ -723,39 +773,65 @@ def run(scad):
     return 0
 
 
+def _set_assign(src, name, value):
+    """Replace one numeric assignment with the value in this file, whatever it is now."""
+    pat = re.compile(r"(?m)^(%s\s*=\s*)(-?\d*\.?\d+)(\s*;)" % re.escape(name))
+    if not pat.search(src):
+        raise SystemExit("mutation missing assignment " + name)
+    return pat.sub(lambda m: m.group(1) + value + m.group(3), src, count=1)
+
+
 def self_test():
     base = open(SCAD).read()
+    raw_rows = re.findall(r"\[[^\]]+\]", re.search(r"sh_spans\s*=\s*\[(.*?)\];", base, re.S).group(1))
+    right = None
+    for raw in raw_rows:
+        nums = [float(v) for v in raw.strip()[1:-1].split(",")]
+        if len(nums) == 4 and int(nums[2]) == 0 and nums[0] > 70:
+            right = raw.strip()
+            break
+    if right is None:
+        raise SystemExit("mutation missing right-hand span")
+    added = "module sh_added() { sh_beams(); sh_pillar_all(); sh_loc_all(); }"
+    bump = ("module sh_added() { sh_beams(); sh_pillar_all(); sh_loc_all(); "
+            "board_box(58, panel[1] + 2.10, 62, panel[1] + 2.70, Z_in - 1.0, Z_in + 0.05); }")
     mutations = [
-        ("unprintable nub", "sh_land1 = 2.97;", "sh_land1 = 2.57;"),
-        ("ribs not engaging", "sh_rib_drop = 1.85;", "sh_rib_drop = 0.40;"),
-        ("U7 column removed", "  [29.60, 29.30, 33.40, 30.40],\n", ""),
-        ("nub off its span", "[71.60, 106.40, 0, 98.00]", "[71.60, 106.40, 0, 10.00]"),
-        ("nub at the pillar", "[71.60, 106.40, 0, 98.00]", "[71.60, 106.40, 0, 104.20]"),
-        ("thin locator", "sh_loc_t = 0.80;", "sh_loc_t = 0.20;"),
-        ("short pillar root", "sh_root = 2.40;", "sh_root = 0.30;"),
-        ("nub height 0.15", "sh_nub_h = 0.45;", "sh_nub_h = 0.15;"),
-        ("land on the active area", "sh_land0 = 2.47;", "sh_land0 = 4.20;"),
-        ("column on U7", "[29.60, 29.30, 33.40, 30.40]", "[29.60, 26.40, 33.40, 28.80]"),
-        ("pillars short of the shell", "sh_bite = 0.10;", "sh_bite = -0.80;"),
-        ("stop into the opto-triacs", "sh_drop = 0.15;", "sh_drop = 0.55;"),
-        ("locator gap wide open", "sh_loc_gap = 0.10;", "sh_loc_gap = 1.20;"),
-        ("negative land offset", "sh_R_below = 0.38;", "sh_R_below = -0.30;"),
+        ("unprintable nub", _set_assign(base, "sh_land1", "2.57")),
+        ("ribs not engaging", _set_assign(base, "sh_rib_drop", "0.40")),
+        ("U7 column removed", base.replace("  [29.60, 29.30, 33.40, 30.40],\n", "", 1)),
+        ("nub off its span", base.replace(right, right.rsplit(",", 1)[0] + ", 10.00]", 1)),
+        ("nub at the pillar", base.replace(right, right.rsplit(",", 1)[0] + ", 104.20]", 1)),
+        ("thin locator", _set_assign(base, "sh_loc_t", "0.20")),
+        ("short pillar root", _set_assign(base, "sh_root", "0.30")),
+        ("nub height 0.15", _set_assign(base, "sh_nub_h", "0.15")),
+        ("land on the active area", _set_assign(base, "sh_land0", "4.20")),
+        ("column on U7", base.replace("[29.60, 29.30, 33.40, 30.40]", "[29.60, 26.40, 33.40, 28.80]", 1)),
+        ("pillars short of the shell", _set_assign(base, "sh_bite", "-0.80")),
+        ("stop into the opto-triacs", _set_assign(base, "sh_drop", "0.55")),
+        ("locator gap wide open", _set_assign(base, "sh_loc_gap", "1.20")),
+        ("negative land offset", _set_assign(base, "sh_R_below", "-0.30")),
+        ("border bump between spans", base.replace(added, bump, 1)),
+        ("beam detached from its pillar", base.replace(
+            "x0 + sh_root - 0.12", "x0 + sh_root + 0.60", 1).replace(
+            "x1 - sh_root + 0.12", "x1 - sh_root - 0.60", 1)),
     ]
     bad = 0
-    for name, old, new in mutations:
-        if old not in base:
+    for name, mutated in mutations:
+        if mutated == base:
             print("MUTATION SETUP FAIL", name)
             bad += 1
             continue
         path = os.path.join(os.path.dirname(SCAD), "_mut_check.scad")
-        open(path, "w").write(base.replace(old, new, 1))
+        open(path, "w").write(mutated)
         r = subprocess.run([sys.executable, __file__, "--scad", path], capture_output=True, text=True)
         status = "FAIL-AS-REQUIRED" if r.returncode else "MISSED"
         if r.returncode == 0:
             bad += 1
         fails = [ln.strip() for ln in r.stdout.splitlines() if ln.strip().startswith("- ")]
-        print("%s  %s  %s" % (status, name, "; ".join(fails[:2])))
+        print("%s  %s  %s" % (status, name, "; ".join(fails[:3])))
         os.remove(path)
+    caught = len(mutations) - bad
+    print("caught %d of %d" % (caught, len(mutations)))
     if bad:
         print("%d mutations were not caught" % bad)
         return 1

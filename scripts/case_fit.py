@@ -87,6 +87,11 @@ for req in ('back.stl','shell.stl','carrier.stl','caps_seated.stl','caps_pressed
         print('missing', req)
         sys.exit(1)
 back=trimesh.load('back.stl'); shell=trimesh.load('shell.stl'); carrier=trimesh.load('carrier.stl')
+_shell_bodies=shell.split(only_watertight=False)
+print('shell bodies %d'%len(_shell_bodies))
+_shell_not_one=len(_shell_bodies)!=1
+if _shell_not_one:
+    print('SHELL IS NOT ONE BODY')
 have_board=os.path.exists('board.stl')
 if have_board:
     brd=trimesh.load('board.stl'); brd.apply_translation([-100+OX,H-OYT+100,Zb])
@@ -388,18 +393,18 @@ if d_apex>-0.05 or d_blocked<0.05:
     print('CLIP NEGATIVE DID NOT FAIL' if d_blocked<0.05 else 'CLIP WINDOW IS SOLID')
 # No hook over the panel edge. Filling that gap is a lip, and the gate rejects it.
 qcar=trimesh.proximity.ProximityQuery(carrier)
-hooks_old=((47.0,53.0,26.24,1),(84.6,90.6,26.24,1),(49.6,55.6,62.94,-1),(76.0,82.0,62.94,-1))
+long_edge_spans=((47.0,53.0,26.24,1),(84.6,90.6,26.24,1),(49.6,55.6,62.94,-1),(76.0,82.0,62.94,-1))
 def _lip_box(x0, x1, edge, dire):
     y0, y1 = (edge, edge+0.25) if dire>0 else (edge-0.25, edge)
     return box('lip', x0, y0, x1, y1, Zin+0.02, Zin+0.16)[1]
-for x0,x1,edge,dire in hooks_old:
+for x0,x1,edge,dire in long_edge_spans:
     lip=_lip_box(x0, x1, edge, dire)
     sd=float(trimesh.proximity.ProximityQuery(carrier).signed_distance(np.vstack([lip.vertices, _sample(lip, 400)])).max())
     print('hook lip x %.1f  solid %+.2f (want <0)'%(0.5*(x0+x1), sd))
     if sd>-0.02:
         seat_fail=True
         print('HOOK LIP PRESENT')
-lip0=_lip_box(*hooks_old[0])
+lip0=_lip_box(*long_edge_spans[0])
 sd_neg=float(trimesh.proximity.ProximityQuery(trimesh.util.concatenate([carrier, lip0])).signed_distance([lip0.centroid])[0])
 print('hook lip reintroduced %+.2f (want >0)'%sd_neg)
 if sd_neg<0.05:
@@ -672,18 +677,50 @@ fold_pts=_fold_points()
 _,aa_box=box('aa',32.46,30.06,99.36,59.12,Zpb,Zpb+1.2)
 qpanel=trimesh.proximity.ProximityQuery(panel)
 qaa=trimesh.proximity.ProximityQuery(aa_box)
+
+def _land_rects():
+    """Board xy of each nub. Only these boxes may meet the display panel."""
+    land0=scad_num('sh_land0'); land1=scad_num('sh_land1'); nlen=scad_num('sh_nub_len')
+    body=re.search(r'sh_spans\s*=\s*\[(.*?)\];', _scad, re.S).group(1)
+    pxy=[float(v) for v in re.search(r'panel\s*=\s*\[([0-9., ]+)\]', _scad).group(1).split(',')]
+    lo, hi = min(land0, land1), max(land0, land1)
+    out=[]
+    for row in re.findall(r'\[([^\]]+)\]', body):
+        x0,x1,which,nubx=[float(v) for v in row.split(',')]
+        edge = pxy[1] if int(which)==0 else pxy[3]
+        sign = 1.0 if int(which)==0 else -1.0
+        ya, yb = edge+sign*lo, edge+sign*hi
+        out.append((nubx-nlen/2.0, min(ya,yb), nubx+nlen/2.0, max(ya,yb)))
+    return out
+
+def _outside_lands(pts, rects, pad=0.15):
+    bx=pts[:,0]-OX
+    by=H-OYT-pts[:,1]
+    keep=np.ones(len(pts), dtype=bool)
+    for x0,y0,x1,y1 in rects:
+        keep &= ~((bx>=x0-pad)&(bx<=x1+pad)&(by>=y0-pad)&(by<=y1+pad))
+    return pts[keep]
+
+_lands=_land_rects()
 shell_pts=np.vstack([shell.vertices, _sample(shell, 8000)])
+shell_border=_outside_lands(shell_pts, _lands)
+print('shell samples outside the lands %d of %d'%(len(shell_border), len(shell_pts)))
 for dz in (0.0, 1.0, 2.0):
-    moved=shell_pts+np.array([0.0, 0.0, dz])
-    # The land may meet the border. The active area stays clear.
-    c_pan=-float(qaa.signed_distance(moved).max())
-    c_pan_hi=-float(qaa.signed_distance(moved-np.array([0.0, 0.0, pcb_tol])).max()) if dz==0.0 else c_pan
+    moved=_outside_lands(shell_pts+np.array([0.0, 0.0, dz]), _lands)
+    # The display panel sits on the stop, sh_drop under the nominal back. The
+    # beam underside is flush with the nominal front, so the border is read on
+    # the seated panel. Land boxes are the only exemption.
+    seated=moved+np.array([0.0, 0.0, sh_drop])
+    c_pan=-float(qpanel.signed_distance(seated).max())
+    c_aa=-float(qaa.signed_distance(moved).max())
+    c_pan_hi=-float(qpanel.signed_distance(seated-np.array([0.0, 0.0, pcb_tol])).max()) if dz==0.0 else c_pan
     c_fold=-float(trimesh.proximity.ProximityQuery(shell).signed_distance(fold_pts-np.array([0.0, 0.0, dz])).max())
     c_fold_hi=-float(trimesh.proximity.ProximityQuery(shell).signed_distance(fold_pts+np.array([0.0, 0.0, pcb_tol])).max()) if dz==0.0 else c_fold
-    worst=min(c_pan, c_pan_hi, c_fold, c_fold_hi)
-    print('shell lift %4.1f mm  panel %6.2f  panel+thick %6.2f  fold %6.2f  fold+thick %6.2f'%(
-        dz, c_pan, c_pan_hi, c_fold, c_fold_hi))
-    if worst<=0.10:
+    # Active area and the fold keep 0.10 mm. Outside the land boxes the shell
+    # may meet the seated front and must not enter it. A bump between the spans does.
+    print('shell lift %4.1f mm  border %6.2f  border+thick %6.2f  active %6.2f  fold %6.2f  fold+thick %6.2f'%(
+        dz, c_pan, c_pan_hi, c_aa, c_fold, c_fold_hi))
+    if c_pan<=-0.02 or c_pan_hi<=-0.02 or c_aa<=0.10 or min(c_fold, c_fold_hi)<=0.10:
         seat_fail=True
         print('SHELL TOUCHES THE PANEL OR THE FOLD')
 # A shell dropped onto the panel fails this same test.
@@ -966,7 +1003,7 @@ print('seated vs actuator %6.2f, vs tall+thick %6.2f, pressed (past the cover) %
 if c_act<0.30 or c_act_hi<=0.05:
     btn_fail=True
     print('ACTUATOR GAP FAIL')
-if interfere or board_shell<0.05 or (have_board and pcb_shell<0.05) or pcb_back<-0.05 or carrier_fail or btn_fail or seat_fail:
+if interfere or board_shell<0.05 or (have_board and pcb_shell<0.05) or pcb_back<-0.05 or carrier_fail or btn_fail or seat_fail or _shell_not_one:
     print('INTERFERE')
     sys.exit(1)
 print('FIT OK')

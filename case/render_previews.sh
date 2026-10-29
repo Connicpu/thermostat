@@ -15,4 +15,12 @@ render section          case-section.png         73.5,12,13,90,0,0,340
 render section_j1       case-back-section.png    73.5,4,13,90,0,0,240
 render section_airflow  case-section-airflow.png 73.5,18,13,90,0,0,320
 render exploded         case-exploded.png        78,28,48,60,0,28,560      p
+render assembly         case-assembled.png       78,28,40,58,0,28,520      p
+render assembly         case-assembled-zoom.png  100,40,28,62,0,18,260     p
+render assembly         case-front.png           73.5,35.5,30,72,0,0,380   p
+render shell            case-front-swirls-bold.png 73.5,35.5,28,70,0,0,360 p
+render section_j1       case-section-j1.png      73.5,4,13,90,0,0,240
+render section_j1x      case-section-j1-c43.png  110,35,14,90,0,90,260
+render shell            case-snap-window.png     38,4,6,68,0,10,90         p
+render assembly         case-curl-zoom.png       112,30,22,55,0,70,160     p
 echo done

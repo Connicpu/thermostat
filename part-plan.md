@@ -194,7 +194,7 @@ Source: GD GDEY029T94 datasheet p.7 (mechanical drawing), p.6 (79.0x36.7x1.2, AA
 - FPC tail: 12.50 wide, 14.40 free length beyond outline, 24 contacts at 0.5 pitch (span 11.50), contact length 3.66 with stiffener, 0.3 thick; contacts on display-face side. Tail edge is 11.50 mm from the outline edge nearest pin 24; pin 1 is 23.5 mm from that edge.
 - Board: J4 at (100,44) rot 90, mouth faces +x at x~103.8, pad 1 y=49.74, pad 24 y=38.24.
 - Panel placement (face up, FPC on right edge, 180 deg fold under): outline x 29.46..108.46, y 26.24..62.94, panel bottom 5.0 mm above PCB (M2.5x5 standoffs or case ledge). Bend r~2.15 mm, ~6.8 mm of tail in the bend, ~3.0 mm inserted. Pin 1 / pad 1 y match exactly (49.74). Contacts face down -> bottom-contact AFC07 correct.
-- Panel standoff height must be >= ~4.5 mm (MOC3063S optos ~4 mm under panel). Every +1 mm of height pulls the tail ~1.6 mm out of the connector. The case uses 4.45 mm so the 0.20 mm carrier lip still leaves 3.0 mm inserted on a tall print.
+- Panel standoff height must be >= ~4.5 mm (MOC3063S optos ~4 mm under the display panel). Every +1 mm of height pulls the tail ~1.6 mm out of the connector. The case nominal back is 4.45 mm above the board. The display panel sits on a stop 0.15 mm under that, and shell bridges press the border. A thin corner can leave J4; reseat is the shell off, the tail pressed back in, and the slider closed.
 - No copper change; only the Cmts.User panel outline moved (-0.54, +1.24). Image: fab/display-fit.png
 
 ## Rev 4 – JLC upload fixes (2026-10-13 PT)

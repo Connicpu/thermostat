@@ -13,7 +13,7 @@ clr = 0.3;                  // fit clearance
 plate_t = 3.0;              // backplate thickness
 standoff_h = 14.0;          // backplate face -> PCB back, so the 11.1 mm 15EDGK plug and 9.5 mm C43 clear a flat plate and lip
 pcb_t = 1.6;
-panel_gap = 4.45;           // PCB top -> panel back. 4.45 is the lip trade: a tall print plus the 0.20 mm lip still leaves 3.0 mm in J4, and a short print leaves 0.35 mm over the optos. See case/ASSEMBLY.md
+panel_gap = 4.45;           // PCB top to the nominal display panel back. The panel sits on the stop, 0.15 mm under this. See case/ASSEMBLY.md
 panel_t = 1.2;
 front_t = 2.0;              // front face thickness
 BW = 140; BH = 64;          // PCB
@@ -89,7 +89,7 @@ sh_nub_h = 0.45;
 sh_nub_len = 4.0;
 sh_drop = 0.15;
 sh_stop = Z_panel_b - sh_drop;
-sh_R_below = 0.38;
+sh_R_below = 0.30;
 sh_R = sh_stop + panel_t - sh_R_below;
 sh_bite = 0.10;
 sh_loc_gap = 0.10;
@@ -324,10 +324,6 @@ module sh_beams() { for (s = sh_spans) sh_bridge(s[0], s[1], s[2], s[3]); }
 module sh_pillar_all() { for (s = sh_spans) sh_pillars(s[0], s[1], s[2]); }
 module sh_loc_all() { for (s = sh_locs) sh_loc(s[0], s[1], s[2]); }
 module sh_added() { sh_beams(); sh_pillar_all(); sh_loc_all(); }
-module sh_widen() {
-  board_box(panel[0] - 0.30, panel[1] + 2.50, panel[2] + 0.40, panel[1] + 3.30, Z_in - 0.02, Z_in + face_recess);
-  board_box(panel[0] - 0.30, panel[3] - 3.30, panel[2] + 0.40, panel[3] - 2.50, Z_in - 0.02, Z_in + face_recess);
-}
 
 // ---------------- front shell ----------------
 module shell_plain(pk=true){   // pk=false: preview only, pockets left solid (inlays sit 0.01 proud) to avoid OpenCSG specks
@@ -379,9 +375,8 @@ module shell_plain(pk=true){   // pk=false: preview only, pockets left solid (in
     board_box(panel[0]-0.30, panel[1]-0.30, panel[2]+1.20, panel[3]+0.30, Z_pcb_t+0.50, Z_in-0.02);
     // Fold pocket. The bend bulges past the outline, and the lower leg sits near the board.
     board_box(panel[2]-0.40, 37.40, panel[2]+4.0, 50.60, Z_pcb_t+0.40, Z_in-0.02);
-    // Land behind the display panel. The bridges sit in the widened band.
+    // Land behind the display panel. The bridges sit in this band.
     board_box(panel[0]-0.30, panel[1]-0.55, panel[2]+0.40, panel[3]+0.55, Z_in-0.02, Z_in+face_recess);
-    sh_widen();
     button_void();
     // RESET pinhole, LED light pipe
     for(p=pin) translate([cx(p[0]),cy(p[1]),Z_in-1]) cylinder(d=1.6,h=10);
@@ -710,6 +705,7 @@ else if(part=="sh_pillars") sh_pillar_all();
 else if(part=="sh_locs") sh_loc_all();
 else if(part=="sh_carrier") carrier();
 else if(part=="sh_stock") shell_plain();
+else if(part=="sh_shell") shell();
 else if(part=="sh_shell_print") translate([0,H,Z_out]) rotate([180,0,0]) shell();
 else if(part=="sh_carrier_print") translate([0,0,-Z_pcb_t]) carrier();
 else if(part=="sh_stock_print") translate([0,H,Z_out]) rotate([180,0,0]) shell_plain();
