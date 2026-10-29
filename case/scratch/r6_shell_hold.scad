@@ -141,19 +141,6 @@ module sh_carrier_case() {
   }
 }
 
-// Optional cable-end lip. Not part of sh_carrier. The panel would tilt its
-// cable end under the chamfer, then drop. Numbers are in the checker.
-module sh_lip_option() {
-  z_lip = sh_stop + panel_t + 0.15;
-  board_box(102.0, 33.2, panel[2] + 0.6, 34.3, Z_pcb_t, z_lip);
-  board_box(102.0, 61.2, panel[2] + 0.6, 62.5, Z_pcb_t, z_lip);
-  // 45 degree underside over the outline, so the end can tilt in.
-  hull() {
-    board_box(104.0, 33.2, panel[2], 34.3, z_lip - 0.01, z_lip);
-    board_box(panel[2] - 1.2, 33.2, panel[2] - 1.0, 34.3, z_lip - 1.2, z_lip - 1.0);
-  }
-}
-
 module sh_panel(z_back) {
   board_box(panel[0], panel[1], panel[2], panel[3], z_back, z_back + panel_t);
 }
@@ -168,6 +155,5 @@ if (part == "sh_carrier") sh_carrier_case();
 if (part == "sh_carrier_print") translate([0, 0, -Z_pcb_t]) sh_carrier_case();
 if (part == "sh_stock") difference() { shell(); sh_widen(); }
 if (part == "sh_stock_print") translate([0, H, Z_out]) rotate([180, 0, 0]) difference() { shell(); sh_widen(); }
-if (part == "sh_lip") sh_lip_option();
 if (part == "sh_off") { sh_carrier_case(); sh_panel(sh_stop); }
 if (part == "sh_on") { sh_carrier_case(); sh_panel(sh_stop); sh_added(); }

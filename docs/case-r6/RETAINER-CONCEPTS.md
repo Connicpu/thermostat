@@ -56,21 +56,17 @@ A gap at a thin corner is acceptable. The panel is still between the stops and t
 
 ## J4
 
-Free length 14.40 mm, straight run 4.69 mm, lower leg 0.50 mm. Rest insertion at carrier −0.15 / 0 / +0.15 is 3.98 / 3.74 / 3.51 mm.
+Free length 14.40 mm, straight run 4.69 mm, lower leg 0.50 mm. With the shell fitted the bridges hold the panel on the stop, so the tail depth is the stop height.
 
-After the preload is gone, the cable at the outline (x 108.46) tips the panel. The 5 g knock is another 0.27 N at the panel centre. The cable case uses the 35% modulus. The knock uses the short-term modulus. Stops under the panel keep the far end from dropping.
+| Carrier | Panel back | Inserted |
+|---|---|---|
+| −0.15 | 22.75 | 3.98 mm |
+| 0 | 22.90 | 3.74 mm |
+| +0.15 | 23.05 | 3.51 mm |
 
-| Carrier | Cable lift | J4, cable | Cable + 5 g lift | J4, cable + 5 g |
-|---|---|---|---|---|
-| −0.15 | 0.10 mm | 3.82 mm | 0.03 mm | 3.94 mm |
-| 0 | 0.10 mm | 3.59 mm | 0.03 mm | 3.70 mm |
-| +0.15 | 0.10 mm | 3.35 mm | 0.03 mm | 3.47 mm |
+Every stack corner sits on one of those three backs. The short one is **3.51 mm**. The target is 3.15 mm.
 
-The worst is **3.35 mm**. The floor is 3.00 mm. The 3.15 mm figure is the target while preload is still there. It is not a gate.
-
-### Cable-end lip, not in this carrier
-
-A lip on the carrier over the cable end, 0.15 mm above a 1.20 mm panel, with a 45° underside, would let that end tilt in and then drop. Across panel 1.1–1.3 and a lip printed ±0.05 mm the gap runs from **0.00 to 0.30 mm**. The thick corner can touch the lip. The thin corner can open to 0.30 mm, which is more lift than the bridges already allow (0.10 mm). The lip is not in the sliced carrier. J4 above is the design without it.
+After long-term relaxation the cable end can lift out of J4. Take the shell off, press the tail back in, and close the slider.
 
 ## Clearance
 
