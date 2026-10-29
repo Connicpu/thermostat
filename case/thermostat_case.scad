@@ -65,12 +65,11 @@ assert(fpc_ins < 4.2, "FPC tail insertion is long");
 // 4.0 mm opto under the display panel. The short-print floor is 0.30 mm.
 // At this gap a short carrier print leaves 0.35 mm over the optos.
 assert(panel_gap - 0.10 - 4.0 >= 0.30, "panel gap does not clear the optos");
-// The display panel rests on the pads. A separate retainer clips onto the
-// fences after the panel is down and presses the border onto the pads.
-// The shell does not touch the panel. The window chamfer starts at
-// Z_in+face_recess. The retainer tongue sits in that recess.
-// face_recess is bounded in scripts/case_fit.py: 0.50 and 1.00 both fail.
-face_recess = 0.85;
+// The display panel rests on the pads. Four retainer clips go on after it
+// is down. The tongue is printed in its free shape, below the panel front,
+// so installing it is the preload. The recess over the border and the fences
+// is where that tongue lives. 0.50 and 1.00 are outside the fit's band.
+face_recess = 1.15;
 xstop_bite = 0.05;                   // +x posts cross the panel edge by this much, so a short print stops the slide
 // The outline is 36.70 mm. The datasheet gives that one width.
 // 36.50–36.90 is an assumption around it.
@@ -79,28 +78,22 @@ panel_hi = 36.90;
 panel_h = 36.70;
 fence_air = 0.20;                    // air between a long-edge fence and the outline. The fence does not cross the face.
 fence_t = 0.80;
-// Retainer. Four separate PETG clips, one on each fence span. Each drops
-// straight down after the panel is on the pads. A tongue on the border is
-// the spring: the mesh is the seated shape, ret_air above the nominal panel
-// front. The free tongue sits ret_free below that, so it presses the panel
-// onto the pads. A panel 0.10 mm thicker than the 1.2 mm drawing adds that
-// much deflection. The datasheet states no thickness tolerance; 0.10 mm is
-// the allowance used here. The tongue bends in z, across the layers.
-// E is snap_E, set below.
-ret_air = 0.05;
-ret_free = 0.20;
+// Retainer. The mesh is the free shape. The tongue underside is ret_defl
+// below the nominal panel front. The cantilever is ret_L along y, from the
+// fence outer face to a tip ret_reach onto the border. Stress runs along y,
+// in the layer plane. The root block is bar_t thick in z. E is snap_E.
+rib_proud = 0.40;
+tooth_bite = 0.30;
+ret_t = 0.40;
+ret_reach = 2.20;
+ret_defl = 0.20;
+ret_w = 4.00;
+ret_L = 3.20;                          // ret_reach + fence_air + fence_t
 ret_thick = 0.10;
-ret_t = 0.45;
-ret_L = 5.00;
-ret_reach = 1.40;                      // onto the border, inside the 3.0 mm margin
-ret_defl = ret_free + ret_thick;
-// Clip arm. It runs along the fence (x) and bends outward in y to pass the
-// rib. The strained fibers run along x, in the plane of the layers when the
-// clip is printed with the tongue up. The 2.4% flexural gate applies.
-// The shortest fence span sets clip_L.
+bar_t = 0.80;
 clip_t = 0.45;
-clip_L = 4.30;
-clip_d = 0.40;
+clip_L = 5.20;
+clip_d = 0.48;
 // Mouth witness. The pointer stands just outside the housing, on the mouth plane.
 witness_x0 = 103.40;
 witness_x1 = 104.10;
@@ -129,16 +122,18 @@ assert(snap_L > 11, "backplate clip wall is too short");
 assert(snap_eps < petg_eps, "backplate clip strain is past the PETG flexural limit");
 assert(snap_F < 8, "backplate clip takes more than a finger");
 ret_eps = 1.5 * ret_t * ret_defl / (ret_L * ret_L);
-ret_I = ret_reach * ret_t * ret_t * ret_t / 12;
-ret_F = 3 * snap_E * ret_I * ret_free / (ret_L * ret_L * ret_L);
+ret_I = ret_w * ret_t * ret_t * ret_t / 12;
+ret_F = 3 * snap_E * ret_I * ret_defl / (ret_L * ret_L * ret_L);
 clip_eps = 1.5 * clip_t * clip_d / (clip_L * clip_L);
 echo(str("RETAINER L=", ret_L, " defl=", ret_defl, " strain=", ret_eps, " force_N=", ret_F));
 echo(str("CLIP-ON strain=", clip_eps));
-assert(ret_eps < 0.010, "retainer tongue is past the 1.0% interlayer bound");
-assert(ret_F < 1.0, "retainer tongue presses harder than 1 N");
+assert(ret_eps < petg_eps, "retainer tongue is past the PETG flexural limit");
+assert(ret_F > 0.40 && ret_F < 1.5, "retainer tongue force is outside 0.40–1.5 N");
 assert(clip_eps < petg_eps, "retainer clip is past the PETG flexural limit");
-assert(face_recess > ret_air + ret_t + 0.25, "face recess does not clear the retainer tongue");
-assert(face_recess < 1.20, "face recess eats the shell face");
+assert(face_recess > 1.05, "face recess does not clear the retainer through the stack");
+assert(face_recess < 1.30, "face recess eats the shell face");
+assert(bar_t >= 0.60, "retainer root is below a printable section");
+assert(ret_reach < 2.80, "tongue reaches past the 3.0 mm border");
 btn = [[112,30],[112,40],[112,50]];  // UP DOWN MODE
 pin = [[93,5]];                      // RESET pinhole only (BOOT is only useful with USB attached)
 led = [63.3,21.2];                   // D5 status LED -> light-pipe hole
@@ -173,7 +168,7 @@ ribL_bx = [26.8, 28.4];              // rear divider, hot zone | middle
 ribS_bx = [119.0, 120.6];            // rear divider, middle | sensor duct
 rib_gap = 0.4;                       // rib top -> PCB back. Never let the rib touch the board.
 rib_end_y = 2.7;                     // lip outer face; caps the rib out to here above the lip
-curtain_bx = [27.7, 29.0];           // front curtain, just left of the panel (the outline starts at x 29.46).
+curtain_bx = [27.7, 28.88];          // panel-side face 0.58 mm from the outline (x 29.46). A tail bottomed at 3.85 mm shifts a tall print 0.50 mm toward this face and still leaves air.
                                      // 0.6 mm clear of L1, so that Y-band can sit down near the board.
 // C17408 (R22/R32/R42) max body is 2.15 x 1.40 x 0.65. The left edge sits 0.425 mm
 // right of this wall. On a +0.16 mm board a 1.0 mm floor leaves ~0.47 mm at the corner;
@@ -300,7 +295,9 @@ module shell(pk=true){   // pk=false: preview only, pockets left solid (inlays s
     board_box(panel[2]-0.40, 37.40, panel[2]+4.0, 50.60, Z_pcb_t+0.40, Z_in-0.02);
     // Land behind the display panel, so a thick board does not bring the panel into the face.
     // The retainer tongues sit in this recess.
-    board_box(panel[0]-0.30, panel[1]-0.55, panel[2]+0.40, panel[3]+0.55, Z_in-0.02, Z_in+face_recess);
+    // Recess over the border and the fences, so the retainer tongue and its
+    // root sit under a ceiling that clears the tolerance stack.
+    board_box(panel[0]-0.30, panel[1]-2.50, panel[2]+0.40, panel[3]+2.50, Z_in-0.02, Z_in+face_recess);
     button_void();
     // RESET pinhole, LED light pipe
     for(p=pin) translate([cx(p[0]),cy(p[1]),Z_in-1]) cylinder(d=1.6,h=10);
@@ -500,7 +497,7 @@ module edge_fence(x0, x1, edge, dir) {
   // enough to clear the bottom board-edge rail (rail top is Z_pcb_t+1.15).
   rib_z0 = Z_pcb_t + 1.70;
   rib_z1 = rib_z0 + 0.50;
-  y_rib = y_out - dir * 0.30;
+  y_rib = y_out - dir * rib_proud;
   board_box(x0, min(y_out, y_rib), x1, max(y_out, y_rib), rib_z0, rib_z1);
 }
 // Posts on the cable side of the panel. +x is the slide that shortens the tail in J4.
@@ -566,43 +563,36 @@ module carrier() {
   board_box(witness_x0, witness_y0, panel[2] + 0.40, witness_y1, Z_pcb_t, Z_pcb_t + 1.00);
   board_box(panel[2] - 0.20, witness_y0, panel[2] + 0.40, 60.40, Z_pcb_t, Z_pcb_t + 1.00);
 }
-// One clip. Tongue is the seated spring (ret_air above the panel front).
-// The hook stands outside the fence rib and reaches under it without touching it.
+// One clip, free shape. The tongue underside is ret_defl below the panel front.
+// The root block is bar_t thick. The tooth reaches tooth_bite onto the same
+// rib the carrier grows (rib_proud).
 module retainer_clip(x0, x1, edge, dir) {
-  z_fence = Z_in - 0.40;
   y_in = edge - dir * fence_air;
   y_out = y_in - dir * fence_t;
-  y_rib = y_out - dir * 0.40;
-  // Bar on the fence. Its top stays under the shell face (Z_in). The recess
-  // is only over the border, so the bar cannot rise into the face.
-  z_bar1 = Z_in - 0.22;
-  board_box(x0, min(y_out, y_in) + 0.15, x1, max(y_out, y_in) - 0.15, z_fence + 0.16, z_bar1);
-  // Riser on the inner fence, inside the face recess, up to the tongue.
-  y_rise0 = y_in - dir * 0.20;
-  y_rise1 = y_in + dir * 0.05;
-  board_box(x0, min(y_rise0, y_rise1), x1, max(y_rise0, y_rise1), z_fence + 0.16, Z_in + ret_air + ret_t);
-  // Tongue above the border. Seated shape: ret_air above the nominal panel front.
+  y_rib = y_out - dir * rib_proud;
   y_tip = edge + dir * ret_reach;
-  board_box(x0 + 0.30, min(y_rise1, y_tip), x1 - 0.30, max(y_rise1, y_tip), Z_in + ret_air, Z_in + ret_air + ret_t);
-  // Arm along x, outside the rib. The post at x0 stays outside the fence and
-  // a bridge above the fence joins the post to the bar. The tooth reaches
-  // under the rib and stops short of the fence face.
+  x_mid = (x0 + x1) / 2;
+  // Free tongue. Underside is ret_defl below the nominal panel front.
+  z_lo = Z_in - ret_defl;
+  z_hi = z_lo + ret_t;
+  // Root block is bar_t thick in z and overlaps the tongue. It crosses from
+  // the wall to the fence outer face, above the fence top.
+  z_fence = Z_in - 0.40;
+  z_root0 = z_hi - bar_t;
+  z_root1 = z_hi;
+  board_box(x_mid - ret_w/2, min(y_out, y_tip), x_mid + ret_w/2, max(y_out, y_tip), z_lo, z_hi);
   rib_z0 = Z_pcb_t + 1.70;
-  rib_z1 = rib_z0 + 0.50;
+  rib_z1 = rib_z0 + 0.60;
   y_arm_in = y_rib - dir * 0.10;
   y_arm_out = y_arm_in - dir * clip_t;
-  board_box(x0 + 0.30, min(y_arm_in, y_arm_out), x1 - 0.30, max(y_arm_in, y_arm_out), rib_z0 - 0.05, rib_z1 + 0.10);
-  // Post, outside the fence.
-  board_box(x0 + 0.30, min(y_arm_in, y_arm_out), x0 + 1.80, max(y_arm_in, y_arm_out), rib_z0 - 0.05, z_bar1);
-  // Bridge above the fence, from the post into the bar.
-  y_bar_edge = y_out + dir * 0.20;
-  board_box(x0 + 0.30, min(y_arm_in, y_bar_edge), x0 + 1.80, max(y_arm_in, y_bar_edge), z_fence + 0.16, z_bar1);
-  // Tooth under the rib, 0.15 mm onto the rib, 0.12 mm of z air under it.
-  y_tooth = y_rib + dir * 0.12;
-  // Neck drops out of the arm. Catch reaches under the rib and overlaps the neck.
-  y_neck = y_arm_in - dir * 0.20;
-  board_box(x0 + 2.00, min(y_arm_out, y_neck), x1 - 0.30, max(y_arm_out, y_neck), rib_z0 - 0.35, rib_z0 + 0.12);
-  board_box(x0 + 2.00, min(y_neck, y_tooth), x1 - 0.30, max(y_neck, y_tooth), rib_z0 - 0.40, rib_z0 - 0.12);
+  // Root, from the arm into the tongue. Sits on the fence top, does not enter it.
+  y_root_out = y_arm_in - dir * 0.25;
+  board_box(x_mid - ret_w/2 - 0.10, min(y_root_out, y_out + dir*0.20), x_mid + ret_w/2 + 0.10, max(y_root_out, y_out + dir*0.20), max(z_root0, z_fence + 0.08), z_root1);
+  // Wall outside the rib, up into the root.
+  board_box(x0 + 0.30, min(y_arm_in, y_arm_out), x1 - 0.30, max(y_arm_in, y_arm_out), rib_z0 - 0.40, z_root1);
+  // Tooth reaches tooth_bite onto the rib and overlaps the wall in z and y.
+  y_tooth = y_rib + dir * tooth_bite;
+  board_box(x0 + 0.60, min(y_arm_out, y_tooth), x1 - 0.60, max(y_arm_out, y_tooth), rib_z0 - 0.40, rib_z0 - 0.10);
 }
 module retainer() {
   retainer_clip(42.0, 53.0, panel[1], +1);

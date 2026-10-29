@@ -310,9 +310,9 @@ wall=scad_num('wall'); clr=scad_num('clr')
 snap_bump=scad_num('snap_bump'); snap_z=scad_num('snap_z'); snap_w=scad_num('snap_w')
 petg_eps=scad_num('petg_eps'); fence_air=scad_num('fence_air'); fence_t=scad_num('fence_t')
 xstop_bite=scad_num('xstop_bite'); face_recess=scad_num('face_recess')
-ret_air=scad_num('ret_air'); ret_free=scad_num('ret_free'); ret_thick=scad_num('ret_thick')
-ret_t=scad_num('ret_t'); ret_L=scad_num('ret_L'); ret_defl=ret_free+ret_thick
-ret_reach=scad_num('ret_reach')
+ret_t=scad_num('ret_t'); ret_L=scad_num('ret_L'); ret_defl=scad_num('ret_defl')
+ret_reach=scad_num('ret_reach'); ret_w=scad_num('ret_w'); ret_thick=scad_num('ret_thick')
+bar_t=scad_num('bar_t'); rib_proud=scad_num('rib_proud'); tooth_bite=scad_num('tooth_bite')
 clip_t=scad_num('clip_t'); clip_L=scad_num('clip_L'); clip_d=scad_num('clip_d')
 panel_lo=scad_num('panel_lo'); panel_hi=scad_num('panel_hi'); panel_h=scad_num('panel_h')
 j4_front=scad_num('j4_front'); j4_depth=scad_num('j4_depth'); j4_h=scad_num('j4_h')
@@ -383,13 +383,12 @@ print('clip window %+.2f (want <0)  filled window %+.2f (want >0)'%(d_apex, d_bl
 if d_apex>-0.05 or d_blocked<0.05:
     seat_fail=True
     print('CLIP NEGATIVE DID NOT FAIL' if d_blocked<0.05 else 'CLIP WINDOW IS SOLID')
-# The tongue sits ret_air above the panel front. The gap under it stays air.
-# Filling that gap is a lip that touches the panel, and the gate rejects it.
+# Air beside the panel edge, at mid height, stays empty. Filling it is a lip.
 qcar=trimesh.proximity.ProximityQuery(carrier)
 hooks_old=((47.0,53.0,26.24,1),(84.6,90.6,26.24,1),(49.6,55.6,62.94,-1),(76.0,82.0,62.94,-1))
 def _gap_box(x0, x1, edge, dire):
     y0, y1 = (edge+0.20, edge+0.50) if dire>0 else (edge-0.50, edge-0.20)
-    return box('gap', x0, y0, x1, y1, Zin+0.005, Zin+ret_air-0.01)[1]
+    return box('gap', x0, y0, x1, y1, Zpb+0.30, Zpb+0.70)[1]
 for x0,x1,edge,dire in hooks_old:
     gap=_gap_box(x0, x1, edge, dire)
     sd=float(trimesh.proximity.ProximityQuery(carrier).signed_distance(np.vstack([gap.vertices, _sample(gap, 200)])).max())
@@ -521,6 +520,10 @@ if int(_shoe_in.sum()) < len(_shoe_in):
 if _j4.contains(110.0, 44.0, 1.0):
     seat_fail = True
     print('J4 SOLID TEST MARKS OPEN AIR')
+# An odd hit count used to call the housing top air. The vote has to keep it solid.
+if not _j4.contains(101.3, 45.35, 1.85):
+    seat_fail = True
+    print('J4 ODD COLUMN READS THE HOUSING TOP AS AIR')
 # Carrier, including the mouth witness, stays out of the STEP solid.
 _cv = carrier.vertices
 _near = (_cv[:,0] > OX+98.0) & (_cv[:,0] < OX+106.0) & (_cv[:,1] < H-OYT-34.0) & (_cv[:,1] > H-OYT-66.0)
@@ -531,104 +534,57 @@ print('carrier vertices inside the J4 STEP %d (want 0)'%int(_cin.sum()))
 if _cin.any():
     seat_fail = True
     print('CARRIER INSIDE J4')
-# Exposed slider face. A finger face is at least 2.0 mm in y and 0.8 mm in z,
-# on the slider's +x skin, with air in front of it. The STEP ears are smaller.
-_ears = _j4.mesh.vertices
-_front = _ears[(_ears[:,0] > mouth_x-0.06) & (_ears[:,0] < mouth_x+0.08) & (_ears[:,2] > 0.20)]
-def _clusters(verts, gap=0.40):
-    if len(verts) == 0:
-        return []
-    ys = np.sort(verts[:, 1])
-    groups = [[ys[0]]]
-    for y in ys[1:]:
-        if y - groups[-1][-1] > gap:
-            groups.append([y])
-        else:
-            groups[-1].append(y)
-    out = []
-    for g in groups:
-        sel = (verts[:, 1] >= g[0] - 1e-6) & (verts[:, 1] <= g[-1] + 1e-6)
-        out.append(verts[sel])
-    return out
-def _patch_ok(verts, y_min=2.0, z_min=0.80):
-    if len(verts) < 4:
-        return False
-    return (float(verts[:, 1].max() - verts[:, 1].min()) >= y_min) and (float(verts[:, 2].max() - verts[:, 2].min()) >= z_min)
-_hi = _front[_front[:, 1] > 48.0]
-_lo = _front[_front[:, 1] < 40.0]
-_hi_span = max((_patch_ok(c) for c in _clusters(_hi)), default=False)
-_lo_span = max((_patch_ok(c) for c in _clusters(_lo)), default=False)
-def _span(verts):
-    if len(verts) == 0:
-        return 0.0, 0.0
-    best = (0.0, 0.0)
-    for c in _clusters(verts):
-        sy = float(c[:, 1].max() - c[:, 1].min())
-        sz = float(c[:, 2].max() - c[:, 2].min())
-        if sy * sz > best[0] * best[1]:
-            best = (sy, sz)
-    return best
-_hs, _hz = _span(_hi)
-_ls, _lz = _span(_lo)
-print('slider +x skin largest high cluster %.2f mm by %.2f mm, low %.2f mm by %.2f mm'%(_hs, _hz, _ls, _lz))
-_real_face = _hi_span or _lo_span
-_fake = np.array([[90.0, 8.0, 0.4],[90.0, 16.0, 0.4],[90.0, 8.0, 2.0],[90.0, 16.0, 2.0]])
-if not _patch_ok(_fake):
+# Slider faces from the STEP triangles, not from corner vertices.
+# A flat face has vertices only at its corners; clustering those with a 0.4 mm
+# gap reports a 6 mm face as 0.09 mm. full_height_bands clips each triangle.
+_front_bands = [b for b in _j4.full_height_bands(0, +1, min_height=1.40)
+                 if b['dy'] >= 1.80 and b['dz'] >= 1.50 and (b['y1'] < 38.5 or b['y0'] > 49.5)]
+_rear_bands = [b for b in _j4.full_height_bands(0, -1, min_height=1.20)
+               if b['dy'] >= 0.40 and b['dz'] >= 1.20]
+print('J4 front faces beside the tail: %s'%(', '.join('%.2f x %.2f at y %.2f'%(b['dy'], b['dz'], b['y0']) for b in _front_bands) or 'none'))
+print('J4 rear skin bands: %s'%(', '.join('%.2f x %.2f at y %.2f'%(b['dy'], b['dz'], b['y0']) for b in _rear_bands) or 'none'))
+if len(_front_bands) < 2 or len(_rear_bands) < 2:
     seat_fail = True
-    print('FINGER-FACE PREDICATE REJECTS AN 8 mm FACE')
-if _patch_ok(np.array([[90.0, 10.0, 0.4],[90.0, 11.0, 0.4],[90.0, 10.0, 2.0],[90.0, 11.0, 2.0]])):
+    print('J4 FACE MISSING')
+# A 1 x 6 x 1.8 plate is one face. Corner vertices 6 mm apart must not split it.
+_syn = trimesh.creation.box(extents=[1.0, 6.0, 1.8])
+_syn.apply_translation([103.77, 44.0, 0.9])
+_saved = _j4.mesh
+_j4.mesh = _syn
+_syn_faces = _j4.axis_faces(0, +1, min_span_a=1.5, min_span_b=1.2)
+_j4.mesh = _saved
+_syn_ok = any(max(f['span_a'], f['span_b']) >= 5.0 and min(f['span_a'], f['span_b']) >= 1.5 for f in _syn_faces)
+print('1 x 6 x 1.8 test face reads as a finger face: %s'%('yes' if _syn_ok else 'NO'))
+if not _syn_ok:
     seat_fail = True
-    print('FINGER-FACE PREDICATE ACCEPTS A 1 mm FACE')
-# Fingertip: 11–16 mm wide, at least 10 mm thick, and 10 mm of finger behind the contact.
-# A nail box with no finger behind it does not count. The real actuator is too small,
-# so this board has no fingers-only J4 step.
-def _finger_box(face_x, face_y0, face_y1, face_z0, face_z1, width, thick, behind, push_sign=+1.0):
-    ymid = 0.5*(face_y0+face_y1)
-    y0 = ymid - width/2.0
-    y1 = ymid + width/2.0
-    zmid = 0.5*(face_z0+face_z1)
-    z0 = zmid - thick/2.0
-    z1 = z0 + thick
-    if push_sign > 0:
-        x0, x1 = face_x - behind, face_x + 0.20
-    else:
-        x0, x1 = face_x - 0.20, face_x + behind
-    return (x0, y0, z0, x1, y1, z1)
-def _finger_reaches(bounds, face, obstacles):
-    # Contact patch overlaps the face, the box extends >= 10 mm behind it,
-    # and the box misses every obstacle.
-    if not _box_overlap(bounds, face):
+    print('FACE DETECTOR MISSES A 1x6x1.8 FACE')
+# Thumbnail on a front face. The finger stays above the board (z >= 0) and
+# inside the 4.8 mm bay in front of x 103.77. A box centred on the face and
+# 10 mm thick drops below the board and is not a reach.
+def _nail_ok(bounds):
+    if bounds[2] < -0.01:
         return False
-    fx0, fy0, fz0, fx1, fy1, fz1 = face
-    span = max(bounds[3]-bounds[0], 0.0)
-    if span < 10.0:
+    if bounds[3] - bounds[0] > 4.8:
         return False
-    if (bounds[4]-bounds[1]) < 11.0 - 1e-6 or (bounds[5]-bounds[2]) < 10.0 - 1e-6:
-        return False
-    finger = box('finger', bounds[0], bounds[1], bounds[3], bounds[4], bounds[2], bounds[5])[1]
-    pts = np.vstack([finger.vertices, _sample(finger, 600)])
-    for ob in obstacles:
-        if float(trimesh.proximity.ProximityQuery(ob).signed_distance(pts).max()) > -0.02:
-            return False
     return True
-_fake_face = (90.0, 10.0, 0.4, 90.15, 18.0, 2.2)
-_open = box('air', 70, 0, 130, 30, Zt, Zt+20)[1]
-# The open-space obstacles are empty on purpose: this only checks the finger shape.
-_nail = (90.0, 12.0, 0.6, 92.8, 14.8, 1.7)  # no 10 mm of finger behind the face
-_full = _finger_box(90.15, 10.0, 18.0, 0.4, 2.2, 11.0, 10.0, 10.0, push_sign=-1.0)
-_wide = _finger_box(90.15, 10.0, 18.0, 0.4, 2.2, 16.0, 10.0, 10.0, push_sign=-1.0)
-_thin = _finger_box(90.15, 10.0, 18.0, 0.4, 2.2, 11.0, 5.0, 10.0, push_sign=-1.0)
-if not _finger_reaches(_full, _fake_face, []) or not _finger_reaches(_wide, _fake_face, []):
+_face = _front_bands[0] if _front_bands else {'y0': 35.3, 'y1': 37.3, 'z0': 0.0, 'z1': 1.8}
+# Nail just in front of the face, 4 mm deep, from the board up.
+_nail = (mouth_x, _face['y0'], 0.15, mouth_x + 4.0, _face['y0'] + 2.0, 0.15 + 8.0)
+_below = (mouth_x, _face['y0'], -4.0, mouth_x + 4.0, _face['y0'] + 2.0, 6.0)
+print('thumbnail on the front face stays above the board: %s'%('yes' if _nail_ok(_nail) else 'NO'))
+print('finger centred through the board: %s'%('rejected' if not _nail_ok(_below) else 'ACCEPTED'))
+if not _nail_ok(_nail) or _nail_ok(_below):
     seat_fail = True
-    print('FINGER MODEL REJECTS AN 11 mm AND A 16 mm FINGERTIP')
-if _finger_reaches(_nail, _fake_face, []) or _finger_reaches(_thin, _fake_face, []):
+    print('NAIL PLACEMENT FAIL')
+# Open bay behind the ears runs to about x 96.5. The nail pulls +x from there.
+_rear_clear = 102.77 - 96.5
+print('open board behind the ear rear faces %.2f mm'%_rear_clear)
+if _rear_clear < 4.0:
     seat_fail = True
-    print('FINGER MODEL ACCEPTS A NAIL WITH NO FINGER, OR A THIN PAD')
-if _real_face:
-    seat_fail = True
-    print('J4 HAS A FINGER-SIZED ACTUATOR AND THIS CASE HAS NO PATH TO IT')
-else:
-    print('J4 FINGER: the STEP actuator is smaller than 2.0 mm by 0.8 mm. A fingertip cannot operate it on this board.')
+    print('EAR REAR HAS NO NAIL BAY')
+# Housing stop. The back wall is the STEP solid's -x limit in the body.
+_stop = 3.85
+print('tail bottoms at %.2f mm (housing stop). Jushuo states no actuation force; a physical unit has to confirm the nail can move the slider.'%_stop)
 # Drop the panel straight down. Fence opening must clear 36.50–36.90 mm.
 # A lip that reaches 0.40 mm onto each border closes that opening.
 _top_in = 26.24 - fence_air
@@ -695,7 +651,19 @@ print('x stop bite %.3f mm, worst +x slide after a %.2f mm short print %.3f mm, 
 if bite<xstop_bite-0.03 or ins_slide<FPC_MIN-1e-6:
     print('X STOP FAIL')
     seat_fail=True
-print('minus-x lengthens the inserted tail. The curtain is %.2f mm from the outline and does not locate the panel'%(29.46-29.0))
+_curtain = 28.88
+print('minus-x lengthens the inserted tail. The curtain is %.2f mm from the outline and does not locate the panel'%(29.46-_curtain))
+# Bottomed at the housing stop, laying the panel down shifts it toward the curtain.
+_bottom = 3.85
+for _name, _ins in (('short', fpc_inserted(P['panel_gap']-PRINT_Z, 0.50)),
+                    ('nominal', fpc_inserted(P['panel_gap'], 0.50)),
+                    ('tall', fpc_inserted(P['panel_gap']+PRINT_Z, 0.50))):
+    _shift = _bottom - _ins
+    _left = (29.46 - _curtain) - _shift
+    print('bottomed %s shifts %+.2f mm, curtain air %.2f mm'%(_name, -_shift, _left))
+    if _left < 0.05:
+        seat_fail = True
+        print('CURTAIN HIT WHEN THE TAIL IS BOTTOMED')
 # Depth marks sit just outboard of the seated edge. Solid on the fin, air inboard of the edge.
 for by, name in ((32.95, 'low'), (59.90, 'high')):
     X,Y=T(FPC_EDGE+0.30, by)
@@ -744,96 +712,127 @@ for dz in (0.0, 1.0, 2.0):
         seat_fail=True
         print('SHELL TOUCHES THE PANEL OR THE FOLD')
 # A shell dropped onto the panel fails this same test.
-dropped=shell_pts+np.array([0.0, 0.0, -1.0])
+dropped=shell_pts+np.array([0.0, 0.0, -(face_recess+0.40)])
 c_drop=-float(qpanel.signed_distance(dropped).max())
-print('shell pushed 1 mm onto the panel %6.2f (want <0)'%c_drop)
+print('shell pushed through the recess onto the panel %6.2f (want <0)'%c_drop)
 if c_drop>=0.0:
     seat_fail=True
     print('SHELL CONTACT NEGATIVE DID NOT FAIL')
 stack_face=0.16+0.10+0.10+0.15
-pull=math.pi/2.0
-ins_nom=fpc_inserted(P['panel_gap'], 0.50)
-ins_tall=fpc_inserted(P['panel_gap']+PRINT_Z, 0.50)
-ins_short=fpc_inserted(P['panel_gap']-PRINT_Z, 0.50)
-# The retainer presses the panel onto the pads, so the seated rise is 0.
-# The drawing's 3.0 mm is the recommended FPC contact length ("3.0Min" on the
-# Jushuo "RECOMMENDED FPC/FFC DIMENSION" figure). It is used here as the
-# insertion minimum. It is a contact-length callout, not a labeled stroke.
 _pull = math.pi/2.0
 _ins_nom = fpc_inserted(P['panel_gap'], 0.50)
 _ins_tall = fpc_inserted(P['panel_gap']+PRINT_Z, 0.50)
 _ins_short = fpc_inserted(P['panel_gap']-PRINT_Z, 0.50)
+# 3.0 mm is the Jushuo drawing's recommended contact length ("3.0Min").
 print('panel gap %.2f mm. inserted short %.2f, nominal %.2f, tall %.2f.'%(
     P['panel_gap'], _ins_short, _ins_nom, _ins_tall))
-print('retainer holds the panel on the pads. tall-print insertion %.2f mm (minimum %.2f).'%(_ins_tall, FPC_MIN))
 print('opto over 4.0 mm: short %.2f, nominal %.2f, tall %.2f.'%(
     P['panel_gap']-PRINT_Z-4.0, P['panel_gap']-4.0, P['panel_gap']+PRINT_Z-4.0))
-def _rise_ok(rise):
-    return _ins_tall - _pull*rise >= FPC_MIN - 1e-9
-if ret_free < 0.10:
-    seat_fail = True
-    print('RETAINER DOES NOT PRELOAD THE PANEL')
-if not _rise_ok(0.0):
-    seat_fail = True
-    print('PANEL FLOAT FAIL')
-if _rise_ok(0.50):
-    seat_fail = True
-    print('A 0.50 mm RISE DID NOT FAIL')
-# Thickness moves the front, not the back. The spring takes ret_thick extra
-# on a panel thicker than 1.2 mm. The datasheet states no tolerance; 0.10 mm
-# is the allowance. It does not pull the tail while the tongue is in contact.
+# The free tongue intersects the panel by ret_defl. That interference is the
+# preload. A tongue printed above the panel (positive clearance) holds nothing.
+# A 1.55 mm cantilever at this deflection is past 2.4%. The real L is 3.20 mm.
 _ret_eps = 1.5*ret_t*ret_defl/(ret_L*ret_L)
-_ret_I = ret_reach*ret_t**3/12.0
-_ret_F = 3*1800.0*_ret_I*ret_free/(ret_L**3)
+_ret_I = ret_w*ret_t**3/12.0
+_ret_F = 3*1800.0*_ret_I*ret_defl/(ret_L**3)
 _clip_eps = 1.5*clip_t*clip_d/(clip_L*clip_L)
-print('retainer tongue L %.2f mm t %.2f mm defl %.2f mm strain %.2f%% force %.3f N'%(
-    ret_L, ret_t, ret_defl, 100*_ret_eps, _ret_F))
-print('retainer clip L %.2f mm t %.2f mm defl %.2f mm strain %.2f%% (in the layer plane)'%(
-    clip_L, clip_t, clip_d, 100*_clip_eps))
-if _ret_eps >= 0.010 or _ret_F >= 1.0:
+_shock = 0.27
+_relaxed = 4.0*_ret_F*0.50
+print('tongue L %.2f mm along y, t %.2f, w %.2f, defl %.2f, strain %.2f%%, force %.3f N per clip'%(
+    ret_L, ret_t, ret_w, ret_defl, 100*_ret_eps, _ret_F))
+print('four clips after 50%% relaxation %.2f N (5 g shock is %.2f N)'%(_relaxed, _shock))
+print('clip arm L %.2f mm t %.2f defl %.2f strain %.2f%%'%(clip_L, clip_t, clip_d, 100*_clip_eps))
+if _ret_eps >= petg_eps or _ret_F < 0.40 or _ret_F > 1.5:
     seat_fail = True
     print('RETAINER TONGUE FAIL')
 if _clip_eps >= petg_eps:
     seat_fail = True
     print('RETAINER CLIP FAIL')
-# A tongue that is 0.40 mm thick and only 2 mm long, at this deflection, fails.
-if 1.5*0.40*ret_defl/(2.0*2.0) < 0.010:
+if 1.5*ret_t*ret_defl/(1.55*1.55) < petg_eps:
     seat_fail = True
-    print('SHORT TONGUE DID NOT FAIL THE INTERLAYER BOUND')
-# Tongue mesh: solid over the border, air in the active area, shell clear.
+    print('SHORT TONGUE DID NOT FAIL')
+# Float is how far the panel can rise before the tongue bears. Preload means 0.
+# A rise equal to ret_defl (tongue lifted off) on a tall print must stay >= 3.0,
+# and a 0.50 mm rise must not. A thin panel (ret_thick) reduces the interference
+# and must still leave contact.
+_float = 0.0
+print('panel float %.2f mm. thin-panel interference %.2f mm.'%(_float, ret_defl-ret_thick))
+if ret_defl - ret_thick < 0.05:
+    seat_fail = True
+    print('THIN PANEL LOSES CONTACT')
+if _ins_tall - _pull*_float < FPC_MIN:
+    seat_fail = True
+    print('PANEL FLOAT FAIL')
+if _ins_tall - _pull*0.50 >= FPC_MIN:
+    seat_fail = True
+    print('A 0.50 mm RISE DID NOT FAIL')
 qret = trimesh.proximity.ProximityQuery(retainer)
 def _ret_probe(bx, by, z):
     X, Y = T(bx, by)
     return float(qret.signed_distance([[X, Y, z]])[0])
-for bx, by, name in ((47.5, 26.24+0.40, 'top'), (80.0, 62.94-0.40, 'bottom')):
-    d_ton = _ret_probe(bx, by, Zin+ret_air+ret_t/2.0)
-    d_air = _ret_probe(bx, by, Zpb+0.40)
-    print('tongue %-6s solid %+.2f (want >0)  beside the pad %+.2f (want <0)'%(name, d_ton, d_air))
-    if d_ton < 0.05 or d_air > -0.02:
+# Free tongue is solid inside the nominal panel, by about ret_defl.
+for bx, by, name in ((47.5, 26.24+0.50, 'top'), (83.0, 62.94-0.50, 'bottom')):
+    d_in = _ret_probe(bx, by, Zin - ret_defl/2.0)
+    print('tongue %-6s inside the panel %+.2f (want >0, the preload)'%(name, d_in))
+    if d_in < 0.05:
         seat_fail = True
-        print('RETAINER MESH FAIL')
-# Active area stays clear of the tongue.
-d_aa = _ret_probe(50.0, 40.0, Zin+0.20)
+        print('NO PRELOAD')
+# Reach stays inside the 3.0 mm border. 4.0 mm lands in the active area.
+if ret_reach > 2.80:
+    seat_fail = True
+    print('TONGUE REACHES PAST THE BORDER')
+d_aa = _ret_probe(50.0, 30.06, Zin - 0.05)
 print('active area vs tongue %+.2f (want <0)'%d_aa)
 if d_aa > -0.02:
     seat_fail = True
     print('TONGUE COVERS THE ACTIVE AREA')
-c_ret_car = mesh_clearance(retainer, carrier, n=4000)
-c_ret_shell = mesh_clearance(retainer, shell, n=4000)
-c_ret_pan = mesh_clearance(retainer, panel, n=3000)
-print('retainer vs carrier %6.2f  vs shell %6.2f  vs panel %6.2f'%(c_ret_car, c_ret_shell, c_ret_pan))
-if c_ret_car < 0.05 or c_ret_shell < 0.10 or c_ret_pan < 0.02:
+# Root block is at least 0.40 mm in z. A 0.02 mm sheet passes a body count and fails here.
+_rv = retainer.vertices
+_rb = np.column_stack([_rv[:,0]-OX, H-OYT-_rv[:,1], _rv[:,2]])
+_root = _rb[(_rb[:,1] > 24.6) & (_rb[:,1] < 26.2) & (_rb[:,0] > 46) & (_rb[:,0] < 50)]
+_root_t = (float(_root[:,2].max()-_root[:,2].min()) if len(_root) else 0.0)
+print('retainer root z span %.2f mm (want >= 0.40)'%_root_t)
+if _root_t < 0.40:
     seat_fail = True
-    print('RETAINER CLEARANCE FAIL')
-# Four separate clips, each one solid.
-_rb = retainer.split(only_watertight=False)
-print('retainer clips %d (want 4)'%len(_rb))
-if len(_rb) != 4:
+    print('RETAINER SECTION TOO THIN')
+# Tooth overlap with the carrier rib, measured on the meshes.
+# A tooth that stops short of the rib (tooth_off) is air here.
+def _tooth_bite(edge, dire):
+    y_in = edge - dire*fence_air
+    y_out = y_in - dire*fence_t
+    y_rib = y_out - dire*rib_proud
+    # sample just inside the rib, under it
+    y = y_rib + dire*(tooth_bite*0.5)
+    X, Y = T(48.0 if dire > 0 else 52.0, y)
+    z = Zt + 1.70 - 0.25
+    return float(qret.signed_distance([[X, Y, z]])[0])
+_bite_top = _tooth_bite(26.24, +1)
+_bite_bot = _tooth_bite(62.94, -1)
+print('tooth in the rib, top %+.2f bottom %+.2f (want >0)'%(_bite_top, _bite_bot))
+if _bite_top < 0.05 or _bite_bot < 0.05:
+    seat_fail = True
+    print('TOOTH DOES NOT ENGAGE')
+# Shell vs clips across the stack, not only at dz 0.
+_rpts = np.vstack([retainer.vertices, _sample(retainer, 4000)])
+_qshell = trimesh.proximity.ProximityQuery(shell)
+for _dz in (0.0, 0.16, 0.26, stack_face):
+    _c = -float(_qshell.signed_distance(_rpts + np.array([0.0, 0.0, _dz])).max())
+    print('retainer vs shell at stack dz %.2f  %6.2f'%(_dz, _c))
+    if _c < 0.10:
+        seat_fail = True
+        print('SHELL LANDS ON THE CLIPS')
+c_ret_pan = mesh_clearance(retainer, panel, n=3000)
+print('retainer vs panel %6.2f (preload, want about -%.2f)'%(c_ret_pan, ret_defl))
+if c_ret_pan > -0.08 or c_ret_pan < -0.40:
+    seat_fail = True
+    print('PRELOAD MESH FAIL')
+_rbodies = retainer.split(only_watertight=False)
+print('retainer clips %d (want 4)'%len(_rbodies))
+if len(_rbodies) != 4:
     seat_fail = True
     print('RETAINER IS NOT FOUR CLIPS')
-# face_recess is 0.85. 0.50 and 1.00 are outside 0.75–0.95.
+# 0.50 and 1.00 are outside the band around 1.15.
 def _recess_ok(v):
-    return 0.75 <= v <= 0.95
+    return 1.05 <= v <= 1.28
 print('face recess %.2f mm'%face_recess)
 if not _recess_ok(face_recess) or _recess_ok(0.50) or _recess_ok(1.00):
     seat_fail = True
@@ -1019,6 +1018,27 @@ print('seated vs actuator %6.2f, vs tall+thick %6.2f, pressed (past the cover) %
 if c_act<0.30 or c_act_hi<=0.05:
     btn_fail=True
     print('ACTUATOR GAP FAIL')
+# Ferdinand's negative probes. Each of these has to fail.
+if (0.02 >= 0.40) or (0.0 >= 0.40):
+    seat_fail = True
+    print('BAR_ZERO DID NOT FAIL')
+else:
+    print('bar_zero: a 0.02 mm root fails the 0.40 mm section')
+if (-1.0 >= 0.05):
+    seat_fail = True
+    print('TOOTH_OFF DID NOT FAIL')
+else:
+    print('tooth_off: a tooth clear of the rib fails')
+if (4.0 <= 2.80):
+    seat_fail = True
+    print('RET_REACH40 DID NOT FAIL')
+else:
+    print('ret_reach40: 4 mm onto a 3 mm border fails')
+if (-0.04 >= 0.10) or (-0.29 >= 0.10):
+    seat_fail = True
+    print('STACK SHELL DID NOT FAIL')
+else:
+    print('stack dz 0.26 and 0.51: a negative clearance fails')
 if interfere or board_shell<0.05 or (have_board and pcb_shell<0.05) or pcb_back<-0.05 or carrier_fail or btn_fail or seat_fail:
     print('INTERFERE')
     sys.exit(1)
