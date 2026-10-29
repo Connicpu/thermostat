@@ -529,7 +529,7 @@ def mesh_checks(src, cn, rep, paths):
     def clearance(part, obst, n=2000):
         pts = part.vertices
         if len(pts) < n:
-            pts = np.vstack([pts, part.sample(min(n, max(len(pts), 50)))])
+            pts = np.vstack([pts, _sample(part, min(n, max(len(pts), 50)), 1)])
         d = trimesh.proximity.ProximityQuery(obst).signed_distance(pts)
         return -float(np.max(d))
 
@@ -603,6 +603,11 @@ def mesh_checks(src, cn, rep, paths):
     rep.gate(air_border > -0.02, "border outside the lands does not enter the panel (%.3f mm)" % air_border)
 
 
+def _sample(mesh, n, seed):
+    """Surface samples from a fixed seed, so the same mesh reads the same clearance on every run."""
+    return mesh.sample(int(n), seed=seed)
+
+
 def _land_rects(src, panel):
     land0 = grab(src, "sh_land0")
     land1 = grab(src, "sh_land1")
@@ -623,7 +628,7 @@ def _border_clearance(shell_m, src, cn, pad=0.15):
     import numpy as np
     import trimesh
     pts = shell_m.vertices
-    extra = shell_m.sample(6000) if len(pts) else shell_m.sample(6000)
+    extra = _sample(shell_m, 6000, 2)
     pts = np.vstack([pts, extra])
     bx = pts[:, 0] - cn["OX"]
     by = cn["H"] - cn["OYT"] - pts[:, 1]
