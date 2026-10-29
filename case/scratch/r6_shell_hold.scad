@@ -7,9 +7,9 @@ include <../thermostat_case.scad>
 sh_root = 2.40;          // pillar along the edge, both ends
 sh_t = 0.80;             // bridge thickness, four layers
 sh_w = 1.20;             // bridge width across the border
-sh_y0 = 2.00;            // outboard face of the bridge, from the panel edge
-sh_land0 = 2.50;         // land, on the bridge centreline
-sh_land1 = 2.70;
+sh_y0 = 2.05;            // outboard face of the bridge, from the panel edge
+sh_land0 = 2.47;         // 0.50 mm land. Sits in 1.92-3.32 with a 0.05 mm print error.
+sh_land1 = 2.97;
 sh_nub_h = 0.45;         // land stands this far below the bridge
 sh_nub_len = 4.0;
 sh_drop = 0.15;          // carrier stop is this far under Z_panel_b
@@ -17,16 +17,20 @@ sh_stop = Z_panel_b - sh_drop;
 sh_R_below = 0.38;       // free land under the nominal panel front on the stop
 sh_R = sh_stop + panel_t - sh_R_below;
 sh_bite = 0.10;          // pillars enter the recess skin by this much
-sh_loc_gap = 0.15;       // shell rib to the fence outer face
+sh_loc_gap = 0.10;       // shell rib to the fence outer face
 sh_loc_t = 0.80;
+sh_rib_drop = 1.85;      // rib bottom is Z_in minus this
+sh_tie_h = 1.20;         // foot that joins a column to the spine
+sh_ceil_skin = 0.06;     // sliced recess skin is this much thicker than the cad skin
 
 // x0, x1 outer ends, edge 0 top / 1 bottom, nub centre x.
-// Left bridges: nub on the span centre. Right bridges: nub toward the cable end.
+// Left bridges: nub on the span centre. Right bridges: nub 6 mm from the inner
+// pillar face. Eight millimetres lets a 10 N corner press reach U7.
 sh_spans = [
   [29.70, 67.50, 0, 48.60],
-  [71.60, 106.40, 0, 100.00],
+  [71.60, 106.40, 0, 98.00],
   [29.70, 67.50, 1, 48.60],
-  [71.60, 106.40, 1, 100.00]
+  [71.60, 106.40, 1, 98.00]
 ];
 
 // Stops added on the carrier. Full height, from the PCB face to sh_stop.
@@ -89,7 +93,7 @@ module sh_loc(x0, x1, which) {
   y_fence = edge - dir * (fence_air + fence_t);
   y_near = y_fence - dir * sh_loc_gap;
   y_far = y_near - dir * sh_loc_t;
-  z0 = Z_in - 1.05;
+  z0 = Z_in - sh_rib_drop;
   z1 = Z_in + face_recess + sh_bite;
   board_box(x0, min(y_near, y_far), x1, max(y_near, y_far), z0, z1);
 }
@@ -132,7 +136,7 @@ module sh_carrier_case() {
       for (c = sh_columns)
         board_box(c[0], c[1], c[2], c[3], Z_pcb_t, sh_stop);
       for (c = sh_ties)
-        board_box(c[0], c[1], c[2], c[3], Z_pcb_t, Z_pcb_t + 1.20);
+        board_box(c[0], c[1], c[2], c[3], Z_pcb_t, Z_pcb_t + sh_tie_h);
     }
     // Rest surfaces under the outline, brought to the stop.
     // Fences stand outboard of this cut.

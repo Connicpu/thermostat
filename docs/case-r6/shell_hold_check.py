@@ -3,6 +3,7 @@
 
 Renders the meshes from the scad on every run. The 2x preload target is not a gate.
 """
+import hashlib
 import math
 import os
 import re
@@ -19,11 +20,15 @@ OPENSCAD = os.environ.get("OPENSCAD", "openscad")
 
 E_SOFT = 1500.0
 J4_TARGET = 3.15
+CABLE = 0.30
+SHOCK = 0.27
+CREEP_KEEP = 0.35
+LINE_W = 0.42
 PANEL_E = 70000.0
 
 
 def grab(text, name):
-    m = re.search(r"(?:^|[;\n])\s*%s\s*=\s*([0-9.]+)\s*;" % re.escape(name), text)
+    m = re.search(r"(?:^|[;\n])\s*%s\s*=\s*(-?\d*\.?\d+)\s*;" % re.escape(name), text)
     if not m:
         raise SystemExit("missing " + name)
     return float(m.group(1))
@@ -126,6 +131,109 @@ def span_geometry(spans, root):
     return out
 
 
+def pads_from_case(case, panel):
+    """Carrier rests that can hold the panel back. Read from the case, not a copy."""
+    pads = []
+    for m in re.finditer(
+        r"support_pad\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*panel\[([0-9]+)\]\s*,\s*([+\-]?\s*[0-9.]+)\s*,\s*([0-9.]+)\s*\)",
+        case,
+    ):
+        x0, x1 = float(m.group(1)), float(m.group(2))
+        edge = panel[int(m.group(3))]
+        direction = float(m.group(4).replace(" ", ""))
+        depth = float(m.group(5))
+        y_far = edge + direction * depth
+        pads.append((min(x0, x1), min(edge, y_far), max(x0, x1), max(edge, y_far)))
+    for m in re.finditer(
+        r"board_box\(\s*([^,;]+)\s*,\s*([^,;]+)\s*,\s*([^,;]+)\s*,\s*([^,;]+)\s*,\s*Z_pcb_t\s*,\s*Z_panel_b\s*\)",
+        case,
+    ):
+        vals = []
+        ok = True
+        env = {"__builtins__": {}}
+        for g in m.groups():
+            expr = g.strip()
+            for i, p in enumerate(panel):
+                expr = expr.replace("panel[%d]" % i, repr(p))
+            if not re.fullmatch(r"[0-9eE.+\-*/() ]+", expr):
+                ok = False
+                break
+            vals.append(eval(expr, env, {}))
+        if not ok:
+            continue
+        x0, y0, x1, y1 = vals
+        ox0, ox1 = max(min(x0, x1), panel[0]), min(max(x0, x1), panel[2])
+        oy0, oy1 = max(min(y0, y1), panel[1]), min(max(y0, y1), panel[3])
+        if ox1 - ox0 < 0.2 or oy1 - oy0 < 0.2:
+            continue
+        pads.append((min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1)))
+    if not pads:
+        raise SystemExit("no support pads in the case")
+    return pads
+
+
+def _pad_points(pads, n=3):
+    pts = []
+    for x0, y0, x1, y1 in pads:
+        for i in range(n):
+            for j in range(n):
+                pts.append((x0 + (x1 - x0) * i / (n - 1), y0 + (y1 - y0) * j / (n - 1)))
+    return pts
+
+
+def _contact_q(press, supports, bridges, gap, k_scale):
+    """Rigid panel, w positive down. Stops unilateral, bridges catch a rise past `gap`."""
+    import numpy as np
+    px, py = press
+    S = np.column_stack([np.ones(len(supports)), supports[:, 0] - px, supports[:, 1] - py])
+    B = np.column_stack([np.ones(len(bridges)), bridges[:, 0] - px, bridges[:, 1] - py])
+    kb = k_scale * bridges[:, 2]
+    ks = 5.0e4
+    q = np.zeros(3)
+    for _ in range(80):
+        us = S @ q
+        ub = B @ q
+        H = np.eye(3) * 1e-9
+        g = np.array([-10.0, 0.0, 0.0])
+        active = us > 0.0
+        if active.any():
+            A = S[active]
+            H += ks * (A.T @ A)
+            g += ks * (A.T @ us[active])
+        caught = (-ub - gap) > 0.0
+        if caught.any():
+            A = B[caught]
+            kk = kb[caught]
+            pen = (-ub - gap)[caught]
+            H += (kk[:, None] * A).T @ A
+            g += -A.T @ (kk * pen)
+        step = np.linalg.solve(H, g)
+        nrm = float(np.linalg.norm(step))
+        if nrm > 0.2:
+            step *= 0.2 / nrm
+        q = q - step
+        if nrm < 1e-11:
+            break
+    if float((S @ q).max()) > 0.05 or abs(float(q[0])) > 5.0:
+        return None
+    return q
+
+
+def _drop_over(q, press, box, panel, n=6):
+    x0, x1 = max(box[0], panel[0]), min(box[2], panel[2])
+    y0, y1 = max(box[1], panel[1]), min(box[3], panel[3])
+    if x1 - x0 < 0.05 or y1 - y0 < 0.05:
+        return None
+    px, py = press
+    worst = -1e9
+    for i in range(n):
+        for j in range(n):
+            x = x0 + (x1 - x0) * i / (n - 1)
+            y = y0 + (y1 - y0) * j / (n - 1)
+            worst = max(worst, q[0] + q[1] * (x - px) + q[2] * (y - py))
+    return worst
+
+
 def insertion(cn, back):
     gap = back - cn["Zt"]
     straight = cn["panel"][2] - cn["mouth"]
@@ -184,7 +292,8 @@ def analyse(src, cn, rep):
                             s = s_win + climb
                         air = (RR + nub + s) - front
                         top = (front + nub + tt) if d > 0 else (RR + nub + tt + s)
-                        air_c = (25.45 + s) - top
+                        ceil = cn["Z_in"] + cn["face_recess"] - grab(src, "sh_ceil_skin")
+                        air_c = (ceil + s) - top
                         rows.append({
                             "b": b, "c": c, "tp": tp, "dz": dz, "ft": ft,
                             "front": front, "d": d, "F": F, "s": s, "climb": climb,
@@ -228,10 +337,11 @@ def analyse(src, cn, rep):
         far = land1 + extra
         return near, far
     lo, hi = min(land0, land1), max(land0, land1)
-    top_extra = width_in + shell_y
-    bot_extra = cn["fence_air"] + shell_y
-    top_near, top_far = lo - top_extra, hi + shell_y
-    bot_near, bot_far = lo - shell_y, hi + bot_extra
+    print_tol = 0.05
+    top_extra = width_in + shell_y + print_tol
+    bot_extra = cn["fence_air"] + shell_y + print_tol
+    top_near, top_far = lo - top_extra, hi + shell_y + print_tol
+    bot_near, bot_far = lo - shell_y - print_tol, hi + bot_extra
     rep.say("top land from the edge %.2f to %.2f" % (top_near, top_far))
     rep.say("bottom land from the edge %.2f to %.2f" % (bot_near, bot_far))
     aa_from_edge = cn["aa"][1] - cn["panel"][1]
@@ -244,102 +354,138 @@ def analyse(src, cn, rep):
         beam_in, aa_from_edge))
     rep.gate(beam_in < aa_from_edge - 0.05, "bridge stays off the active area")
 
-    # J4 with the shell fitted and the bridges still pressing. The panel
-    # back is the stop. A miss of 3.15 mm is reported and does not fail.
-    rep.say("")
-    rep.say("J4, shell fitted, panel on the stop")
-    j4_vals = []
-    for c in carriers:
-        back = stop + c
-        ins = insertion(cn, back)
-        n_here = sum(1 for r in rows if abs(r["c"] - c) < 1e-9)
-        n_push = sum(1 for r in rows if abs(r["c"] - c) < 1e-9 and r["d"] > 0.02)
-        j4_vals.append(ins)
-        rep.say("  carrier %+.2f  back %.2f  inserted %.3f  (%d/%d corners pressing)" % (
-            c, back, ins, n_push, n_here))
-    worst_j = min(j4_vals)
-    rep.say("worst seated insertion %.3f mm   target %.2f mm" % (worst_j, J4_TARGET))
-    if worst_j + 1e-9 < J4_TARGET:
-        rep.say("  short of the %.2f mm target. Not a gate." % J4_TARGET)
-    else:
-        rep.say("  meets the %.2f mm target." % J4_TARGET)
+    # Printable sections. Stock line width is 0.42 mm.
+    widths = {
+        "bridge thickness": t0,
+        "bridge width": w,
+        "land width": abs(land1 - land0),
+        "land length": grab(src, "sh_nub_len"),
+        "land height": nub,
+        "locator thickness": grab(src, "sh_loc_t"),
+        "pillar root": root,
+    }
+    for label, val in widths.items():
+        rep.gate(val + 1e-9 >= LINE_W, "%s %.2f mm >= %.2f" % (label, val, LINE_W))
 
-    # 10 N press, rigid panel, preload lost. The top-left column is the support
-    # under U7. Drop at a point is zero inside a stop, otherwise the lever
-    # from the nearest stop until a bridge on the far side takes the load.
+    # The nub sits on its span, at least 2 mm from either pillar face.
+    for length, a, nx, which in geos:
+        b = length - a
+        rep.gate(a >= 2.0 - 1e-6 and b >= 2.0 - 1e-6,
+                 "land x %.2f is %.2f and %.2f mm from the pillars" % (nx, a, b))
+
+    # Root strain at the thickest force. Off-centre load, larger end moment.
+    max_eps = 0.0
+    for r in rows:
+        for length, a, _nx, _which in geos:
+            tt = t0 + r["ft"]
+            kk = beam_k(w, max(tt, 0.4), length, a)
+            share = kk / r["K"] if r["K"] else 0.0
+            F = r["F"] * share
+            b = length - a
+            mend = F * a * b * max(a, b) / length ** 2
+            eps = 6.0 * mend / (E_SOFT * w * tt ** 2) if tt else 9.0
+            max_eps = max(max_eps, eps)
+    rep.say("root strain max %.2f%%" % (100 * max_eps))
+    rep.gate(max_eps <= 0.015, "root strain %.2f%% <= 1.50%%" % (100 * max_eps))
+
+    # Ribs overlap the fences in z at every corner.
+    z_fence = cn["Z_in"] - 0.40
+    rib0 = cn["Z_in"] - grab(src, "sh_rib_drop")
+    min_ov = 99.0
+    for r in rows:
+        ov = (z_fence + r["c"] + r["b"]) - (rib0 + r["s"])
+        min_ov = min(min_ov, ov)
+    rep.say("rib/fence overlap min %.2f mm" % min_ov)
+    rep.gate(min_ov >= 0.20 - 1e-6, "ribs overlap the fences by %.2f mm" % min_ov)
+
+    # The top-left stop has to be present. Removing it is a defect even if
+    # the air over U7 stays positive.
+    cols = grab_list(src, "sh_columns")
+    have_u7 = any(c[0] <= 29.6 and c[2] >= 33.4 and c[1] <= 29.3 and c[3] >= 30.4 for c in cols)
+    rep.gate(have_u7, "top-left stop covers x 29.6-33.4, y 29.3-30.4")
+
+    # J4 with the shell fitted. Reported, not a gate. Where the land is
+    # clear, the cable lifts the cable end about the left land until the
+    # right land takes up its gap.
+    x_end = cn["panel"][2]
+    left_lands = [nx for _L, _a, nx, _wch in geos]
+    x_pivot = min(left_lands) if left_lands else cn["panel"][0]
+    x_land = max(left_lands) if left_lands else x_end
+    lever = (x_end - x_pivot) / max(x_land - x_pivot, 1.0)
+    rep.say("")
+    rep.say("J4, shell fitted. A miss of %.2f is not a gate." % J4_TARGET)
+    def lifted(scale, load):
+        out = []
+        for r in rows:
+            base = insertion(cn, stop + r["c"])
+            held = scale * r["F"]
+            k = scale * r["K"] if r["K"] else 0.0
+            if r["gap"] <= 1e-9 and held + 1e-9 >= load:
+                lift = 0.0
+            else:
+                need = max(0.0, load - held)
+                spring = need / k if k else 1.0
+                lift = (r["gap"] + spring) * lever
+            out.append(base - (math.pi / 2.0) * max(lift, 0.0))
+        return out
+    fresh = lifted(1.0, CABLE)
+    crept = lifted(CREEP_KEEP, CABLE)
+    knocked = lifted(CREEP_KEEP, CABLE + SHOCK)
+    rep.say("seated backs %.2f / %.2f / %.2f" % tuple(
+        insertion(cn, stop + c) for c in carriers))
+    rep.say("cable, as printed: %.2f to %.2f, %d of %d corners under %.2f" % (
+        min(fresh), max(fresh),
+        sum(1 for v in fresh if v < J4_TARGET - 1e-9), len(fresh), J4_TARGET))
+    rep.say("cable, bridges relaxed: %.2f to %.2f, %d of %d corners under %.2f" % (
+        min(crept), max(crept),
+        sum(1 for v in crept if v < J4_TARGET - 1e-9), len(crept), J4_TARGET))
+    rep.say("cable and a 5 g knock, bridges relaxed, minimum %.2f" % min(knocked))
+
+    # 10 N, rigid panel, preload lost. Retained bridge stiffness is 0.35.
+    # The free gap is the loose stack corner. The low carrier sets the rest air.
     rep.say("")
     rep.say("10 N press, preload lost, rigid panel")
-    cols = grab_list(src, "sh_columns")
-    pads = [
-        (47.0, 26.24, 53.0, 27.89),
-        (76.0, 26.24, 90.6, 27.89),
-        (49.6, 61.29, 55.6, 62.94),
-        (76.0, 61.29, 82.0, 62.94),
-        (82.0, 33.20, cn["panel"][2], 34.30),
-        (76.0, 61.20, cn["panel"][2], 62.50),
-    ]
+    pads = pads_from_case(open(CASE).read(), cn["panel"])
     for c in cols:
         pads.append((c[0], c[1], c[2], c[3]))
+    supports = _pad_points(pads, 3)
+    import numpy as np
+    bridges = []
+    for length, a, nx, which in geos:
+        edge = cn["panel"][1] if which == 0 else cn["panel"][3]
+        sign = 1.0 if which == 0 else -1.0
+        yb = edge + sign * (lo + hi) / 2.0
+        bridges.append((nx, yb, beam_k(w, t0, length, max(a, 0.4))))
+    bridges = np.array(bridges, float)
+    supports = np.array(supports, float)
+    loose = max(r["gap"] for r in rows)
+    rep.say("loose-corner gap %.3f mm, bridge stiffness kept at %.2f" % (loose, CREEP_KEEP))
+    p = cn["panel"]
+    presses = [(29.5, 26.2)]
+    for x in (p[0], 0.5 * (p[0] + p[2]), p[2]):
+        for y in (p[1], 0.5 * (p[1] + p[3]), p[3]):
+            presses.append((x, y))
+    solved = []
+    for press in presses:
+        q = _contact_q(press, supports, bridges, loose, CREEP_KEEP)
+        if q is not None:
+            solved.append((press, q))
     parts = components_from_fit(open(FIT).read())
-    for name, x0, y0, x1, y1, h in parts:
-        if y1 < cn["panel"][1] or y0 > cn["panel"][3]:
+    for name, x0, y0p, x1, y1, h in parts:
+        if y1 < p[1] or y0p > p[3] or x1 < p[0] or x0 > p[2]:
             continue
-        if x1 < cn["panel"][0] or x0 > cn["panel"][2]:
-            continue
-        cxp, cyp = (x0 + x1) / 2.0, (y0 + y1) / 2.0
-        # Clamp the sample to the outline.
-        cxp = min(max(cxp, cn["panel"][0]), cn["panel"][2])
-        cyp = min(max(cyp, cn["panel"][1]), cn["panel"][3])
-        dist = _dist_pads(cxp, cyp, pads)
-        # A stop within the part footprint holds the back on the stop.
-        drop_mm = 0.0 if dist < 0.4 else _tip_drop(cxp, cyp, pads, geos, w, t0, root)
         rest = (stop - 0.15) - (cn["Zt"] + h)
-        air = rest - drop_mm
+        drop = 0.0
+        for press, q in solved:
+            d = _drop_over(q, press, (x0, y0p, x1, y1), p)
+            if d is None:
+                continue
+            drop = max(drop, d)
+        air = rest - drop
         if air < 1.0 or name in ("U7", "U8", "U6"):
-            rep.say("  %-6s rest %.2f  tip %.3f  air %.3f" % (name, rest, drop_mm, air))
+            rep.say("  %-6s rest %.3f  tip %.3f  air %.3f" % (name, rest, drop, air))
         rep.gate(air > 0.0, "%s air %.3f mm under 10 N" % (name, air))
-    return {
-        "stop": stop, "R": R0, "rows": rows, "xs": xs if False else None,
-        "worst_j": worst_j,
-    }
-
-
-def _dist_pads(x, y, pads):
-    best = 1e9
-    for x0, y0, x1, y1 in pads:
-        dx = 0.0 if x0 <= x <= x1 else min(abs(x - x0), abs(x - x1))
-        dy = 0.0 if y0 <= y <= y1 else min(abs(y - y0), abs(y - y1))
-        best = min(best, math.hypot(dx, dy))
-    return best
-
-
-def _tip_drop(x, y, pads, geos, w, t, root):
-    """How far a 10 N press drops the panel at (x, y) past the stop plane.
-
-    The panel pivots about the nearest stop. Bridges on the far side resist
-    once the panel rises into them. Preload is gone, so only the new rise counts.
-    """
-    dist = _dist_pads(x, y, pads)
-    if dist < 0.4:
-        return 0.0
-    # Lever to the nearest land, roughly along x.
-    lands = []
-    for s in geos:
-        length, a, nubx, _which = s
-        lands.append(nubx)
-    far = max(lands, key=lambda nx: abs(nx - x))
-    arm_press = dist
-    arm_spring = abs(far - x)
-    if arm_spring < 1.0:
-        arm_spring = 1.0
-    # Two bridges near `far` (top and bottom), short-term k.
-    k = 0.0
-    for length, a, nubx, _which in geos:
-        if abs(nubx - far) < 2.0:
-            k += beam_k(w, t, length, a)
-    # 10 N * arm_press = k * rise * arm_spring, drop = rise * arm_press / arm_spring
-    rise = 10.0 * arm_press / (k * arm_spring) if k else 5.0
-    return rise * (arm_press / arm_spring)
+    return {"stop": stop, "R": R0, "rows": rows}
 
 
 def render(scad, work):
@@ -427,7 +573,7 @@ def mesh_checks(src, cn, rep, paths):
         added.append(_box_mesh(cn, c[0], c[1], c[2], c[3], cn["Zt"], cn["Z_panel_b"]))
     if "sh_ties" in src:
         for c in grab_list(src, "sh_ties"):
-            added.append(_box_mesh(cn, c[0], c[1], c[2], c[3], cn["Zt"], cn["Zt"] + 1.2))
+            added.append(_box_mesh(cn, c[0], c[1], c[2], c[3], cn["Zt"], cn["Zt"] + grab(src, "sh_tie_h")))
     for name, x0, y0, x1, y1, h in parts:
         box = _box_mesh(cn, x0, y0, x1, y1, cn["Zt"], cn["Zt"] + h)
         worst = 99.0
@@ -551,10 +697,16 @@ def run(scad):
     cn = case_nums(case)
     rep = Report()
     analyse(src, cn, rep)
+    if rep.fails and os.path.abspath(scad) != os.path.abspath(SCAD):
+        print("")
+        print("%d FAILED" % len(rep.fails))
+        for f in rep.fails:
+            print(" - " + f)
+        return 1
     work = os.path.join(tempfile.gettempdir(), "r6check")
     os.makedirs(work, exist_ok=True)
-    # Key the render cache by the scad path so a mutation re-renders.
-    slot = os.path.join(work, str(abs(hash(os.path.abspath(scad))) % 10**8))
+    digest = hashlib.sha256(open(scad, "rb").read()).hexdigest()[:16]
+    slot = os.path.join(work, digest)
     os.makedirs(slot, exist_ok=True)
     paths = render(scad, slot)
     print("")
@@ -574,12 +726,20 @@ def run(scad):
 def self_test():
     base = open(SCAD).read()
     mutations = [
-        ("nub 0.15", "sh_nub_h = 0.45;", "sh_nub_h = 0.15;"),
-        ("land on the active area", "sh_land0 = 2.50;", "sh_land0 = 4.20;"),
+        ("unprintable nub", "sh_land1 = 2.97;", "sh_land1 = 2.57;"),
+        ("ribs not engaging", "sh_rib_drop = 1.85;", "sh_rib_drop = 0.40;"),
+        ("U7 column removed", "  [29.60, 29.30, 33.40, 30.40],\n", ""),
+        ("nub off its span", "[71.60, 106.40, 0, 98.00]", "[71.60, 106.40, 0, 10.00]"),
+        ("nub at the pillar", "[71.60, 106.40, 0, 98.00]", "[71.60, 106.40, 0, 104.20]"),
+        ("thin locator", "sh_loc_t = 0.80;", "sh_loc_t = 0.20;"),
+        ("short pillar root", "sh_root = 2.40;", "sh_root = 0.30;"),
+        ("nub height 0.15", "sh_nub_h = 0.45;", "sh_nub_h = 0.15;"),
+        ("land on the active area", "sh_land0 = 2.47;", "sh_land0 = 4.20;"),
         ("column on U7", "[29.60, 29.30, 33.40, 30.40]", "[29.60, 26.40, 33.40, 28.80]"),
         ("pillars short of the shell", "sh_bite = 0.10;", "sh_bite = -0.80;"),
         ("stop into the opto-triacs", "sh_drop = 0.15;", "sh_drop = 0.55;"),
-        ("locator gap wide open", "sh_loc_gap = 0.15;", "sh_loc_gap = 1.20;"),
+        ("locator gap wide open", "sh_loc_gap = 0.10;", "sh_loc_gap = 1.20;"),
+        ("negative land offset", "sh_R_below = 0.38;", "sh_R_below = -0.30;"),
     ]
     bad = 0
     for name, old, new in mutations:
