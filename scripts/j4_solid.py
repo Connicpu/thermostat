@@ -102,8 +102,8 @@ class J4Solid:
         other = [i for i in (0, 1, 2) if i != axis]
         a, b = other
         tris = tri[sel]
-        # Keep the plane the reviewer measured: +x skin near the silk mouth,
-        # -x skin at the ear rear. A wide bin would glue the housing on too.
+        # +x skin is the slider face at the silk mouth. -x skin is the ear rear.
+        # A wide bin would glue the housing on too.
         plane = tris[:, :, axis].mean(axis=1)
         if axis == 0 and sign > 0:
             keep = plane > 103.55
@@ -219,3 +219,155 @@ class J4Solid:
             bands.append(run)
         return [{'y0': b[0], 'y1': b[1], 'z0': b[2], 'z1': b[3],
                  'dy': b[1] - b[0], 'dz': b[3] - b[2]} for b in bands]
+
+    def _first_hit_x(self, origins, direction):
+        """x of the first intersection along each ray. NaN if the ray misses."""
+        n = len(origins)
+        dirs = np.zeros((n, 3))
+        dirs[:, 0] = direction
+        loc, ray_idx, _ = self.mesh.ray.intersects_location(origins, dirs, multiple_hits=True)
+        hit = np.full(n, np.nan)
+        if len(loc) == 0:
+            return hit
+        order = np.argsort(loc[:, 0] * direction, kind='mergesort')
+        loc = loc[order]
+        ray_idx = ray_idx[order]
+        _, uniq = np.unique(ray_idx, return_index=True)
+        hit[ray_idx[uniq]] = loc[uniq, 0]
+        return hit
+
+    def visible_bands(self, side, cell=0.025, tol=0.03, min_run=1.60):
+        """Faces a ray from open air hits first, as continuous full-height runs.
+
+        side 'front' looks from +x at the slider face (x 103.77).
+        side 'rear' looks from -x at the ear rear (x 102.77).
+        A column counts only where the hits form one run at least min_run tall.
+        A box beside the connector, or a face hidden behind the housing, does not
+        join that run. A blocker in front of the ray removes the run.
+        """
+        if side == 'front':
+            x_from, direction, plane = 109.0, -1.0, 103.77
+            y0, y1, z0, z1 = 34.5, 53.5, 0.05, 2.10
+        elif side == 'rear':
+            x_from, direction, plane = 96.0, 1.0, 102.77
+            y0, y1, z0, z1 = 34.8, 53.2, 0.05, 2.10
+            tol = max(tol, 0.08)
+            min_run = min(min_run, 1.40)
+        else:
+            raise ValueError(side)
+        ys = np.arange(y0, y1 + cell * 0.5, cell)
+        zs = np.arange(z0, z1 + cell * 0.5, cell)
+        yy, zz = np.meshgrid(ys, zs, indexing='ij')
+        origins = np.column_stack([np.full(yy.size, x_from), yy.ravel(), zz.ravel()])
+        hit = self._first_hit_x(origins, direction).reshape(yy.shape)
+        on = np.isfinite(hit) & (np.abs(hit - plane) <= tol)
+        tall = []
+        need = int(round(min_run / cell))
+        for i, y in enumerate(ys):
+            col = on[i]
+            best = cur = 0
+            z_a = z_b = 0.0
+            ca = 0
+            for k, flag in enumerate(col):
+                if flag:
+                    if cur == 0:
+                        ca = k
+                    cur += 1
+                    if cur > best:
+                        best = cur
+                        z_a = float(zs[ca])
+                        z_b = float(zs[k] + cell)
+                else:
+                    cur = 0
+            if best >= need:
+                xs = hit[i, on[i]]
+                tall.append((float(y), z_a, z_b, float(np.median(xs))))
+        bands = []
+        run = None
+        for y, za, zb, x in tall:
+            if run is None or y - run['y1'] > cell * 1.5:
+                if run is not None:
+                    bands.append(run)
+                run = {'y0': y, 'y1': y, 'z0': za, 'z1': zb, 'x': x}
+            else:
+                run['y1'] = y
+                run['z0'] = min(run['z0'], za)
+                run['z1'] = max(run['z1'], zb)
+        if run is not None:
+            bands.append(run)
+        for b in bands:
+            b['y1'] = b['y1'] + cell
+            b['dy'] = b['y1'] - b['y0']
+            b['dz'] = b['z1'] - b['z0']
+            # The ray cell widens a face that is only a couple of millimetres.
+            # Triangles on the same plane, inside that window, give the edge.
+            if b['dy'] > 1.0:
+                span = self._on_plane_span(plane, b['y0'] - 0.05, b['y1'] + 0.05, max(tol, 0.04))
+                if span is not None and (span[1] - span[0]) > 1.0:
+                    b['y0'], b['y1'], b['z0'], b['z1'] = span
+                    b['dy'] = b['y1'] - b['y0']
+                    b['dz'] = b['z1'] - b['z0']
+        return bands
+
+    def _on_plane_span(self, plane, y0, y1, tol):
+        """y/z extent of triangles on the face plane inside the visible window."""
+        tri = self.mesh.triangles
+        nrm = self.mesh.face_normals
+        px = tri[:, :, 0].mean(axis=1)
+        sel = (np.abs(nrm[:, 0]) > 0.80) & (np.abs(px - plane) <= tol)
+        if not np.any(sel):
+            return None
+        t = tri[sel]
+        ty0 = t[:, :, 1].min(axis=1)
+        ty1 = t[:, :, 1].max(axis=1)
+        tz0 = t[:, :, 2].min(axis=1)
+        tz1 = t[:, :, 2].max(axis=1)
+        m = (ty1 >= y0) & (ty0 <= y1) & ((tz1 - tz0) > 0.25)
+        # Keep the part of each triangle that lies in the window.
+        if not np.any(m):
+            return None
+        ya = float(np.maximum(ty0[m], y0).min())
+        yb = float(np.minimum(ty1[m], y1).max())
+        # The face edge is the triangle edge, not the window, when the triangle
+        # sits inside the window.
+        inside = (ty0[m] >= y0 - 1e-6) & (ty1[m] <= y1 + 1e-6)
+        if np.any(inside):
+            ya = float(ty0[m][inside].min())
+            yb = float(ty1[m][inside].max())
+        return ya, yb, float(tz0[m].min()), float(tz1[m].max())
+
+    def nail_hits_solid(self, bounds, skin=0.15, n=6):
+        """True when the box enters the housing past a contact skin.
+
+        bounds is (x0, y0, z0, x1, y1, z1) in board millimetres.
+        A thumbnail may kiss the slider face. It may not occupy the housing.
+        """
+        x0, y0, z0, x1, y1, z1 = bounds
+        xs = np.linspace(x0, x1, n)
+        ys = np.linspace(y0, y1, max(2, n // 2))
+        zs = np.linspace(z0, z1, n)
+        for x in xs:
+            for y in ys:
+                for z in zs:
+                    if abs(x - 103.77) <= skin or abs(x - 102.77) <= skin:
+                        continue
+                    if self.contains(float(x), float(y), float(z)):
+                        return True
+        return False
+
+    def housing_stop(self, mouth_x):
+        """Mouth to the cavity back wall the tail bottoms on.
+
+        The outermost vertex is a solder tab, not that wall. A ray from the
+        mouth, through the cavity, hits the wall.
+        """
+        walls = []
+        for y in (43.0, 44.0, 45.0):
+            for z in (0.70, 0.85, 0.95):
+                origin = np.array([[mouth_x - 0.40, y, z]])
+                hit = self._first_hit_x(origin, -1.0)
+                if np.isfinite(hit[0]) and hit[0] < mouth_x - 0.8:
+                    walls.append(float(hit[0]))
+        if not walls:
+            return None
+        return float(mouth_x - np.median(walls))

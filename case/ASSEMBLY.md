@@ -85,7 +85,7 @@ Fences stand beside the long edges and stop 0.40 mm short of the shell face. The
 
 The datasheet gives the outline width as 36.7 mm only. The check also tries 36.50 mm and 36.90 mm, and that band is an assumption around the one drawing number. If the panel sits on the bottom fence, the top gap is `2 × fence_air + (36.70 − width)`: 0.60 mm, 0.40 mm, and 0.20 mm for those three widths at 0.20 mm of air. A negative top gap fails. The travel between the fences on the nominal width is `2 × fence_air`, 0.40 mm. That is the coarse stop in y. The locked tail is the fine stop (0.10 mm at the nominal guide). `fence_air` of 0.60 mm is 1.20 mm of travel and the fit rejects it. Nothing else, including the shell, stops the panel in y.
 
-A fence on the left edge of the panel does not fit. The front curtain ends at board x = 29.0 and the outline starts at x = 29.46, which is 0.46 mm, too little for a 0.4 mm wall plus clearance. Sliding the panel toward −x lengthens the tail in the connector. The seated tail is already against the mouth, so that direction does not unload J4. The curtain is clearance, not a locator.
+A fence on the left edge of the panel does not fit. The front curtain's panel-side face is at board x = 28.88 and the outline starts at x = 29.46, which is 0.58 mm, too little for a 0.4 mm wall plus clearance. Sliding the panel toward −x lengthens the tail in the connector. The seated tail is already against the mouth, so that direction does not unload J4. The curtain is clearance, not a locator.
 
 The panel can also slide in +x, and +x shortens the tail in J4 by the same amount. The 3.35 mm tall-print insertion has 0.35 mm before it is under 3.0 mm. Two posts on the cable side of the outline stop that slide. They bite 0.05 mm onto the panel edge, at board y 33.20–34.30 and y 60.40–61.70, clear of the button tubes and of the bend bulge, and they stop 0.45 mm under the shell face. Each post's footprint continues down to the carrier bottom, so the slicer does not tower under it. A carrier that prints 0.10 mm short of the panel then leaves 0.05 mm of slide, and the inserted length is 3.30 mm, above 3.0 mm. A fin just outboard of the same edge, at y 32.75–33.25 and y 59.70–60.45, joins the post and is the insertion-depth mark. The seated edge lines up with the fin. The fin does not cross the face and does not add bite. The posts are the stop. The fit reads the fin solid and the inboard side air, and it fails if the mark is missing.
 
@@ -112,26 +112,33 @@ The shell prints face-down, so the wall's length (case z, the 21.05 mm) runs alo
 
 The 2.4% gate is the Ultimaker PETG flexural strain, 3.6%, divided by 1.5. `scripts/case_fit.py` recomputes both and fails if the climb is 0.20 mm or less, if L is 11 mm or less, if the strain reaches 2.4%, or if the force reaches 8 N. A wall of L = 8 mm at this same climb is 2.81% and the script asserts that case fails. The mesh probe finds the bump solid 0.25 mm inside the apex, the window air at the apex (signed distance −1.00 mm), and shell solid 8 mm beside the window. A box that fills the window is solid at the apex, and the script asserts that filled window fails.
 
-The shell clears the display panel and the fold while it sits, and while it is lifted 1 mm and 2 mm off the clips (the climb). On this mesh the panel clearance is 0.30 mm seated and 0.30 mm with the board 0.16 mm thick, and 0.46 mm at both lifts. The fold clearance is 0.35 mm, 0.36 mm, and 0.35 mm. The fit fails if any of those is 0.10 mm or less. A shell pushed 1 mm onto the panel enters it, and the script asserts that case fails. The board slab, including a thick board, stays 0.50 mm off the shell. A clamp post added on a mounting hole enters the board, and the script asserts that case fails.
+The shell clears the display panel and the fold while it sits, and while it is lifted 1 mm and 2 mm off the clips (the climb). On this mesh the panel clearance is 0.30 mm seated and 0.30 mm with the board 0.16 mm thick, and 0.58 mm at both lifts. The fold clearance is 0.35 mm, 0.36 mm, and 0.35 mm. The fit fails if any of those is 0.10 mm or less. A shell pushed through the recess onto the panel enters it, and the script asserts that case fails. The board slab, including a thick board, stays 0.50 mm off the shell. A clamp post added on a mounting hole enters the board, and the script asserts that case fails.
 
-The inner face is recessed 0.85 mm over the panel border, which is where the window chamfer starts. The retainer tongues sit in that recess. The recess is not what holds the panel down. The fit accepts 0.75–0.95 mm and rejects 0.50 mm and 1.00 mm. The shell carries 0 N from the panel.
+The inner face is recessed 1.26 mm over the panel border and the fences. The retainer tongues sit in that recess. The recess is not what holds the panel down. The fit accepts 1.05–1.28 mm and rejects 0.50 mm and 1.00 mm. The shell carries 0 N from the panel.
 
 Putting the shell on, or taking it off, does not shift the display panel and does not load the tail. The panel is already on the pads, between the fences and against the +x posts. The shell's clearance stays positive through the 2 mm lift. The locating pins keep the board. The shell's sideways travel is 0, which fits the smallest non-negative guide play.
 
 ## The retainer
 
-The shell does not hold the display panel. The pads stop it going down. Four PETG clips, one on each fence span, stop it going up. Each clip drops onto its fence after the panel is on the pads. The tongue is printed in its free shape: the underside is 0.20 mm below the nominal panel front, so putting the clip on deflects the tongue by 0.20 mm. That is the preload. The print is not the seated shape.
+The shell does not hold the display panel. The pads stop it going down. Four PETG clips, one on each fence span, stop it going up. Each clip drops onto its fence after the panel is on the pads. The mesh is the free shape. The tongue plate sits 0.10 mm above the panel front, so it does not meet the panel edge. A bump on the border is the only contact. Its underside is 0.22 mm below the nominal panel front. The tooth top is 0.02 mm under the rib, so seating the tooth takes 0.02 mm and the bump's remaining interference is the preload.
 
-The tongue is a cantilever in y, 3.20 mm from the fence outer face to a tip 2.20 mm onto the border. It is 0.40 mm thick and 4.00 mm wide. The border's smallest margin is 3.0 mm, so 2.20 mm stays off the active area. A 4.0 mm reach would cross that border, and the fit rejects it. Stress runs along y, in the plane of the layers. With E = 1.8 GPa,
+The bump centre is 2.86 mm inboard of the root chamfer, and 2.20 mm onto the border. The plate is 0.40 mm thick. Two clips are 4.00 mm wide and two are 2.20 mm wide, which is the anchor on the 6 mm fence. The tip is 3.25 mm onto the border, 0.57 mm short of the active area on every clip. A tip that reaches the active area fails the fit, including a tip that does so on the bottom clips only. With E = 1.8 GPa and δ measured from the bump and the tooth gap:
 
-- strain ε = 1.5 × 0.40 × 0.20 / 3.20² = 1.17%
-- force F = 3 E I δ / L³ = 0.70 N per clip, I = 4.00 × 0.40³ / 12
+| Panel | Deflection | Strain | Force, 4.00 mm clip | Force, 2.20 mm clip |
+|---|---|---|---|---|
+| 1.1 mm | 0.10 mm | 0.73% | 0.49 N | 0.27 N |
+| 1.2 mm | 0.20 mm | 1.47% | 0.99 N | 0.54 N |
+| 1.3 mm | 0.30 mm | 2.20% | 1.48 N | 0.81 N |
 
-1.17% is under the 2.4% flexural gate. The same thickness on a 1.55 mm cantilever is about 5%, and the fit rejects that length. Four clips are 2.81 N. PETG on a warm wall relaxes; half of that is 1.41 N, which is still above a 5 g shock on the 5.5 g panel (0.27 N). The FPC's spring-back once the fold is seated is a judgment, about 0.06–1.5 N. The 1.5 N end of that range is why a physical unit should be checked. A panel 0.10 mm thinner than 1.2 mm leaves 0.10 mm of interference, so the tongue is in contact. The datasheet states no thickness tolerance. 0.10 mm is the allowance used here.
+2.20% is under the 2.4% flexural gate. The same thickness on a 1.55 mm lever is about 5%, and the fit rejects that length. After 50% relaxation the four clips are 0.88 N on a 1.1 mm panel and 1.75 N on a 1.2 mm panel, both above a 5 g shock on the 5.5 g panel (0.27 N). The FPC's spring-back once the fold is seated is a judgment, about 0.06–1.5 N. The 1.5 N end of that range is why a physical unit should be checked. The datasheet states no thickness tolerance. 0.10 mm each side of 1.2 mm is the range used here. A 1.1 mm panel stays in contact.
 
-The root that joins the tongue to the wall is 0.80 mm thick in z. A 0.02 mm sheet does not print, and the fit rejects a root under 0.40 mm. The tooth reaches 0.30 mm onto the carrier rib (the rib stands 0.40 mm proud of the fence). A tooth that misses the rib fails the fit. The arm that snaps past the rib is 0.45 mm thick, free length 5.20 mm, and it moves 0.48 mm. Strain is 1.20%, in the layer plane.
+The root that joins the tongue to the anchor is 0.80 mm thick in z, outboard of the fence. The fit sections that block and fails a root under 0.70 mm. A root that runs the full fence and is still 0.80 mm thick passes. The tooth reaches 0.30 mm onto the carrier rib (the rib stands 0.40 mm proud of the fence) and the rib and the tooth both have a 0.25 mm lead-in. A tooth 0.20 mm under the rib fails the fit.
 
-The shell clears the clips by 0.21 mm with the board, the carrier print, the snap seat, and the standoff all stacked (0.51 mm). The front does not land on the clips, and it does not hold the display panel.
+The arm is a cantilever along the fence, anchored at one end. Free length on the four clips is 6.70, 7.10, 3.50, and 9.70 mm. It is 0.50 mm thick in y and 1.05 mm tall in z, so the snap bends in the layer plane. Passing the rib moves the tooth 0.30 mm. On the 3.50 mm arm that is 1.84% strain. A flap shorter than 3.2 mm, or an arm that is thinner in z than in y, fails the fit.
+
+A shelf on the carrier sits 0.05 mm under the arm. Rotating the clip about the tooth until that shelf stops it takes about 4°. The shell clearance at that angle is 0.17 mm on the bottom clips and 0.24 mm on the top clips. The shell is not the backstop.
+
+The shell clears the clips by 0.21 mm at every stack offset the fit checks (0, 0.16, 0.26, and 0.51 mm). The front does not land on the clips, and it does not hold the display panel.
 
 The opto clearance at the short print is 0.35 mm, at the design gap 0.45 mm, and at the tall print 0.55 mm. The short-print floor in the fit is 0.30 mm.
 
@@ -151,7 +158,7 @@ The leaf is a straight vertical wall, 0.40 mm thick and 4.50 mm long. A rib clam
 
 ε = 1.5 × 0.40 × 0.30 / 4.35² = 0.95%
 
-`scripts/case_fit.py` recomputes that and fails if the free length is under 4 mm or the strain reaches 2.4%, the same flexural limit as the backplate clips. The model itself asserts the leaf under 2.0%. The pressed-catch check is the barb face against the lip, and that face kisses the lip (clearance 0). The seated cone kisses the hole corner. A seated cap stays 0.54 mm off the display panel, and a pressed cap stays 1.07 mm off it.
+`scripts/case_fit.py` recomputes that and fails if the free length is under 4 mm or the strain reaches 2.4%, the same flexural limit as the backplate clips. The model itself asserts the leaf under 2.0%. The pressed-catch check is the barb face against the lip, and that face kisses the lip (clearance 0). The seated cone kisses the hole corner. A seated cap stays 0.54 mm off the display panel, and a pressed cap stays 1.08 mm off it.
 
 There is no second spring. A leaf that stayed on the lip through the whole 1.50 mm of travel would be several times this strain. The cap can move the full 1.50 mm between the cone and the lip. The switch's own 160 gf is what pushes it back out, and only after the stem has crossed the gap. Off the board, the cap rattles. It cannot fall out of the front, and it cannot fall out of the back.
 
@@ -161,7 +168,7 @@ Nominal gap (seated stem to the actuator) is 0.63 mm. Nominal travel (cone on th
 
 The tolerance check is a uniform Monte Carlo, N = 200000, seed 1. Six terms: printer z ±0.10 mm on the gap, an independent ±0.10 mm on the travel (the cap and the shell are separate prints), standoff ±0.15 mm, board ±0.16 mm, switch height ±0.05 mm, and snap-seat play ±0.10 mm. It reports P(gap ≤ 0) = 0%, P(stroke < 0.20 mm) = 0%, worst-case gap 0.07 mm, worst-case stroke 0.21 mm. The script fails if either probability is over 1% / 2% or the worst stroke is under 0.20 mm. A normal model that drops the board term and treats the remaining ± as 1σ is printed beside it and is not the gate.
 
-In the finished cap the leaf is a cantilever. It is anchored at the rib, 0.40 mm thick, free length 4.35 mm, and it is not a bridge between two walls. Print the caps head-down, face on the bed. The cone and the barb underside are 65° from horizontal. The root rib is 72°. In the print frame the cone's wide end is at z = 3.87. The tie stands 0.34 mm above that face and 0.06 mm into the leaf, so the leaf bottom bridges from the root rib onto the nub. One corner of the tie also meets the bed outside the Ø4.70 head. Snap the nub off before the cap goes into the tube. The 3MF has supports off (`enable_support` is 0). The shell's button bores and window lip, the carrier's hook ribs, and the retainer's tongue are undersides and print in the air. A PrusaSlicer 2.9.2 pass on the previous clips measured support filament of about 475 mm on the retainer, 127 / 220 / 220 mm on the carrier, and 1370–1560 mm on the white shell, at 30 / 45 / 60°. The black, orange, and pink shell pieces and the plug are free of that. Feet-down is the carrier. Tongue-up, tooth on the bed, is the retainer, so the arm's bend is in the layer plane. Face-down is the shell.
+In the finished cap the leaf is a cantilever. It is anchored at the rib, 0.40 mm thick, free length 4.35 mm, and it is not a bridge between two walls. Print the caps head-down, face on the bed. The cone and the barb underside are 65° from horizontal. The root rib is 72°. In the print frame the cone's wide end is at z = 3.87. The tie stands 0.34 mm above that face and 0.06 mm into the leaf, so the leaf bottom bridges from the root rib onto the nub. One corner of the tie also meets the bed outside the Ø4.70 head. Snap the nub off before the cap goes into the tube. The 3MF has supports off (`enable_support` is 0). Feet-down is the carrier. The retainer prints tooth-down, with three pillars under each tongue from the bed up to the plate. Snap those pillars off before the clip goes on the fence. The arm's thickness is in y, so the snap bends in the layer plane. Face-down is the shell.
 
 ## Build order
 
@@ -171,15 +178,15 @@ The backplate is screwed to the wall. Every step after that is fingers. The snap
 
 2. Pull the cable through the centred 25 × 20 mm hole. Leave enough slack to mate the plug in the hand.
 
-3. On the bare board, open J4. A thumbnail behind each ear's rear face (x 102.77), pull toward +x. The board behind those faces is open to about x 96.5. The drawing states no force for this pull.
+3. On the bare board, open J4. A thumbnail behind each ear's rear face (0.55 × 1.80 mm at x 102.77), pull toward +x. The ray behind those faces finds no solid for 6.8 mm, back to about x 96. The drawing states no force for this pull.
 
-4. Hold the display panel standing on the east side of J4 and slide the tail in to the housing stop, 3.85 mm. That pose is one bend of about 6 mm radius, 2.2–2.6% outer-fiber strain, milder than the seated fold. Shut the slider: a thumbnail on each full-height front face (2.0 × 1.8 mm, x 103.77, one each side of the tail), push toward −x. There is 4.8 mm of clear board in front of those faces.
+4. Hold the display panel standing on the east side of J4 and slide the tail in to the housing stop, 3.85 mm. That pose is one bend of about 6 mm radius, 2.2–2.6% outer-fiber strain, milder than the seated fold. Shut the slider: a thumbnail on each full-height front face (2.06 × 1.75 mm, x 103.77, one each side of the tail), push toward −x. There is 4.8 mm of clear board in front of those faces.
 
-5. Set the carrier on the board. The left fence and the bottom fence drop onto the board edges. The east side of the carrier is open over J4, so it clears the panel while the panel is held up.
+5. Set the carrier on the board. The left fence and the bottom fence drop onto the board edges. The east side of the carrier is open over J4. While the panel is held up it clears the carrier by about 0.5 mm. A real print should confirm that gap.
 
-6. Lay the panel down onto the pads. The fold becomes the seated semicircle. A tall print, with the tail bottomed, sits 0.50 mm toward −x and leaves 0.08 mm before the curtain. The panel edge meets the posts and lines up with the depth fins. It is not lifted while the slider is locked.
+6. Lay the panel down onto the pads. The fold becomes the seated semicircle. A tall print, with the tail bottomed, sits 0.50 mm toward −x and leaves 0.08 mm before the curtain. The panel edge sits 0.14–0.45 mm west of the posts and lines up with the depth fins. It is not lifted while the slider is locked.
 
-7. Press the four retainer clips down onto the fences. The arm springs out 0.48 mm to pass the rib, then the tooth sits 0.30 mm onto the rib. The tongue, printed 0.20 mm below the panel front, presses the border. This is the subassembly: board, carrier, display panel, tail, retainer.
+7. Snap the three print pillars off each retainer clip. Press the four clips down onto the fences. The arm springs out 0.30 mm to pass the rib, then the tooth sits 0.30 mm onto the rib, 0.02 mm under it. The bump on the border is the preload. This is the subassembly: board, carrier, display panel, tail, retainer.
 
 8. Mate the 15EDGK plug onto J1 while the board is in the hand. The plug faces the wire hole.
 
@@ -197,7 +204,7 @@ The light pipe, the RESET pinhole, the window, and the vents are in the shell. T
 
 2. Lift the subassembly off the pins. Unplug the HVAC plug in the hand.
 
-3. A fingertip pulls each clip arm out until the tooth clears the rib, and the clip lifts off. Raise the panel to the east, lift the carrier off, then open J4 with a thumbnail behind each ear, the same pull as the build. Draw the tail out toward +x only after the slider is open. A 0.50 mm lift of the panel while the slider is locked leaves 2.56 mm inserted on a tall print.
+3. A fingertip pulls each clip arm out 0.30 mm until the tooth clears the rib, and the clip lifts off. Raise the panel to the east, lift the carrier off, then open J4 with a thumbnail behind each ear, the same pull as the build. Draw the tail out toward +x only after the slider is open. A 0.50 mm lift of the panel while the slider is locked leaves 2.56 mm inserted on a tall print.
 
 ## Where J4 sits
 
