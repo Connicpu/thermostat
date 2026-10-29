@@ -1,52 +1,54 @@
 // Shell hold-down. Not the shipped case.
-// The panel drops onto the carrier. Nothing locks it.
-// The shell clips to the backplate and stays in the snap window.
-// Four bridges printed in the shell press the border land.
-// Names are prefixed so they do not override the case.
+// The panel drops onto the carrier. The shell clips to the backplate.
+// Four bridges printed in the shell press the border.
 // openscad -D 'part="sh_beams"'
 include <../thermostat_case.scad>
 
 sh_root = 2.40;          // pillar along the edge, both ends
-sh_L = 33;               // free span between the pillar faces
-sh_t = 0.80;             // bridge thickness, 4 layers, bending in z
-sh_w = 2.90;             // bridge width in y
-sh_y0 = 0.20;            // outboard face of the bridge, inboard of the edge
-sh_land0 = 2.20;         // land, from the panel edge
-sh_land1 = 2.30;
-sh_nub_h = 0.60;         // land stands this far below the bridge
-sh_nub_len = 5.0;        // land length along the edge
-sh_R = 22.74;            // free land face, shell centred in the window
-sh_stop = 22.90;         // panel back. Carrier pads are cut to this.
+sh_t = 0.80;             // bridge thickness, four layers
+sh_w = 1.20;             // bridge width across the border
+sh_y0 = 2.00;            // outboard face of the bridge, from the panel edge
+sh_land0 = 2.50;         // land, on the bridge centreline
+sh_land1 = 2.70;
+sh_nub_h = 0.45;         // land stands this far below the bridge
+sh_nub_len = 4.0;
+sh_drop = 0.15;          // carrier stop is this far under Z_panel_b
+sh_stop = Z_panel_b - sh_drop;
+sh_R_below = 0.38;       // free land under the nominal panel front on the stop
+sh_R = sh_stop + panel_t - sh_R_below;
 sh_bite = 0.10;          // pillars enter the recess skin by this much
-sh_shoe_t = 0.80;
-sh_shoe_h = 1.20;
-sh_shoe_pre = 0.20;      // free shoe crosses the edge by this much
-sh_shoe_post = 2.0;
+sh_loc_gap = 0.15;       // shell rib to the fence outer face
+sh_loc_t = 0.80;
 
-// Outer ends of each bridge, and 0 = top edge / 1 = bottom edge.
-// y comes from panel[1] or panel[3]. The free span is sh_L.
+// x0, x1 outer ends, edge 0 top / 1 bottom, nub centre x.
+// Left bridges: nub on the span centre. Right bridges: nub toward the cable end.
 sh_spans = [
-  [29.70, 67.50, 0],
-  [68.70, 106.50, 0],
-  [29.70, 67.50, 1],
-  [68.70, 106.50, 1]
+  [29.70, 67.50, 0, 48.60],
+  [71.60, 106.40, 0, 100.00],
+  [29.70, 67.50, 1, 48.60],
+  [71.60, 106.40, 1, 100.00]
 ];
 
-// One shoe on each long edge, in a fence gap. Outer x, then the edge index.
-// The posts are sh_shoe_post at each end. The bar between them is the spring.
-sh_shoes = [
-  [56.0, 80.0, 0],
-  [31.0, 49.0, 1]
-];
-
-// Solid columns from the PCB face up to the stop. Constant section, no bridge.
-// Each column reaches an existing carrier member so the print is one solid.
+// Stops added on the carrier. Full height, from the PCB face to sh_stop.
 sh_columns = [
-  [33.5, 33.0, 50.2, 34.8],
-  [44.3, 26.50, 47.4, 27.70],
-  [41.6, 37.2, 50.4, 43.0],
-  [34.2, 48.2, 50.2, 51.2],
-  [34.2, 60.90, 50.4, 61.55]
+  [29.60, 29.30, 33.40, 30.40],
+  [33.50, 33.00, 50.20, 34.80],
+  [44.30, 26.50, 47.40, 27.70],
+  [41.60, 37.20, 50.40, 43.00],
+  [34.20, 48.20, 50.20, 51.20],
+  [34.20, 60.90, 50.40, 61.55]
+];
+// Low ties that join a column to the spine. They are feet, not stops.
+sh_ties = [
+  [33.40, 29.40, 49.50, 30.05]
+];
+
+// Shell ribs beside the fence outer faces. They set the shell in y.
+sh_locs = [
+  [42.4, 52.6, 0],
+  [85.0, 95.6, 0],
+  [50.0, 55.2, 1],
+  [76.4, 89.6, 1]
 ];
 
 function sh_y_edge(which) = which == 0 ? panel[1] : panel[3];
@@ -57,7 +59,7 @@ module sh_pillar_pair(x0, x1, y0, y1, z0, z1) {
   board_box(x1 - sh_root, min(y0, y1), x1, max(y0, y1), z0, z1);
 }
 
-module sh_bridge(x0, x1, which) {
+module sh_bridge(x0, x1, which, nubx) {
   edge = sh_y_edge(which);
   dir = sh_dir(which);
   y0 = edge + dir * sh_y0;
@@ -65,10 +67,9 @@ module sh_bridge(x0, x1, which) {
   z0 = sh_R + sh_nub_h;
   z1 = z0 + sh_t;
   board_box(x0 + sh_root - 0.12, min(y0, y1), x1 - sh_root + 0.12, max(y0, y1), z0, z1);
-  xc = (x0 + x1) / 2;
   ny0 = edge + dir * sh_land0;
   ny1 = edge + dir * sh_land1;
-  board_box(xc - sh_nub_len / 2, min(ny0, ny1), xc + sh_nub_len / 2, max(ny0, ny1), sh_R, z0 + 0.02);
+  board_box(nubx - sh_nub_len / 2, min(ny0, ny1), nubx + sh_nub_len / 2, max(ny0, ny1), sh_R, z0 + 0.02);
 }
 
 module sh_pillars(x0, x1, which) {
@@ -81,40 +82,37 @@ module sh_pillars(x0, x1, which) {
   sh_pillar_pair(x0, x1, y0, y1, z0, z1);
 }
 
-module sh_shoe(x0, x1, which) {
+module sh_loc(x0, x1, which) {
   edge = sh_y_edge(which);
   dir = sh_dir(which);
-  // Free shape. The inboard face crosses the edge; the panel pushes it back.
-  y_in = edge + dir * sh_shoe_pre;
-  y_out = y_in - dir * sh_shoe_t;
-  z0 = 23.50;
-  z1 = z0 + sh_shoe_h;
-  board_box(x0 + sh_shoe_post, min(y_in, y_out), x1 - sh_shoe_post, max(y_in, y_out), z0, z1);
-  ztop = Z_in + face_recess + sh_bite;
-  board_box(x0, min(y_in, y_out), x0 + sh_shoe_post, max(y_in, y_out), z0, ztop);
-  board_box(x1 - sh_shoe_post, min(y_in, y_out), x1, max(y_in, y_out), z0, ztop);
+  // Fence outer face is fence_air + fence_t outboard of the edge.
+  y_fence = edge - dir * (fence_air + fence_t);
+  y_near = y_fence - dir * sh_loc_gap;
+  y_far = y_near - dir * sh_loc_t;
+  z0 = Z_in - 1.05;
+  z1 = Z_in + face_recess + sh_bite;
+  board_box(x0, min(y_near, y_far), x1, max(y_near, y_far), z0, z1);
 }
 
 module sh_beams() {
-  for (s = sh_spans) sh_bridge(s[0], s[1], s[2]);
+  for (s = sh_spans) sh_bridge(s[0], s[1], s[2], s[3]);
 }
 module sh_pillar_all() {
   for (s = sh_spans) sh_pillars(s[0], s[1], s[2]);
 }
-module sh_shoe_all() {
-  for (s = sh_shoes) sh_shoe(s[0], s[1], s[2]);
+module sh_loc_all() {
+  for (s = sh_locs) sh_loc(s[0], s[1], s[2]);
 }
 module sh_added() {
   sh_beams();
   sh_pillar_all();
-  sh_shoe_all();
+  sh_loc_all();
 }
 
 module sh_widen() {
-  // The shipped recess stops 2.50 mm inboard. The bridge needs the rest of
-  // the border, and it stops short of the window.
-  board_box(panel[0] - 0.30, panel[1] + 2.50, panel[2] + 0.40, panel[1] + 3.25, Z_in - 0.02, Z_in + face_recess);
-  board_box(panel[0] - 0.30, panel[3] - 3.25, panel[2] + 0.40, panel[3] - 2.50, Z_in - 0.02, Z_in + face_recess);
+  // Recess over the bridge, short of the window.
+  board_box(panel[0] - 0.30, panel[1] + 2.50, panel[2] + 0.40, panel[1] + 3.30, Z_in - 0.02, Z_in + face_recess);
+  board_box(panel[0] - 0.30, panel[3] - 3.30, panel[2] + 0.40, panel[3] - 2.50, Z_in - 0.02, Z_in + face_recess);
 }
 
 module sh_shell_case() {
@@ -127,41 +125,32 @@ module sh_shell_case() {
   }
 }
 
-// Old fence face is fence_air outboard. The new face is further out so the
-// shoes can centre the panel when the shell is off the carrier by the lip gap.
-sh_fence_face = 1.05;
-sh_fence_t = 0.70;
-
-module sh_new_fence(x0, x1, which) {
-  edge = sh_y_edge(which);
-  dir = sh_dir(which);
-  y_in = edge - dir * sh_fence_face;
-  y_out = y_in - dir * sh_fence_t;
-  board_box(x0, min(y_in, y_out), x1, max(y_in, y_out), Z_pcb_t, Z_in - 0.40);
+module sh_carrier_case() {
+  difference() {
+    union() {
+      carrier();
+      for (c = sh_columns)
+        board_box(c[0], c[1], c[2], c[3], Z_pcb_t, sh_stop);
+      for (c = sh_ties)
+        board_box(c[0], c[1], c[2], c[3], Z_pcb_t, Z_pcb_t + 1.20);
+    }
+    // Rest surfaces under the outline, brought to the stop.
+    // Fences stand outboard of this cut.
+    board_box(panel[0] - 0.02, panel[1] - 0.05, panel[2] + 0.02, panel[3] + 0.05,
+              sh_stop, Z_panel_b + 0.25);
+  }
 }
 
-module sh_carrier_case() {
-  union() {
-    difference() {
-      union() {
-        carrier();
-        for (c = sh_columns)
-          board_box(c[0], c[1], c[2], c[3], Z_pcb_t, sh_stop);
-      }
-      // Every surface the panel can sit on, cut to the stop.
-      // The x-stop lips continue above this band.
-      board_box(panel[0] - 0.02, panel[1] - 0.08, panel[2] + 0.02, panel[3] + 0.08,
-                sh_stop, Z_panel_b + 0.25);
-      // Shipped fence walls and their ribs. The low ties, below z 20.2, stay.
-      board_box(41.5, panel[1] - 2.20, 53.5, panel[1] - 0.05, 20.2, 24.2);
-      board_box(84.1, panel[1] - 2.20, 96.5, panel[1] - 0.05, 20.2, 24.2);
-      board_box(49.1, panel[3] + 0.05, 56.1, panel[3] + 2.20, 20.2, 24.2);
-      board_box(75.5, panel[3] + 0.05, 90.5, panel[3] + 2.20, 20.2, 24.2);
-    }
-    sh_new_fence(42.0, 53.0, 0);
-    sh_new_fence(84.6, 96.0, 0);
-    sh_new_fence(49.6, 55.6, 1);
-    sh_new_fence(76.0, 90.0, 1);
+// Optional cable-end lip. Not part of sh_carrier. The panel would tilt its
+// cable end under the chamfer, then drop. Numbers are in the checker.
+module sh_lip_option() {
+  z_lip = sh_stop + panel_t + 0.15;
+  board_box(102.0, 33.2, panel[2] + 0.6, 34.3, Z_pcb_t, z_lip);
+  board_box(102.0, 61.2, panel[2] + 0.6, 62.5, Z_pcb_t, z_lip);
+  // 45 degree underside over the outline, so the end can tilt in.
+  hull() {
+    board_box(104.0, 33.2, panel[2], 34.3, z_lip - 0.01, z_lip);
+    board_box(panel[2] - 1.2, 33.2, panel[2] - 1.0, 34.3, z_lip - 1.2, z_lip - 1.0);
   }
 }
 
@@ -171,7 +160,7 @@ module sh_panel(z_back) {
 
 if (part == "sh_beams") sh_beams();
 if (part == "sh_pillars") sh_pillar_all();
-if (part == "sh_shoes") sh_shoe_all();
+if (part == "sh_locs") sh_loc_all();
 if (part == "sh_added") sh_added();
 if (part == "sh_shell") sh_shell_case();
 if (part == "sh_shell_print") translate([0, H, Z_out]) rotate([180, 0, 0]) sh_shell_case();
@@ -179,12 +168,6 @@ if (part == "sh_carrier") sh_carrier_case();
 if (part == "sh_carrier_print") translate([0, 0, -Z_pcb_t]) sh_carrier_case();
 if (part == "sh_stock") difference() { shell(); sh_widen(); }
 if (part == "sh_stock_print") translate([0, H, Z_out]) rotate([180, 0, 0]) difference() { shell(); sh_widen(); }
-if (part == "sh_off") {
-  sh_carrier_case();
-  sh_panel(sh_stop);
-}
-if (part == "sh_on") {
-  sh_carrier_case();
-  sh_panel(sh_stop);
-  sh_added();
-}
+if (part == "sh_lip") sh_lip_option();
+if (part == "sh_off") { sh_carrier_case(); sh_panel(sh_stop); }
+if (part == "sh_on") { sh_carrier_case(); sh_panel(sh_stop); sh_added(); }

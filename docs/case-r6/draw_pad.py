@@ -28,7 +28,7 @@ def section(path):
     box(ax, -0.5, 19.55, 1.6, 3.00, PAD)              # root
     box(ax, -0.45, 22.57, 0.40, 1.20, CAR)            # clamp bar
     box(ax, -1.05, 23.90, 0.90, 0.60, PLATE)          # outboard bar
-    box(ax, 0.0, 24.50, 2.05, 0.60, PLATE)            # web, clear of the glass
+    box(ax, 0.0, 24.50, 2.05, 0.60, PLATE)            # web, clear of the display panel
     box(ax, 2.00, 24.36, 1.20, 0.40, PLATE)           # land
     box(ax, -1.90, 24.56, 1.70, 0.60, CAR)            # cap
     box(ax, 0.35, 21.55, 1.20, 1.20, CAR)             # backstop, drawn in section at the edge
